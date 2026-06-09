@@ -14,7 +14,7 @@ The physics convention is the usual mass-action BBN form.  A reaction
 reactant abundances, a backward flux proportional to product abundances and the
 detailed-balance coefficient, and each nuclide receives its stoichiometric
 coefficient times ``forward - backward``.  ``compile_network`` and
-``NetworkKernels`` from :mod:`pypr.network_builder` convert that declarative
+``NetworkKernels`` from :mod:`pyprimat.network_builder` convert that declarative
 stoichiometry into fast RHS/Jacobian evaluators.
 """
 

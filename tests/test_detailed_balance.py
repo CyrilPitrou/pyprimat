@@ -2,8 +2,8 @@
 import os
 import csv
 import pytest
-from pypr.config import PyPRConfig
-from pypr.nuclear import compute_detailed_balance_coefficients, reaction_species
+from pyprimat.config import PyPRConfig
+from pyprimat.nuclear import compute_detailed_balance_coefficients, reaction_species
 
 def test_detailed_balance_consistency():
     """Verify that compute_detailed_balance_coefficients reproduces the values in detailed_balance.csv."""

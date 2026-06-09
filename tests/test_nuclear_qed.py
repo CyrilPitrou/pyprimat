@@ -20,8 +20,8 @@ T9-dependent factor derived in Pitrou & Pospelov 2020.  These tests verify:
 import numpy as np
 import pytest
 
-from pypr.config import PyPRConfig
-from pypr.nuclear import _qed_nuclear_rescale, load_network
+from pyprimat.config import PyPRConfig
+from pyprimat.nuclear import _qed_nuclear_rescale, load_network
 
 
 # ---------------------------------------------------------------------------
@@ -197,7 +197,7 @@ def test_solve_qed_corrections_shift_DoH():
     the shift is not pinned here (it depends on the net balance of reactions),
     but the result must differ from the uncorrected run.
     """
-    from pypr import PyPR
+    from pyprimat import PyPR
 
     res_base = PyPR({"network": "small", "verbose": False}).solve()
     res_qed  = PyPR({"network": "small", "nuclear_qed_corrections": True,

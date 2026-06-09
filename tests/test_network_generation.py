@@ -100,10 +100,10 @@ def _load_nuclides_csv():
 
 
 @_needs_ac2024
-def test_nuclides_csv_agrees_with_pypr_hardcoded_table():
+def test_nuclides_csv_agrees_with_pyprimat_hardcoded_table():
     """Every nuclide in PyPRConfig.Nuclides must appear in nuclides.csv with the
     same (N, Z) -- the generated table is a superset of the hard-coded one."""
-    from pypr.config import PyPRConfig
+    from pyprimat.config import PyPRConfig
     cfg = PyPRConfig()
     nuc = _load_nuclides_csv()
     # Check the key ones used in Speciess_Small
@@ -135,7 +135,7 @@ def _load_reactions_csv():
 def test_reaction_list_is_superset_of_known_networks():
     """The deduced large list must contain every reaction of the 12-key and
     62-reaction networks (matched by their <reactants>TO<products> file name)."""
-    from pypr.nuclear import to_filename, _KEY12_REACTIONS, _REACTIONS_MEDIUM
+    from pyprimat.nuclear import to_filename, _KEY12_REACTIONS, _REACTIONS_MEDIUM
     names = {r["name"] for r in _load_reactions_csv()}
     for compact in _KEY12_REACTIONS:
         name = compact if 'TO' in compact else to_filename(compact)
@@ -161,8 +161,8 @@ def test_detailed_balance_formula_consistency():
     """alpha,beta,gamma computed from nuclide data must reproduce the
     values in detailed_balance.csv: beta exactly,
     alpha and gamma to better than 1% (the documented detailed-balance accuracy)."""
-    from pypr.config import PyPRConfig
-    from pypr.nuclear import compute_detailed_balance_coefficients, reaction_species
+    from pyprimat.config import PyPRConfig
+    from pyprimat.nuclear import compute_detailed_balance_coefficients, reaction_species
     cfg = PyPRConfig()
     with open(os.path.join(_AC2024_DIR, "detailed_balance.csv")) as f:
         db_rows = list(csv.DictReader(f))

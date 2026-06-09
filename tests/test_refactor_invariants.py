@@ -12,7 +12,7 @@ These pin down the behaviour that the refactor relies on for correctness:
 import numpy as np
 import pytest
 
-from pypr.config import PyPRConfig
+from pyprimat.config import PyPRConfig
 
 
 # ---------------------------------------------------------------------------
@@ -21,7 +21,7 @@ from pypr.config import PyPRConfig
 
 def test_mc_njobs_independence():
     """Same seeds must give identical samples for serial vs parallel runs."""
-    from pypr.main import mc_uncertainty
+    from pyprimat.main import mc_uncertainty
     base = {"compute_nTOp": False, "network": "small"}
     mc1 = mc_uncertainty(6, ["YPBBN", "DoH"], params=base, n_jobs=1, seed=0)
     mcP = mc_uncertainty(6, ["YPBBN", "DoH"], params=base, n_jobs=3, seed=0)
@@ -61,7 +61,7 @@ def test_gn_and_taun_come_from_defaults():
 
 @pytest.mark.parametrize("T", [0.05, 0.2, 0.5, 1.0, 5.0])
 def test_tabulated_electron_thermo_matches_exact(T):
-    import pypr.plasma as thermo
+    import pyprimat.plasma as thermo
     # exact (tabulation off)
     thermo.initialise(PyPRConfig({"tabulate_electron_thermo": False}))
     exact = (thermo.rho_e(T), thermo.p_e(T),
@@ -80,7 +80,7 @@ def test_tabulated_electron_thermo_matches_exact(T):
 
 def test_linear_rate_matches_interp1d():
     from scipy.interpolate import interp1d
-    from pypr.nuclear import _LinearRate
+    from pyprimat.nuclear import _LinearRate
     rng = np.random.default_rng(0)
     x = np.sort(rng.uniform(0.001, 10.0, 50))
     y = rng.uniform(1e-3, 1e3, 50)
@@ -93,7 +93,7 @@ def test_linear_rate_matches_interp1d():
 
 
 def test_linear_rate_scalar_and_array():
-    from pypr.nuclear import _LinearRate
+    from pyprimat.nuclear import _LinearRate
     f = _LinearRate(np.array([1.0, 2.0, 3.0]), np.array([10.0, 20.0, 30.0]))
     assert f(2.0) == pytest.approx(20.0)
     np.testing.assert_allclose(f(np.array([1.5, 2.5])), [15.0, 25.0])

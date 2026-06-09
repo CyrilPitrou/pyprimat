@@ -31,11 +31,7 @@ all = [
 ]
 
 [tool.setuptools]
-packages = ["PyPRIMAT", "pypr"]
-
-[tool.setuptools.package-dir]
-"PyPRIMAT" = "."
-"pypr" = "pypr"
+packages = ["pyprimat"]
 
 [tool.setuptools.package-data]
-"PyPRIMAT" = ["rates/**/*"]
+"pyprimat" = ["rates/**/*"]

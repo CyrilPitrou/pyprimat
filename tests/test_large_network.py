@@ -28,9 +28,9 @@ _needs_ac2024 = pytest.mark.skipif(
 @_needs_ac2024
 def test_large_network_loads_and_conserves():
     """Loads 59 nuclides / ~424 reactions and passes the formal N/Z check."""
-    from pypr.config import PyPRConfig
-    from pypr.nuclear import load_network
-    from pypr.network_builder import compile_network, check_conservation
+    from pyprimat.config import PyPRConfig
+    from pyprimat.nuclear import load_network
+    from pyprimat.network_builder import compile_network, check_conservation
     cfg = PyPRConfig({"network": "large", "verbose": False})
     ln = load_network(cfg)
     assert ln.species[:2] == ["n", "p"]
@@ -46,8 +46,8 @@ def test_large_network_loads_and_conserves():
 def test_large_rate_buffer_is_finite_and_bounded():
     """fill_buffer must return finite rates across the LT temperature range,
     despite the exp(gamma/T9) detailed-balance factors of endothermic reactions."""
-    from pypr.config import PyPRConfig
-    from pypr.nuclear import load_network
+    from pyprimat.config import PyPRConfig
+    from pyprimat.nuclear import load_network
     ln = load_network(PyPRConfig({"network": "large", "verbose": False}))
     for T9 in (0.08, 0.05, 0.02, 0.012):
         r = ln.fill_buffer(T9 / 1e-9, lambda T: 1.0, lambda T: 0.5)
@@ -61,17 +61,17 @@ def test_large_rate_buffer_is_finite_and_bounded():
 def test_large_solve_conserves_baryon_and_matches_medium():
     """Full large-network solve: baryon number conserved, and the light-element
     finals agree with the medium network (the heavy channels are tiny)."""
-    from pypr import PyPR
+    from pyprimat import PyPR
     med = PyPR(params={"network": "medium", "verbose": False})
     med.solve()
     big = PyPR(params={"network": "large", "verbose": False})
     big.solve()
 
     # Baryon number: sum_s A_s Y_s = 1 to high precision.
-    from pypr.config import PyPRConfig
+    from pyprimat.config import PyPRConfig
     A = {s: sum(PyPRConfig.Nuclides.get(s, [0, 0])) for s in big._Y_final}
     # Build A for every large-network species from its (N,Z) in nuclides.csv.
-    from pypr.nuclear import load_network
+    from pyprimat.nuclear import load_network
     ln = load_network(PyPRConfig({"network": "large", "verbose": False}))
     Avec = {s: int(n) + int(z) for s, n, z in zip(ln.species, ln.N, ln.Z)}
     baryon = sum(Avec[s] * y for s, y in big._Y_final.items())

@@ -1,7 +1,7 @@
 """Tests for PyPRConfig: defaults, overrides, derived quantities, nuclide data."""
 import warnings
 import pytest
-from pypr.config import PyPRConfig, DEFAULT_PARAMS
+from pyprimat.config import PyPRConfig, DEFAULT_PARAMS
 
 
 def test_default_construction():
@@ -49,7 +49,7 @@ def test_nuclides_NZ_values():
 
 
 def test_p_rate_keys_count():
-    from pypr.nuclear import _REACTIONS_MEDIUM
+    from pyprimat.nuclear import _REACTIONS_MEDIUM
     cfg = PyPRConfig()
     all_p = list(cfg.p_rxn.keys())
     # one MCMC weight per network reaction

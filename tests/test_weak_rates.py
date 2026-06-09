@@ -1,8 +1,8 @@
 """Tests for weak_rates: Fn integral, Fermi-Coulomb, rate functions."""
 import pytest
 import numpy as np
-from pypr.config import PyPRConfig
-import pypr.weak_rates as wr
+from pyprimat.config import PyPRConfig
+import pyprimat.weak_rates as wr
 
 
 @pytest.fixture(scope="module")
@@ -77,7 +77,7 @@ def test_ComputeFn_order_of_magnitude(cfg):
 @pytest.fixture(scope="module")
 def rate_interpolants(cfg):
     """Pre-tabulated weak rate interpolants loaded from disk (correct T_ν history)."""
-    import pypr.plasma as thermo
+    import pyprimat.plasma as thermo
     thermo.initialise(cfg)
     return wr.InterpolateWeakRates(cfg)
 
@@ -88,7 +88,7 @@ def test_returns_two_interpolants(rate_interpolants):
 
 def test_all_rates_positive(rate_interpolants):
     """Both rate interpolants should return positive values in their range."""
-    from pypr.config import PyPRConfig
+    from pyprimat.config import PyPRConfig
     MeV_to_K = PyPRConfig().MeV_to_Kelvin
     T_K = 3.0 * MeV_to_K
     for interp in rate_interpolants:
@@ -103,7 +103,7 @@ def test_forward_greater_than_backward(rate_interpolants):
     """
     nTOp_frwrd_HT = rate_interpolants[0]
     nTOp_bkwrd_HT = rate_interpolants[1]
-    from pypr.config import PyPRConfig
+    from pyprimat.config import PyPRConfig
     MeV_to_K = PyPRConfig().MeV_to_Kelvin
     for T_MeV in [1.0, 3.0, 10.0]:
         T_K = T_MeV * MeV_to_K
@@ -119,7 +119,7 @@ def test_ratio_decreases_toward_one_at_high_T(rate_interpolants):
     """
     nTOp_frwrd_HT = rate_interpolants[0]
     nTOp_bkwrd_HT = rate_interpolants[1]
-    from pypr.config import PyPRConfig
+    from pyprimat.config import PyPRConfig
     MeV_to_K = PyPRConfig().MeV_to_Kelvin
     ratio_low  = nTOp_frwrd_HT(1.0  * MeV_to_K) / nTOp_bkwrd_HT(1.0  * MeV_to_K)
     ratio_high = nTOp_frwrd_HT(10.0 * MeV_to_K) / nTOp_bkwrd_HT(10.0 * MeV_to_K)
@@ -130,7 +130,7 @@ def test_ratio_decreases_toward_one_at_high_T(rate_interpolants):
 def test_forward_rate_increases_with_T(rate_interpolants):
     """n→p rate should increase with T in the HT era (well above freeze-out)."""
     nTOp_frwrd_HT = rate_interpolants[0]
-    from pypr.config import PyPRConfig
+    from pyprimat.config import PyPRConfig
     MeV_to_K = PyPRConfig().MeV_to_Kelvin
     rate_low  = nTOp_frwrd_HT(1.0  * MeV_to_K)
     rate_high = nTOp_frwrd_HT(10.0 * MeV_to_K)

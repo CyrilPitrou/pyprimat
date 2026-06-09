@@ -1,7 +1,7 @@
 
 import pytest
 import numpy as np
-from pypr.main import PyPR
+from pyprimat.main import PyPR
 
 def test_spectral_distortions_effect():
     """Verify that spectral distortions have a small but non-zero effect on D/H."""

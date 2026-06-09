@@ -516,7 +516,7 @@ class PyPRConfig:
                 self.NuclExcessMass[name] = float(row['mass_excess_keV'])
                 self.NuclSpin[name] = float(row['spin'])
 
-    # Path helper: working dir is two levels above this file (package root)
+    # Path helper: working dir is the pyprimat/ package directory, where rates/ lives.
     @property
     def working_dir(self) -> str:
-        return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return os.path.dirname(os.path.abspath(__file__))

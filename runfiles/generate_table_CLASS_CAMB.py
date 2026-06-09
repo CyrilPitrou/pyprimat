@@ -60,8 +60,8 @@ repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if repo_root not in sys.path:
     sys.path.insert(0, repo_root)
 
-from pypr.main import PyPR
-from pypr.config import DEFAULT_PARAMS, PyPRConfig
+from pyprimat.main import PyPR
+from pyprimat.config import DEFAULT_PARAMS, PyPRConfig
 
 # ---------------------------------------------------------------------------
 # Grid definition

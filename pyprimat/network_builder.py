@@ -30,7 +30,7 @@ understanding this module:
     into a :class:`CompiledNetwork` (immutable flat arrays), and
     :class:`NetworkKernels` binds it to the kernels (JIT-compiling them with
     numba if available).  This happens a handful of times total -- once for each
-    era's network -- in ``UpdateNuclearRates`` (see :mod:`pypr.nuclear_net`).
+    era's network -- in ``UpdateNuclearRates`` (see :mod:`pyprimat.nuclear_net`).
     A ``CompiledNetwork`` is therefore *not* recomputed during integration; it is
     a fixed description of the reaction topology.
 
@@ -154,7 +154,7 @@ def compile_network(network, n_sp):
     ----------
     network : list[(reactants, products)]
         Each side a ``{species_index: multiplicity}`` dict, as produced by
-        :func:`pypr.reactions.phase_network`.  Example reaction ``d + d -> He4 + g``
+        :func:`pyprimat.reactions.phase_network`.  Example reaction ``d + d -> He4 + g``
         with ``d`` at index 2 and ``He4`` at index 3 is ``({2: 2}, {3: 1})``.
     n_sp : int
         Number of species in the abundance vector Y.

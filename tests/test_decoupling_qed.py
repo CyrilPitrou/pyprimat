@@ -35,8 +35,8 @@ All solve-based tests carry the ``slow`` marker.
 """
 import pytest
 import numpy as np
-from pypr.config import PyPRConfig
-import pypr.plasma as thermo
+from pyprimat.config import PyPRConfig
+import pyprimat.plasma as thermo
 
 
 # ---------------------------------------------------------------------------
@@ -44,7 +44,7 @@ import pypr.plasma as thermo
 # ---------------------------------------------------------------------------
 
 def _solve(incomplete_decoupling, QED_corrections):
-    from pypr.main import PyPR
+    from pyprimat.main import PyPR
     return PyPR({
         "incomplete_decoupling": incomplete_decoupling,
         "QED_corrections":       QED_corrections,
@@ -254,7 +254,7 @@ def test_nevo_file_selection():
     the QED table for QED_corrections=True, the NoQED table otherwise.
     We check by inspecting the neutrino-temperature ratio T_νe/T_γ at a
     moderate temperature where the two tables differ noticeably."""
-    from pypr.main import PyPR
+    from pyprimat.main import PyPR
 
     inst_qed   = PyPR({"incomplete_decoupling": True, "QED_corrections": True})
     inst_noqed = PyPR({"incomplete_decoupling": True, "QED_corrections": False})

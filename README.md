@@ -36,7 +36,7 @@ print(f"YP  (BBN) = {result['YPBBN']:.6f}")   # ~0.246915
 print(f"D/H = {result['DoH']:.5f}") # ~2.43647
 ```
 
-The constructor accepts an optional parameter dict that overrides any default in `pypr/config.py`. All keys are optional.
+The constructor accepts an optional parameter dict that overrides any default in `pyprimat/config.py`. All keys are optional.
 
 ## Running the example scripts
 
@@ -108,7 +108,7 @@ When `output_time_evolution=True`, a TSV file is written with columns:
 ## Architecture
 
 ```
-pypr/                    Core package
+pyprimat/                    Core package
   config.py              PyPRConfig: all physical constants + run-time flags
   main.py                PyPR: top-level driver
   plasma.py              Plasma thermodynamics (QED corrections, neutrino bath)

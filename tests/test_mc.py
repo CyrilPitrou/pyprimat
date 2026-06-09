@@ -1,7 +1,7 @@
 """Tests for mc_uncertainty, MCResult, and MCQuantityResult."""
 import pytest
 import numpy as np
-from pypr.main import mc_uncertainty, MCResult, MCQuantityResult
+from pyprimat.main import mc_uncertainty, MCResult, MCQuantityResult
 
 _BASE = {"compute_nTOp": False, "network": "small"}
 _NUM_MC = 8

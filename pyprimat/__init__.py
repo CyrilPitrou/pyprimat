@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-pypr — core package for PyPRIMAT.
+pyprimat — core package for PyPRIMAT.
 
 Public API::
 
-    from pypr import PyPR
+    from pyprimat import PyPR
     result = PyPR({"Omegabh2": 0.022425}).solve()
 """
 

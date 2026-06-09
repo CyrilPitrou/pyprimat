@@ -45,7 +45,7 @@ def test_Neff_close_to_standard(solved_small):
 
 def test_nTOp_Born_approximation_lowers_YP(solved_small):
     """Born-level n<->p rates (no radiative corrections) give lower YP."""
-    from pypr.main import PyPR
+    from pyprimat.main import PyPR
     r_born = PyPR({"nTOp_Born_approximation": True,
                         "compute_nTOp": True,
                         "network": "small"})
@@ -76,13 +76,13 @@ _REF_PARAMS = dict(numerical_precision=1e-10, n_temperature_table=10000,
 
 @pytest.fixture(scope="session")
 def ref_small():
-    from pypr.main import PyPR
+    from pyprimat.main import PyPR
     return PyPR({**_REF_PARAMS, "network": "small"}).PyPRresults()
 
 
 @pytest.fixture(scope="session")
 def ref_large():
-    from pypr.main import PyPR
+    from pyprimat.main import PyPR
     return PyPR({**_REF_PARAMS, "network": "medium"}).PyPRresults()
 
 
@@ -112,7 +112,7 @@ def test_reference_large_DoH(ref_large):
 
 def test_no_numba_small_matches_numba(solved_small):
     """Pure-Python (numba_installed=False) must agree with the JIT path to 1e-4."""
-    from pypr.main import PyPR
+    from pyprimat.main import PyPR
     r_nn = PyPR({"numba_installed": False, "network": "small",
                       "compute_nTOp": False}).PyPRresults()
     assert r_nn["YPBBN"] == pytest.approx(solved_small._results["YPBBN"], rel=1e-4)
@@ -121,7 +121,7 @@ def test_no_numba_small_matches_numba(solved_small):
 
 def test_no_numba_medium_smoke():
     """Pure-Python medium network solve completes and YP is physically reasonable."""
-    from pypr.main import PyPR
+    from pyprimat.main import PyPR
     r = PyPR({"numba_installed": False, "network": "medium",
                    "compute_nTOp": False}).PyPRresults()
     assert 0.24 < r["YPBBN"] < 0.25
@@ -134,7 +134,7 @@ def test_no_numba_medium_smoke():
 
 def test_amax_filter_light_elements_match_medium(solved_large):
     """With amax=20, heavy reactions (A>20) are dropped; light elements match medium."""
-    from pypr.main import PyPR
+    from pyprimat.main import PyPR
     r = PyPR({"network": "large", "amax": 20,
                    "compute_nTOp": False}).PyPRresults()
     # Light elements should still match the medium result to ~1e-3 relative

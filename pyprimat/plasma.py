@@ -16,7 +16,7 @@ with x ≡ m/T and g the spin degeneracy (g=2 photons, g=4 e±, g=1 ν).
 
 QED interaction-pressure corrections to the EM plasma thermodynamics
 are loaded from pre-saved tables in ``rates/plasma/`` when available,
-or computed analytically via :mod:`pypr.qed_pressure` otherwise
+or computed analytically via :mod:`pyprimat.qed_pressure` otherwise
 (see §II.E, Eq. 47–49 of the reference).
 
 Reference
@@ -103,7 +103,7 @@ def initialise(cfg):
 
     Example
     -------
-    >>> from pypr import config, plasma
+    >>> from pyprimat import config, plasma
     >>> cfg = config.PyPRConfig()
     >>> plasma.initialise(cfg)
     """
@@ -143,7 +143,7 @@ def _load_tables(cfg):
         e³-order); both columns are summed to give the total δP.
 
     **Analytic fallback** (``recompute_qed_corrections=False``, files absent):
-        Calls :func:`pypr.qed_pressure.compute_qed_pressure_tables`
+        Calls :func:`pyprimat.qed_pressure.compute_qed_pressure_tables`
         to evaluate the QED corrections analytically (~0.3 s) without
         writing any files.  Useful on a fresh checkout.
 
@@ -157,7 +157,7 @@ def _load_tables(cfg):
       - δP_a [O(e²)]:  leading one-loop correction (dPa in PRIMAT)
       - δP_{e3} [O(e³)]: ring/plasmon contribution (dPe3 in PRIMAT)
       (The O(e⁴) exchange term δP_b is not included; see
-      :func:`pypr.qed_pressure._dPb` for the optional computation.)
+      :func:`pyprimat.qed_pressure._dPb` for the optional computation.)
     """
     global PQEDofT, dPQEDdT, d2PQEDdT2
 

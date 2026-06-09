@@ -1,8 +1,8 @@
 """Tests for plasma thermodynamics functions."""
 import pytest
 import numpy as np
-from pypr.config import PyPRConfig
-import pypr.plasma as thermo
+from pyprimat.config import PyPRConfig
+import pyprimat.plasma as thermo
 
 
 @pytest.fixture(scope="module", autouse=True)

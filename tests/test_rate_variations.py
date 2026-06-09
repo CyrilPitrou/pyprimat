@@ -14,7 +14,7 @@ lives in ``test_config.py`` where it logically belongs.
 import numpy as np
 import pytest
 
-from pypr import PyPR, mc_uncertainty
+from pyprimat import PyPR, mc_uncertainty
 
 
 @pytest.mark.slow

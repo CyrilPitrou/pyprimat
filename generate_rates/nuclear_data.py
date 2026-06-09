@@ -398,7 +398,7 @@ from collections import Counter
 from math import factorial
 
 import numpy as np
-from pypr.config import PyPRConfig
+from pyprimat.config import PyPRConfig
 
 __all__ = ['detailed_balance', 'reaction_species', 'load_nubase']
 
@@ -411,7 +411,7 @@ def _parse_spin(jpi_field):
 
 def load_nubase(nubase_path):
     """Read mass excesses and spins of the BBN nuclides from a NUBASE2020 file."""
-    # Based on _NUBASE_NAMES mapping from original pypr/nuclear_data.py
+    # Based on _NUBASE_NAMES mapping from original pyprimat/nuclear_data.py
     _NUBASE_NAMES = {
         "n": "1n", "p": "1H", "H2": "2H", "H3": "3H", "He3": "3He", "He4": "4He",
         "He6": "6He", "Li6": "6Li", "Li7": "7Li", "Be7": "7Be", "Li8": "8Li",
@@ -434,7 +434,7 @@ def load_nubase(nubase_path):
 
 def reaction_species(name):
     """Expand a reaction name into explicit reactant and product nuclide lists."""
-    from pypr.nuclear import reaction_stoichiometry
+    from pyprimat.nuclear import reaction_stoichiometry
     react, prod = reaction_stoichiometry(name)
 
     def expand(multiplicity_dict):

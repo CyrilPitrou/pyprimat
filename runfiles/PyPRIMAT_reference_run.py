@@ -29,11 +29,11 @@ import sys
 import os
 import time
 
-_pypr_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-if _pypr_path not in sys.path:
-    sys.path.insert(0, _pypr_path)
+_pyprimat_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if _pyprimat_path not in sys.path:
+    sys.path.insert(0, _pyprimat_path)
 
-from pypr import PyPR
+from pyprimat import PyPR
 
 # ---------------------------------------------------------------------------
 # Cosmological parameters (standard values)

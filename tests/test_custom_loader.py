@@ -22,8 +22,8 @@ These tests verify:
 import numpy as np
 import pytest
 
-from pypr.nuclear import load_network
-from pypr.config import PyPRConfig
+from pyprimat.nuclear import load_network
+from pyprimat.config import PyPRConfig
 
 
 # ---------------------------------------------------------------------------
@@ -95,7 +95,7 @@ def test_parthenope_conservation():
     Using a different rate table does not change the stoichiometry; the
     formal conservation check must pass for all reactions.
     """
-    from pypr.network_builder import check_conservation, compile_network
+    from pyprimat.network_builder import check_conservation, compile_network
 
     cfg = PyPRConfig({"network": "small_parthenope", "verbose": False})
     net = load_network(cfg, era="LT")
@@ -114,7 +114,7 @@ def test_parthenope_conservation():
 @pytest.mark.slow
 def test_parthenope_solve_is_physical():
     """A full solve with parthenope rates gives physically reasonable YP and D/H."""
-    from pypr.main import PyPR
+    from pyprimat.main import PyPR
     r = PyPR({"network": "small_parthenope",
                    "compute_nTOp": False,
                    "verbose": False}).PyPRresults()

@@ -48,12 +48,12 @@ The results are stored in ``rates/plasma/QED_*.txt`` with three columns:
   T [MeV]  |  quantity_e2  |  quantity_e3
 
 where ``_e2`` = δP_a (order e²) and ``_e3`` = δP_{e3} (order e³).
-When loaded by :mod:`pypr.plasma`, both columns are summed to give the
+When loaded by :mod:`pyprimat.plasma`, both columns are summed to give the
 total correction.  The δP_b term would require a separate flag and file.
 
 Usage
 -----
->>> from pypr.qed_pressure import compute_qed_pressure_tables, save_qed_tables
+>>> from pyprimat.qed_pressure import compute_qed_pressure_tables, save_qed_tables
 >>> tables = compute_qed_pressure_tables()  # ~0.3 s on a modern laptop
 >>> save_qed_tables(tables, "/path/to/rates/plasma/")
 
@@ -317,7 +317,7 @@ def compute_qed_pressure_tables(T_min=1e-3, T_max=1e2, n_pts=500,
     temperature grid, then differentiates numerically using a cubic spline.
 
     The two-column format matches the files loaded by
-    :func:`pypr.plasma._load_tables`:
+    :func:`pyprimat.plasma._load_tables`:
       column 0 = T [MeV]
       column 1 = δP_a(T)   [MeV⁴]  (O(e²) = O(α))
       column 2 = δP_{e3}(T) [MeV⁴] (O(e³) = O(α^{3/2}))
@@ -406,7 +406,7 @@ def save_qed_tables(tables, plasma_dir, verbose=True):
     """Write the computed QED tables to ``rates/plasma/*.txt`` files.
 
     Produces three files whose format matches the ones loaded by
-    :func:`pypr.plasma._load_tables`:
+    :func:`pyprimat.plasma._load_tables`:
 
       - ``QED_P_int.txt``      — δP (columns: T, δP_a, δP_{e3})
       - ``QED_dP_intdT.txt``   — dδP/dT (columns: T, dδP_a/dT, dδP_{e3}/dT)

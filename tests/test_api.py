@@ -1,7 +1,7 @@
 """Tests for the PyPR public API."""
 import pytest
 import numpy as np
-from pypr.main import PyPR
+from pyprimat.main import PyPR
 
 
 def test_A_N_Z_dicts():
