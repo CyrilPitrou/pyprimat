@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "PyPRIMAT"
+version = "0.1.0"
+description = "Python implementation of PRIMAT for precise Big Bang Nucleosynthesis computations"
+readme = "README.md"
+license = { file = "LICENCE" }
+authors = [
+    { name = "Cyril Pitrou", email = "pitrou@iap.fr" },
+    { name = "Julien Froustey" },
+]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "scipy",
+]
+
+[project.optional-dependencies]
+recommended = [
+    "numba",
+    "numdifftools",
+    "vegas",
+]
+all = [
+    "numba",
+    "numdifftools",
+    "vegas",
+]
+
+[tool.setuptools]
+packages = ["PyPRIMAT", "pypr"]
+
+[tool.setuptools.package-dir]
+"PyPRIMAT" = "."
+"pypr" = "pypr"
+
+[tool.setuptools.package-data]
+"PyPRIMAT" = ["rates/**/*"]

@@ -1,0 +1,73 @@
+# -*- coding: utf-8 -*-
+"""
+PyPRIMAT_compare.py
+===================
+Compares primordial abundance predictions between the built-in 12-reaction
+small network, the 62-reaction medium file, and the 423-reaction large file.
+
+Usage::
+
+    python runfiles/PyPRIMAT_compare.py
+"""
+
+import sys
+import os
+import time
+
+_pypr_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if _pypr_path not in sys.path:
+    sys.path.insert(0, _pypr_path)
+
+from pypr import PyPR
+
+# ---------------------------------------------------------------------------
+# Cosmological parameters
+# ---------------------------------------------------------------------------
+Nrelat   = 0.
+omegabh2 = 0.022425
+
+_base_opts = {
+    "verbose":              True,
+    "compute_nTOp":         True,
+    "compute_nTOp_thermal": False,
+    "save_nTOp":            False,
+    "save_nTOp_thermal":    False,
+    "Omegabh2":                  omegabh2,
+    "DeltaNeff":                 Nrelat,
+    "numerical_precision":       1e-7,
+    "spectral_distortions":      False
+}
+
+# ---------------------------------------------------------------------------
+# Run networks
+# ---------------------------------------------------------------------------
+networks = ["small", "medium", "large"]
+results = {}
+
+for net in networks:
+    print("=" * 60)
+    print(f"Running {net} network ...")
+    print("=" * 60)
+    t0 = time.time()
+    params = {**_base_opts, "network": net}
+    run = PyPR(params=params)
+    results[net] = run.PyPRresults()
+    print(f"{net.capitalize()} network finished in {time.time()-t0:.1f} s\n")
+
+# ---------------------------------------------------------------------------
+# Print results
+# ---------------------------------------------------------------------------
+def _print_res(label, res):
+    print(f"  [{label}]")
+    print(f"    Neff         = {res['Neff']:.8f}")
+    print(f"    YP (BBN)     = {res['YPBBN']:.8f}")
+    print(f"    D/H          = {res['DoH']:.7e}")
+    print(f"    He3/H        = {res['He3oH']:.7e}")
+    print(f"    Li7/H        = {res['Li7oH']:.7e}")
+
+print("\n" + "=" * 60)
+print("Results comparison")
+print("=" * 60)
+for net in networks:
+    _print_res(f"{net.capitalize()} net", results[net])
+print()
