@@ -74,7 +74,7 @@ def test_get_quantity_unknown_raises(solved_small):
 
 def test_lazy_solve_triggers_on_accessor():
     """Accessing a result without calling solve() should auto-trigger it."""
-    r = PyPR({"compute_nTOp": False, "network": "small"})
+    r = PyPR({"network": "small"})
     assert r._results is None
     yp = r.YPBBN()
     assert r._results is not None
@@ -83,7 +83,7 @@ def test_lazy_solve_triggers_on_accessor():
 
 def test_solve_cached():
     """Calling solve() twice returns identical results (no re-computation)."""
-    r = PyPR({"compute_nTOp": False, "network": "small"})
+    r = PyPR({"network": "small"})
     res1 = r.solve()
     res2 = r.solve()
     assert res1["YPBBN"] == res2["YPBBN"]

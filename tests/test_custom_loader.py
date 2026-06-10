@@ -116,7 +116,6 @@ def test_parthenope_solve_is_physical():
     """A full solve with parthenope rates gives physically reasonable YP and D/H."""
     from pyprimat.main import PyPR
     r = PyPR({"network": "small_parthenope",
-                   "compute_nTOp": False,
                    "verbose": False}).PyPRresults()
     # Standard BBN values: YP ≈ 0.247, D/H ≈ 2.4e-5.  Allow wide tolerance
     # since the parthenope rates are legitimately different.

@@ -3,7 +3,7 @@ import pytest
 import numpy as np
 from pyprimat.main import mc_uncertainty, MCResult, MCQuantityResult
 
-_BASE = {"compute_nTOp": False, "network": "small"}
+_BASE = {"network": "small"}
 _NUM_MC = 8
 
 

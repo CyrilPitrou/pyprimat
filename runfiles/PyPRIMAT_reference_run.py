@@ -14,9 +14,12 @@ Key choices versus the standard run:
   - n_temperature_table    = 10000     (denser background grid)
   - numerical_precision = 1e-10  (tighter ODE tolerances)
   - sampling_nTOp = 500       (denser n<->p rate tables)
-  - compute_nTOp = True  (recompute rates from scratch)
-  - compute_nTOp_thermal = False  (thermal rates already pre-computed
-                                        with sufficient precision)
+  - These settings change the n<->p weak-rate fingerprint relative to the
+    shipped rates/weak/*.txt cache (see pyprimat.weak_rates), so the rates
+    are automatically recomputed from scratch (not loaded from the cache).
+    The thermal corrections are loaded from the existing
+    rates/weak/{nTOp,pTOn}_thermal_corrections.txt regardless (their
+    fingerprint is checked leniently since recomputing them is slow).
   - vegas_n_eval  = 100000, vegas_n_itn = 50  (higher-accuracy MC for
                                                radiative corrections, if used)
 
@@ -56,8 +59,6 @@ MyOptions = {
     "numerical_precision":        1e-10,   # rtol for all solve_ivp calls
 
     # n <-> p weak rates
-    "compute_nTOp":          True,
-    "compute_nTOp_thermal":  False,   # thermal rates already at high precision
     "sampling_nTOp":              500,     # points per era for rate tables
     "sampling_nTOp_thermal":      100,     # kept as is
     "vegas_n_eval":               100000,  # MC evaluations per iteration

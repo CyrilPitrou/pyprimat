@@ -9,11 +9,14 @@ Columns: Ombh2, eta10, DeltaN, Yp(CMB), Yp^BBN, sig(Yp^BBN), D/H, sig(D/H)
 
 Strategy for efficiency
 -----------------------
-For each DeltaN value the n<->p weak-rate tables are computed once and saved to
-disk (compute_nTOp=True, save_nTOp=True).  All subsequent runs for
-that DeltaN load the saved tables, so only the nuclear-network ODE is
-re-integrated.  tau_n variation affects only the weak-rate normalisation, which
-is re-evaluated for each instance.
+For each DeltaN value the n<->p weak-rate tables are computed once (the seed run
+below uses save_nTOp=True, so the result is written to
+rates/weak/nTOp_{frwrd,bkwrd}.txt with a fingerprint header keyed on, among other
+things, DeltaNeff -- see pyprimat.weak_rates).  All subsequent runs for that same
+DeltaN have a matching fingerprint and so load the cached tables instead of
+recomputing them, meaning only the nuclear-network ODE is re-integrated.  tau_n
+variation affects only the weak-rate normalisation, which is re-evaluated for
+each instance.
 
 Checkpointing / resuming (IMPORTANT)
 ------------------------------------
@@ -105,12 +108,11 @@ ALL_P_KEYS = [k for k in DEFAULT_PARAMS if k.startswith('p_')]
 RATE_KEYS  = ALL_P_KEYS[:12]
 print(f"Rate keys ({len(RATE_KEYS)}): {RATE_KEYS}")
 
-# Options shared by every PyPR call (weak-rate tables are loaded from disk)
+# Options shared by every PyPR call (weak-rate tables are loaded from disk:
+# the per-DeltaN seed run below writes a fingerprint that these calls match)
 BASE_OPTS = {
     'verbose':      False,
     'debug':        False,
-    'compute_nTOp': False,   # load pre-tabulated weak rates
-    'save_nTOp':    False,
     'network': 'small',
     'tau_n':             DEFAULT_PARAMS['tau_n'],      # central neutron lifetime [s]
     'std_tau_n':         DEFAULT_PARAMS['std_tau_n'],  # 1σ uncertainty [s]
@@ -293,7 +295,6 @@ for i_dN, DeltaN in enumerate(DeltaN_grid):
     # ------------------------------------------------------------------
     _seed_params = {
         **BASE_OPTS,
-        'compute_nTOp': True,
         'save_nTOp':    True,
         'Omegabh2': 0.022425,
         'DeltaNeff': float(DeltaN),

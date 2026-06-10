@@ -710,7 +710,10 @@ class PyPR:
             PyPRnTOp.RecomputeWeakRates([self._Tg_vec, self._Tnue_vec], cfg,
                                         dFDneu_func=self._dFDneu_func)
         if cfg.debug:
-            print((f"[weak]  Finished recomputation of n <--> p weak rates in "
+            # Wording is generic on purpose: RecomputeWeakRates may have either
+            # recomputed the rates (~2 s) or loaded them from a fingerprinted
+            # cache file (~0 s) -- see pyprimat.weak_rates.RecomputeWeakRates.
+            print((f"[weak]  n <--> p weak rates ready in "
                    f"{time.time()-_t_weak0:.2f} s"), flush=True)
 
         # Normalisation factor

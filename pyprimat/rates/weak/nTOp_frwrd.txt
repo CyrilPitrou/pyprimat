@@ -1,3 +1,6 @@
+# T[K] Gamma_nTOp[1/s]
+# fingerprint_hash: ddbcab8bd995fc2c
+# fingerprint: {"DeltaNeff":0.0,"QED_corrections":true,"T_start_cosmo_MeV":40.0,"analytic_distortions":false,"delta_xi_nu":0.0,"format_version":1,"include_nTOp_thermal":true,"incomplete_decoupling":true,"munuOverTnu":0.0,"nTOp_Born_approximation":false,"n_temperature_table":2000,"sampling_nTOp":200,"spectral_distortions":false,"thermal_fingerprint_hash":"01a33b40029dd672","y_SZ":0.0}
 1.160451812155007198e+07 1.743024964161083545e+00
 1.215423456535459310e+07 1.743250717706956276e+00
 1.272999157072523609e+07 1.743498439771501207e+00

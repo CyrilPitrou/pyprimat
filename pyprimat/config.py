@@ -79,12 +79,37 @@ DEFAULT_PARAMS: dict = {
     "n_temperature_table":        2000,
 
     # ---- n <--> p weak rates ----------------------------------------------
-    "compute_nTOp":               True, #If False they are read from previously stored files.
-    "save_nTOp":                  False, # If True, the computed n<->p rates are saved to files for inspection and reuse.
+    # Fingerprinted self-validating cache (IDEAS.md §1.2): rates/weak/nTOp_*.txt
+    # carry a header recording the config fields that affect their content
+    # (see weak_rates._weak_rate_fingerprint).  RecomputeWeakRates loads the
+    # cache only if its fingerprint matches the current config, and otherwise
+    # recomputes from scratch (~2 s) -- so e.g. spectral_distortions=True or a
+    # non-default sampling_nTOp/munuOverTnu/incomplete_decoupling can never
+    # silently fall back to a stale table.  There is no longer a
+    # "compute_nTOp" switch: loading is always either valid or bypassed.
+    "weak_rate_cache":            True,  # If False, never load the cache (always recompute); save_nTOp still controls whether the result is written back.
+    # save_nTOp/save_nTOp_thermal default to False rather than the "always
+    # save" behaviour one might expect from a cache: with a single shared
+    # cache file per quantity, a recompute triggered by a *non-default*
+    # configuration (e.g. a test using nTOp_Born_approximation=True or a
+    # one-off sampling_nTOp=500 study) would otherwise overwrite the tracked
+    # rates/weak/*.txt with a non-default fingerprint, leaving the working
+    # tree dirty and causing the *next* default-config run to miss the cache
+    # too.  The standard-SM runfiles (PyPRIMAT_run.py) explicitly set
+    # save_nTOp=True so the shipped tables stay refreshed for that
+    # configuration; set it yourself when intentionally regenerating a cache
+    # for a specific configuration (see generate_table_CLASS_CAMB.py).
+    "save_nTOp":                  False, # If True, the computed n<->p rates are saved to rates/weak/ with a fingerprint header.
     "sampling_nTOp":              200,   # total points in the single n<->p rate grid
-    "compute_nTOp_thermal":       False, # If True the thermal corrections to the weak rates are re-computed. But this is very slow, hence it is better to compute them only once and then read stored results
     "include_nTOp_thermal":       True,  # If True the thermal corrections are used in the rate computation.
-    "save_nTOp_thermal":          False, #If True, the computed thermal n<->p rates are saved to files for inspection and reuse.
+    # Thermal corrections (rates/weak/{nTOp,pTOn}_thermal_corrections.txt) use
+    # the same fingerprint header, but a fingerprint mismatch on an *existing*
+    # file is only reported (not auto-recomputed): regenerating this term is a
+    # multi-minute Monte-Carlo integration (see weak_rates.ComputeWeakRates),
+    # too slow to trigger automatically on every flag change.  Only a missing
+    # cache file triggers a recompute.  Set save_nTOp_thermal=True (after
+    # deleting the stale files, if any) to refresh them for the current config.
+    "save_nTOp_thermal":          False, #If True, the computed thermal n<->p rates are saved to rates/weak/ with a fingerprint header.
     "sampling_nTOp_thermal":      100,
     "nTOp_Born_approximation":    False, #If True the crude Born rate is used (off by a few percents, hence should be used only for debugging or fair comparison with other codes). 
     "tau_n_flag":                 True, # Use neutron lifetime to normalize weak rates (instead of absolute normalization from GF, Vud, gA, etc.)
@@ -93,7 +118,9 @@ DEFAULT_PARAMS: dict = {
         
     # ---- finite-temperature weak-rate radiative corrections ----------------
     # Accuracy knobs for the thermal n<->p radiative correction integral, only
-    # used when compute_nTOp_thermal=True (see weak_rates.nTOp_rate_).
+    # used when the thermal-correction cache must be recomputed (missing
+    # rates/weak/{nTOp,pTOn}_thermal_corrections.txt; see weak_rates.nTOp_rate_
+    # and weak_rates.ComputeWeakRates).
     # The integral is evaluated with the `vegas` Monte-Carlo library when
     # available; otherwise it falls back to scipy.integrate.dblquad.
     "vegas_n_eval":               20000,   # vegas: evaluations per iteration

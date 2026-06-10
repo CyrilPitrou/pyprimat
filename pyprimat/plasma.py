@@ -36,6 +36,13 @@ import numpy as np
 from scipy.integrate import quad
 from scipy.interpolate import interp1d, CubicSpline
 
+from .cache_utils import (fingerprint_hash, read_cache_fingerprint_hash,
+                           write_cache_with_fingerprint)
+
+# Bump on any change to the electron-thermo cache's numerical content or
+# layout (see _build_electron_tables).
+ELECTRON_THERMO_FORMAT_VERSION = 1
+
 __all__ = [
     'initialise',
     'rho_g', 'drho_g_dT',
@@ -401,8 +408,13 @@ def _build_electron_tables(cfg):
     The computed arrays are stored in ``rates/plasma/electron_thermo_cache.txt``
     (one row per temperature, columns: T ρ_e p_e dρ_e/dT dp_e/dT) so that
     subsequent runs load from disk instead of repeating the ~8000 quad
-    calls (~0.7 s).  Set ``cfg.recompute_electron_thermo = True`` to force
-    a fresh computation and overwrite the cache.
+    calls (~0.7 s).  The file carries a fingerprint header (IDEAS.md §1.2,
+    see cache_utils) recording ``n_electron_table`` and
+    ``T_start_cosmo_MeV`` -- the two config entries that determine the grid
+    -- so a stale cache (e.g. left over from a run with a different
+    ``n_electron_table``) is detected and rebuilt automatically.  Set
+    ``cfg.recompute_electron_thermo = True`` to force a fresh computation
+    and overwrite the cache regardless of its fingerprint.
 
     If ``cfg.tabulate_electron_thermo`` is False this function does nothing
     and the exact quad path is used at every call.
@@ -421,8 +433,14 @@ def _build_electron_tables(cfg):
     Tmax = max(cfg.T_start_cosmo_MeV, 100.) * 1.5
     grid = np.logspace(np.log10(Tmin), np.log10(Tmax), cfg.n_electron_table)
 
+    fp = {"format_version":  ELECTRON_THERMO_FORMAT_VERSION,
+          "n_electron_table": cfg.n_electron_table,
+          "T_start_cosmo_MeV": cfg.T_start_cosmo_MeV}
+    fp_hash = fingerprint_hash(fp)
+
     # Try loading from disk cache first (skips ~0.7 s of quad calls).
-    if not cfg.recompute_electron_thermo and os.path.exists(cache_path):
+    if (not cfg.recompute_electron_thermo
+            and read_cache_fingerprint_hash(cache_path) == fp_hash):
         try:
             d = np.loadtxt(cache_path)
             _rho_e_tab     = interp1d(d[:, 0], d[:, 1], kind='cubic',
@@ -456,8 +474,10 @@ def _build_electron_tables(cfg):
 
     # Save to disk for future runs.
     try:
-        data = np.stack([grid, rho_e_arr, p_e_arr, drho_e_dT_arr, dp_e_dT_arr], axis=1)
-        np.savetxt(cache_path, data, header='grid rho_e p_e drho_e_dT dp_e_dT')
+        write_cache_with_fingerprint(
+            cache_path, fp,
+            [grid, rho_e_arr, p_e_arr, drho_e_dT_arr, dp_e_dT_arr],
+            col_header='grid rho_e p_e drho_e_dT dp_e_dT')
     except Exception as exc:
         import warnings
         warnings.warn(f"[plasma] Could not write electron-thermo cache: {exc}")

@@ -72,11 +72,110 @@ from scipy.special import gamma as scipy_gamma, spence
 from scipy.integrate import quad
 from scipy.interpolate import interp1d
 
+from .cache_utils import (fingerprint_hash, read_cache_fingerprint_hash,
+                           write_cache_with_fingerprint)
+
 __all__ = ['ComputeWeakRates', 'InterpolateWeakRates', 'RecomputeWeakRates', 'ComputeFn']
 
 exp_cutoff = 3e+2
 epsrel_low = 1.e-4
 quad_limit = 200
+
+# ---------------------------------------------------------------------------
+# Fingerprinted cache for the n<->p weak-rate tables (IDEAS.md §1.2)
+# ---------------------------------------------------------------------------
+# Bump this whenever a code change alters the *numerical content* of the
+# cached files for a fixed configuration (new physics term, changed formula,
+# different file layout, ...).  Bumping it invalidates every existing cache
+# file regardless of its fingerprint.
+WEAK_RATE_FORMAT_VERSION = 1
+
+# Config fields that determine the (Tg, Tnu) background history and the
+# neutrino occupation numbers entering every weak-rate-related integral.
+# Shared by the n<->p rate cache and the thermal-correction cache below.
+#
+#   incomplete_decoupling, QED_corrections  -- select the NEVO table, i.e.
+#       the Tnu(Tg) relation the rates are integrated over.
+#   munuOverTnu, spectral_distortions, analytic_distortions, delta_xi_nu,
+#       y_SZ -- shape of the neutrino phase-space distribution (and, for
+#       analytic_distortions, an extra contribution to the Friedmann
+#       equation that feeds back into Tg(t)).
+#   T_start_cosmo_MeV, n_temperature_table -- the (Tg_vec, Tnu_vec) grid
+#       passed in as Tvec.
+#   DeltaNeff -- extra radiation density alters the background Tg(t)
+#       history (PRIMAT-Main.m / Phys. Rep. background ODEs); explicitly
+#       called out in IDEAS.md §1.2 even though it is not a "neutrino
+#       distribution" parameter per se.
+_BACKGROUND_FINGERPRINT_FIELDS = [
+    "incomplete_decoupling",
+    "QED_corrections",
+    "munuOverTnu",
+    "spectral_distortions",
+    "analytic_distortions",
+    "delta_xi_nu",
+    "y_SZ",
+    "T_start_cosmo_MeV",
+    "n_temperature_table",
+    "DeltaNeff",
+]
+
+
+def _thermal_fingerprint(cfg):
+    """Fingerprint dict for the thermal radiative-correction cache files.
+
+    Identifies the configuration that produced
+    ``rates/weak/{nTOp,pTOn}_thermal_corrections.txt``: the background
+    fields above, plus the grid density ``sampling_nTOp_thermal``.  Used by
+    :func:`ComputeWeakRates` to decide whether the cached thermal
+    corrections may be reused, and folded into
+    :func:`_weak_rate_fingerprint` so that a stale thermal cache also
+    invalidates the n<->p rate cache that was built on top of it.
+
+    Args:
+        cfg: PyPRConfig instance.
+
+    Returns:
+        dict, JSON-serialisable.
+    """
+    fp = {"format_version": WEAK_RATE_FORMAT_VERSION,
+          "sampling_nTOp_thermal": cfg.sampling_nTOp_thermal}
+    for key in _BACKGROUND_FINGERPRINT_FIELDS:
+        fp[key] = getattr(cfg, key)
+    return fp
+
+
+def _weak_rate_fingerprint(cfg):
+    """Fingerprint dict for the n<->p weak-rate cache files.
+
+    Identifies the configuration that produced
+    ``rates/weak/nTOp_{frwrd,bkwrd}.txt``.  Per IDEAS.md §1.2,
+    ``tau_n_flag``/``tau_n`` are deliberately *excluded*: they only rescale
+    the interpolated rates after the fact (see
+    ``PyPR._setup_weak_rates`` / ``_NormWeakRates``), so they never change
+    the cached values themselves.
+
+    When ``cfg.include_nTOp_thermal`` is True, the hash of
+    :func:`_thermal_fingerprint` is embedded as well, so that changing any
+    field relevant to the thermal-correction tables (e.g.
+    ``sampling_nTOp_thermal``) also invalidates this cache, even though that
+    field does not appear directly in the list below.
+
+    Args:
+        cfg: PyPRConfig instance.
+
+    Returns:
+        dict, JSON-serialisable; pass to :func:`fingerprint_hash` to get the
+        comparable hash string.
+    """
+    fp = {"format_version":           WEAK_RATE_FORMAT_VERSION,
+          "sampling_nTOp":            cfg.sampling_nTOp,
+          "nTOp_Born_approximation":  cfg.nTOp_Born_approximation,
+          "include_nTOp_thermal":     cfg.include_nTOp_thermal,
+          "thermal_fingerprint_hash": (fingerprint_hash(_thermal_fingerprint(cfg))
+                                        if cfg.include_nTOp_thermal else None)}
+    for key in _BACKGROUND_FINGERPRINT_FIELDS:
+        fp[key] = getattr(cfg, key)
+    return fp
 
 
 # ---------------------------------------------------------------------------
@@ -399,8 +498,9 @@ def ComputeWeakRates(Tvec, cfg, dFDneu_func=None):
                   Skipped if cfg.nTOp_Born_approximation=True (Born-only mode).
       _L_CCRTh  — Finite-temperature radiative corrections (Brown & Sawyer 2001;
                   Phys. Rep. §III.H, Eqs. 107–113).  Only if
-                  cfg.compute_nTOp_thermal=True; results may be read from
-                  a precomputed cache in rates/weak/.
+                  cfg.include_nTOp_thermal=True; loaded from the fingerprinted
+                  cache in rates/weak/ when valid, otherwise recomputed (slow,
+                  uses vegas if available).
       _L_SD     — Spectral-distortion correction: the difference between the
                   actual neutrino distribution f_ν(E) (from NEVO) and the
                   equilibrium Fermi–Dirac, passed in via dFDneu_func.
@@ -587,8 +687,25 @@ def ComputeWeakRates(Tvec, cfg, dFDneu_func=None):
 
     # ------------------------------------------------------------------
     # Finite-temperature radiative corrections (optional, uses vegas)
+    #
+    # Loaded from the fingerprinted cache in rates/weak/ when
+    # cfg.include_nTOp_thermal=True and a cache file is present (see the
+    # module docstring and cache_utils).  A fingerprint mismatch (or a
+    # header-less legacy file) is reported but used anyway: recomputing this
+    # term is a multi-minute Monte-Carlo integration, far too slow to trigger
+    # automatically for what is itself only a ~1e-3-level refinement of
+    # L_CCR + L_FMCCR.  Only a *missing* cache file triggers a fresh
+    # computation.  Set cfg.include_nTOp_thermal=False to skip this term, or
+    # delete the cache files and re-run with save_nTOp_thermal=True to force
+    # a refresh stamped with the current configuration's fingerprint.
     # ------------------------------------------------------------------
-    if cfg.compute_nTOp_thermal:
+    _td       = my_dir + "/rates/weak/"
+    _nTh_path = _td + "nTOp_thermal_corrections.txt"
+    _pTh_path = _td + "pTOn_thermal_corrections.txt"
+    _have_thermal_cache = (cfg.include_nTOp_thermal
+                           and os.path.exists(_nTh_path) and os.path.exists(_pTh_path))
+
+    if cfg.include_nTOp_thermal and not _have_thermal_cache:
         try:
             import vegas
             _have_vegas = True
@@ -850,23 +967,34 @@ def ComputeWeakRates(Tvec, cfg, dFDneu_func=None):
         L_pTh_data = np.vectorize(lambda T: _L_CCRTh_compute(T, -1))(_T_th)
 
         if cfg.save_nTOp_thermal:
-            _td = my_dir + "/rates/weak/"
             os.makedirs(_td, exist_ok=True)
-            np.savetxt(_td + "nTOp_thermal_corrections.txt", np.c_[_T_th, L_nTh_data])
-            np.savetxt(_td + "pTOn_thermal_corrections.txt", np.c_[_T_th, L_pTh_data])
+            write_cache_with_fingerprint(_nTh_path, _thermal_fingerprint(cfg),
+                                          [_T_th, L_nTh_data], col_header="T[K] L_nTOpCCRTh")
+            write_cache_with_fingerprint(_pTh_path, _thermal_fingerprint(cfg),
+                                          [_T_th, L_pTh_data], col_header="T[K] L_pTOnCCRTh")
 
         if cfg.verbose:
             print("n <--> p thermal corrections computed")
 
         T_th, L_nTh, L_pTh = _T_th, L_nTh_data, L_pTh_data
 
-    else:
-        _td   = my_dir + "/rates/weak/"
-        T_th, L_nTh = np.loadtxt(_td + "nTOp_thermal_corrections.txt", unpack=True)
-        T_th, L_pTh = np.loadtxt(_td + "pTOn_thermal_corrections.txt",  unpack=True)
+    elif cfg.include_nTOp_thermal:
+        cached_hash  = read_cache_fingerprint_hash(_nTh_path)
+        thermal_hash = fingerprint_hash(_thermal_fingerprint(cfg))
+        if cfg.verbose and cached_hash is not None and cached_hash != thermal_hash:
+            print("[weak]     Warning: nTOp_thermal_corrections.txt fingerprint does not "
+                  "match the current configuration; using it anyway (recomputing thermal "
+                  "corrections is slow). Delete the cache files and re-run with "
+                  "save_nTOp_thermal=True to refresh them.")
+        T_th, L_nTh = np.loadtxt(_nTh_path, unpack=True)
+        T_th, L_pTh = np.loadtxt(_pTh_path,  unpack=True)
 
-    L_nTOpCCRTh = interp1d(T_th, L_nTh, bounds_error=False, fill_value="extrapolate", kind='quadratic')
-    L_pTOnCCRTh = interp1d(T_th, L_pTh, bounds_error=False, fill_value="extrapolate", kind='quadratic')
+    if cfg.include_nTOp_thermal:
+        L_nTOpCCRTh = interp1d(T_th, L_nTh, bounds_error=False, fill_value="extrapolate", kind='quadratic')
+        L_pTOnCCRTh = interp1d(T_th, L_pTh, bounds_error=False, fill_value="extrapolate", kind='quadratic')
+    else:
+        L_nTOpCCRTh = lambda T: 0.0
+        L_pTOnCCRTh = lambda T: 0.0
 
     # ------------------------------------------------------------------
     # Assembled rates  (sgnq = +1: n→p,  sgnq = -1: p→n)
@@ -901,12 +1029,8 @@ def ComputeWeakRates(Tvec, cfg, dFDneu_func=None):
     frwrd = nTOp_frwrd_vec(T_all)
     bkwrd = nTOp_bkwrd_vec(T_all)
 
-    if cfg.save_nTOp:
-        _td = my_dir + "/rates/weak/"
-        os.makedirs(_td, exist_ok=True)
-        np.savetxt(_td + "nTOp_frwrd.txt", np.c_[T_all, frwrd])
-        np.savetxt(_td + "nTOp_bkwrd.txt", np.c_[T_all, bkwrd])
-
+    # Saving (if requested) is handled by RecomputeWeakRates, which already
+    # has the fingerprint dict to stamp into the cache header.
     return [T_all, frwrd, bkwrd]
 
 
@@ -915,12 +1039,14 @@ def ComputeWeakRates(Tvec, cfg, dFDneu_func=None):
 # ---------------------------------------------------------------------------
 
 def InterpolateWeakRates(cfg):
-    """Load pre-tabulated n↔p weak rates from disk and return interpolants.
+    """Load n↔p weak rates from the rates/weak/ cache and return interpolants.
 
-    Reads the two text files previously written by ComputeWeakRates (when
-    cfg.save_nTOp=True) from rates/weak/nTOp_frwrd.txt and
-    rates/weak/nTOp_bkwrd.txt.  Each file has two columns: T (Kelvin), rate (s⁻¹).
-    Returns quadratic spline interpolants for Γ_{n→p}(T) and Γ_{p→n}(T).
+    Reads rates/weak/nTOp_frwrd.txt and rates/weak/nTOp_bkwrd.txt (two
+    columns each: T in Kelvin, rate in s⁻¹) regardless of whether their
+    fingerprint header matches `cfg` -- callers that care about fingerprint
+    validity (RecomputeWeakRates) check that *before* calling this function.
+    Used directly to inspect "whatever is currently on disk", e.g. in
+    tests/test_weak_rates.py.
 
     Args:
         cfg : PyPRConfig instance (provides data_dir).
@@ -940,30 +1066,70 @@ def InterpolateWeakRates(cfg):
 
 
 def RecomputeWeakRates(Tvec, cfg, dFDneu_func=None):
-    """
-    Recompute weak rates from scratch or load pre-tabulated values,
-    depending on ``cfg.compute_nTOp``.
+    """Load the n<->p weak-rate tables from the fingerprinted cache, or recompute.
+
+    Implements the loader logic of IDEAS.md §1.2:
+
+    1. Compute the fingerprint hash of the current configuration
+       (:func:`_weak_rate_fingerprint`).
+    2. If `cfg.weak_rate_cache` is True and both
+       rates/weak/nTOp_{frwrd,bkwrd}.txt exist with a matching
+       `fingerprint_hash` header, load and interpolate them directly
+       (cheap: no integration at all).
+    3. Otherwise call :func:`ComputeWeakRates` to recompute from scratch
+       (~2 s).  If `cfg.save_nTOp` is True, overwrite the cache files with
+       the new data and the current fingerprint header.
+    4. **Forced recompute**: if `cfg.spectral_distortions and
+       cfg.analytic_distortions`, the cache is bypassed entirely (never
+       loaded, never written).  Analytic distortions are continuous knobs
+       (`delta_xi_nu`, `y_SZ`) typically scanned point-by-point in an MCMC;
+       caching them would write one file per parameter point and pollute
+       rates/weak/.  The same rule applies to any future user-supplied
+       `dFDneu_func` that cannot be fingerprinted.
+
+    `cfg.tau_n_flag`/`cfg.tau_n` do not enter the fingerprint: they only
+    rescale the interpolated rates afterwards (see
+    `PyPR._setup_weak_rates` / `_NormWeakRates`), so a cache built with one
+    `tau_n` remains valid for any other.
 
     Parameters
     ----------
     Tvec        : [Tg_vec, Tnu_vec]  (arrays in MeV)
     cfg         : PyPRConfig
     dFDneu_func : callable or None — spectral-distortion correction function;
-                  forwarded to ComputeWeakRates.  Has no effect when
-                  compute_nTOp=False (pre-tabulated rates are used as-is).
+                  forwarded to ComputeWeakRates on a cache miss.
 
     Returns
     -------
     [frwrd, bkwrd] : two interp1d objects (n->p and p->n) covering the whole
     BBN temperature range.
     """
-    if cfg.compute_nTOp:
-        T_all, frwrd, bkwrd = ComputeWeakRates(Tvec, cfg,
-                                               dFDneu_func=dFDneu_func)
+    forced_recompute = cfg.spectral_distortions and cfg.analytic_distortions
 
-        def _interp(v):
-            return interp1d(T_all, v, bounds_error=False,
-                            fill_value="extrapolate", kind='quadratic')
+    nd          = os.path.join(cfg.data_dir, "rates", "weak", "")
+    frwrd_path  = nd + "nTOp_frwrd.txt"
+    bkwrd_path  = nd + "nTOp_bkwrd.txt"
+    fp          = _weak_rate_fingerprint(cfg)
+    fp_hash     = fingerprint_hash(fp)
 
-        return [_interp(frwrd), _interp(bkwrd)]
-    return InterpolateWeakRates(cfg)
+    if not forced_recompute and cfg.weak_rate_cache:
+        cached_frwrd_hash = read_cache_fingerprint_hash(frwrd_path)
+        cached_bkwrd_hash = read_cache_fingerprint_hash(bkwrd_path)
+        if cached_frwrd_hash == fp_hash and cached_bkwrd_hash == fp_hash:
+            return InterpolateWeakRates(cfg)
+        if cfg.verbose:
+            reason = "no cache" if cached_frwrd_hash is None else "fingerprint mismatch"
+            print(f"[weak]     Recomputing n<->p weak rates ({reason}).")
+
+    T_all, frwrd, bkwrd = ComputeWeakRates(Tvec, cfg, dFDneu_func=dFDneu_func)
+
+    if not forced_recompute and cfg.save_nTOp:
+        os.makedirs(nd, exist_ok=True)
+        write_cache_with_fingerprint(frwrd_path, fp, [T_all, frwrd], col_header="T[K] Gamma_nTOp[1/s]")
+        write_cache_with_fingerprint(bkwrd_path, fp, [T_all, bkwrd], col_header="T[K] Gamma_pTOn[1/s]")
+
+    def _interp(v):
+        return interp1d(T_all, v, bounds_error=False,
+                        fill_value="extrapolate", kind='quadratic')
+
+    return [_interp(frwrd), _interp(bkwrd)]

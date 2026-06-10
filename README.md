@@ -58,31 +58,47 @@ python runfiles/PyPRIMAT_reference_run.py # High-precision reference run (~2 min
 | `numerical_precision` | 1e-7 | ODE solver rtol |
 | `n_temperature_table` | 2000 | Background grid density |
 | `sampling_nTOp` | 200 | n↔p rate grid size |
-| `compute_nTOp_flag` | True | Recompute n↔p weak rates from scratch (vs loading pre-tabulated) |
-| `save_nTOp_flag` | False | Save recomputed n↔p rates to `rates/weak/` for future use |
-| `compute_nTOp_thermal_flag` | False | Also recompute thermal radiative corrections (very slow, requires `vegas`) |
-| `save_nTOp_thermal_flag` | False | Save recomputed thermal corrections to disk |
+| `weak_rate_cache` | True | If False, never load n↔p rates from `rates/weak/` (always recompute) |
+| `save_nTOp` | False | Save recomputed n↔p rates to `rates/weak/` with a fingerprint header |
+| `include_nTOp_thermal` | True | Include thermal radiative corrections to the n↔p rates |
+| `save_nTOp_thermal` | False | Save recomputed thermal corrections to `rates/weak/` with a fingerprint header |
 | `output_time_evolution` | False | Write time-evolution table to `output_file` |
 | `output_file` | `results/output_tables.tsv` | Output file path (relative paths resolve against the current working directory) |
 | `output_n_points` | 500 | Number of interpolated rows in output file |
 
 ### n↔p weak rate workflow
 
-The n↔p weak rates are the most expensive part of initialisation (~1.8 s). Two flags control whether they are recomputed or loaded from the pre-tabulated files in `rates/weak/`:
+The n↔p weak rates are the most expensive part of initialisation (~1.8 s). They are
+cached in `rates/weak/nTOp_frwrd.txt` and `rates/weak/nTOp_bkwrd.txt`, each tagged
+with a *fingerprint* header: a hash of every config field that affects its numeric
+content (background thermodynamics, `sampling_nTOp`, `nTOp_Born_approximation`,
+`include_nTOp_thermal`, etc. — see `pyprimat.weak_rates`). At every run:
 
-- **`compute_nTOp_flag=True`** (default): rates are computed from scratch by numerical integration. Use this when you change the neutrino temperature history or want higher precision (increase `sampling_nTOp`). Set `save_nTOp_flag=True` at the same time to write the result to `rates/weak/` so future runs can reuse it.
-- **`compute_nTOp_flag=False`**: rates are read directly from `rates/weak/`. Initialisation becomes instantaneous. Safe to use as long as the cosmological background has not changed.
+- If `weak_rate_cache=True` (default) and the cache file's fingerprint matches the
+  current configuration, the rates are loaded directly — initialisation is
+  effectively instantaneous.
+- Otherwise (fingerprint mismatch, missing file, or `weak_rate_cache=False`), the
+  rates are recomputed from scratch by numerical integration (~1.8 s).
+- Set **`save_nTOp=True`** to write the (re)computed rates back to `rates/weak/`
+  with a fresh fingerprint header, so future runs with the same configuration load
+  the cache. `save_nTOp` defaults to `False` so that ad-hoc runs with non-default
+  settings do not overwrite the shared cache used by the standard configuration.
 
-The thermal radiative corrections follow the same pattern via `compute_nTOp_thermal_flag` / `save_nTOp_thermal_flag`. They are much slower (require `vegas` Monte Carlo integration) and are disabled by default; the pre-computed corrections shipped in `rates/weak/` are already at high precision.
+The thermal radiative corrections follow an analogous pattern via
+`include_nTOp_thermal` and `save_nTOp_thermal`, but with a more lenient staleness
+policy: recomputing them requires a `vegas` Monte Carlo integration that can take
+minutes to hours, so an existing `rates/weak/{nTOp,pTOn}_thermal_corrections.txt`
+is always loaded as-is (a fingerprint mismatch only prints a warning in verbose
+mode); only a *missing* file triggers recomputation.
 
 **Typical workflow for a high-precision study:**
 ```python
-# Step 1 – compute and save high-precision rates once
-PyPR({"compute_nTOp_flag": True, "save_nTOp_flag": True,
-           "sampling_nTOp": 400}).solve()
+# Step 1 – compute and save high-precision rates once (non-default sampling_nTOp
+# gives a fingerprint that the shipped cache won't match, so this recomputes)
+PyPR({"save_nTOp": True, "sampling_nTOp": 400}).solve()
 
-# Step 2 – all subsequent runs reuse the saved tables
-PyPR({"compute_nTOp_flag": False, ...}).solve()
+# Step 2 – all subsequent runs with the same sampling_nTOp reuse the saved tables
+PyPR({"sampling_nTOp": 400}).solve()
 ```
 
 Each nuclear reaction rate has a `p_<name>` parameter (e.g. `p_npTOdg`) for uncertainty propagation: setting it to a non-zero float samples the rate at `median × exp(p × σ)`.

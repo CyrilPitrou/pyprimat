@@ -28,10 +28,6 @@ omegabh2 = 0.022425
 
 _base_opts = {
     "verbose":              True,
-    "compute_nTOp":         True,
-    "compute_nTOp_thermal": False,
-    "save_nTOp":            False,
-    "save_nTOp_thermal":    False,
     "Omegabh2":                  omegabh2,
     "DeltaNeff":                 Nrelat,
     "numerical_precision":       1e-7,

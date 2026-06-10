@@ -22,7 +22,7 @@ from pyprimat.config import PyPRConfig
 def test_mc_njobs_independence():
     """Same seeds must give identical samples for serial vs parallel runs."""
     from pyprimat.main import mc_uncertainty
-    base = {"compute_nTOp": False, "network": "small"}
+    base = {"network": "small"}
     mc1 = mc_uncertainty(6, ["YPBBN", "DoH"], params=base, n_jobs=1, seed=0)
     mcP = mc_uncertainty(6, ["YPBBN", "DoH"], params=base, n_jobs=3, seed=0)
     np.testing.assert_array_equal(mc1["YPBBN"].values, mcP["YPBBN"].values)
