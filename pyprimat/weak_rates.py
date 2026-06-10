@@ -67,6 +67,8 @@ Pitrou, Coc, Uzan & Vangioni, Phys. Rep. 2018 (arXiv:1806.11095)
 """
 
 import os
+from dataclasses import dataclass
+
 import numpy as np
 from scipy.special import gamma as scipy_gamma, spence
 from scipy.integrate import quad
@@ -480,232 +482,249 @@ def ComputeFn(cfg):
 # Main rate computation
 # ---------------------------------------------------------------------------
 
-def ComputeWeakRates(Tvec, cfg, dFDneu_func=None):
-    """Compute n↔p weak rate tables over the BBN temperature range.
+@dataclass
+class _RateContext:
+    """Shared per-call quantities for the n<->p weak-rate correction terms.
 
-    Evaluates the forward rate Γ_{n→p}(T) and backward rate Γ_{p→n}(T) on the
-    photon-temperature grid Tg_vec, including up to five additive corrections
-    (depending on cfg flags):
+    Built once per :func:`ComputeWeakRates` call and threaded through every
+    correction-term function below (`_L_BORN`, `_L_CCR`, `_L_FMCCR`, `_L_SD`,
+    `_L_CCRTh_interpolants`), so that each term is a short, independently
+    named module-level function -- mirroring Table 1 of the Phys. Rep.
+    (IDEAS.md §4.3/§6.3) -- instead of a closure nested 500 lines deep inside
+    one function.
 
-    Γ_{n→p} = K × [_L_BORN + _L_CCR + _L_FMCCR] + _L_CCRTh + _L_SD
-
-    where:
-      _L_BORN   — Born rate ∫ p² [χ₊(E)+χ₊(−E)] dp  (Phys. Rep. Eqs. 77–78).
-      _L_CCR    — Born integrand × FermiCoulomb × RadCorrResum (T=0 Coulomb
-                  + resummed radiative corrections; Phys. Rep. Eq. 101).
-      _L_FMCCR  — Finite-nucleon-mass correction × Coulomb × radiative
-                  (Fokker-Planck expansion; Phys. Rep. §III.G).
-                  Skipped if cfg.nTOp_Born_approximation=True (Born-only mode).
-      _L_CCRTh  — Finite-temperature radiative corrections (Brown & Sawyer 2001;
-                  Phys. Rep. §III.H, Eqs. 107–113).  Only if
-                  cfg.include_nTOp_thermal=True; loaded from the fingerprinted
-                  cache in rates/weak/ when valid, otherwise recomputed (slow,
-                  uses vegas if available).
-      _L_SD     — Spectral-distortion correction: the difference between the
-                  actual neutrino distribution f_ν(E) (from NEVO) and the
-                  equilibrium Fermi–Dirac, passed in via dFDneu_func.
-
-    The overall rate constant K is normalised via the neutron lifetime:
-        K = 1 / (τ_n × Fn)     (Phys. Rep. Eq. 89–91)
-    where Fn = ComputeFn(cfg) is the free-decay phase-space integral.
-
-    Parameters
+    Attributes
     ----------
-    Tvec       : list [Tg_vec, Tnu_vec], both float arrays in Kelvin (as output
-                 by PyPR._setup_background_and_cosmo).
-    cfg        : PyPRConfig instance.
-    dFDneu_func: callable or None.
-        If provided, adds the spectral-distortion correction _L_SD.  Signature:
-            dFDneu_func(en, x, znu, sgnq) → float
-        where en = E/mₑ, x = mₑ/(kB Tγ), znu = mₑ/(kB Tν), sgnq = ±1.
-        Must encode the sign convention for blocking factors (en < 0), as
-        described in PyPR._setup_background_and_cosmo.
-
-    Returns
-    -------
-    [T_all, frwrd, bkwrd] : list
-        T_all  — 1-D float array, photon temperatures in Kelvin.
-        frwrd  — 1-D float array, Γ_{n→p}(T) in s⁻¹.
-        bkwrd  — 1-D float array, Γ_{p→n}(T) in s⁻¹.
-
-    Example:
-        >>> rates = ComputeWeakRates([Tg_vec, Tnu_vec], cfg)
-        >>> T_K, lam_nTOp, lam_pTOn = rates
+    cfg : PyPRConfig
+        Run configuration (kB, alphaem, gA, data_dir, and all weak-rate flags).
+    me, mn, mp, Q : float
+        Electron/neutron/proton masses and Q = mn - mp, in MeV.
+    xi_nu : float
+        Reduced neutrino chemical potential mu_nu/T_nu (cfg.munuOverTnu).
+    T_nuOverT : callable
+        Interpolant T_nu(T_gamma)/T_gamma as a function of T_gamma [K].
+    gA, deltakappa : float
+        Nucleon axial coupling g_A and kappa_p - kappa_n, used by the
+        finite-nucleon-mass Fokker-Planck expansion (_L_FMCCR).
+    my_dir : str
+        cfg.data_dir, used to locate the thermal-correction cache files.
     """
-    me = cfg.me * cfg.MeV
-    mn = cfg.mn * cfg.MeV
-    mp = cfg.mp * cfg.MeV
-    Q  = mn - mp
+    cfg: object
+    me: float
+    mn: float
+    mp: float
+    Q: float
+    xi_nu: float
+    T_nuOverT: object
+    gA: float
+    deltakappa: float
+    my_dir: str
 
-    xi_nu  = cfg.munuOverTnu
-    my_dir = cfg.data_dir
 
-    Tg_vec, Tnu_vec = Tvec
-    T_nuOverT = interp1d(Tg_vec * cfg.MeV_to_Kelvin, Tnu_vec / Tg_vec,
-                         bounds_error=False, fill_value="extrapolate", kind='linear')
+# ---------------------------------------------------------------------------
+# Shared chi functions (Phys. Rep. Eq. 81 and its corrections)
+# ---------------------------------------------------------------------------
 
-    _setup_fd_impls(cfg.numba_installed)
+def _chi_func(ctx, E, x, znu, sgnq):
+    """chi_+/-(E): Born-rate chi function (Phys. Rep. Eq. 81).
 
-    # ------------------------------------------------------------------
-    # Born rate integrands
-    # ------------------------------------------------------------------
-    def ChiFunc(E, p, x, znu, sgnq):
-        return FD_nu3(E - sgnq * (Q / me), sgnq * xi_nu, znu) * FD2(-E, x) * (E - sgnq * (Q / me))**2
+    chi_+/-(E) = (E_nu)^2 g_nu(E_nu, xi_nu) g(-E, x), with E_nu = E - sgnq*Q/me.
+    Used by _L_BORN and _L_CCR (the latter multiplies it by the Coulomb and
+    radiative correction factors).
+    """
+    Q, me, xi_nu = ctx.Q, ctx.me, ctx.xi_nu
+    return FD_nu3(E - sgnq * (Q / me), sgnq * xi_nu, znu) * FD2(-E, x) * (E - sgnq * (Q / me))**2
 
-    def FermiStat(sgnq, sgnE, b):
-        return FermiCoulomb(b, cfg) if (sgnq * sgnE) > 0 else 1.
 
-    def IPENdp(p, x, znu, sgnq):
+def _fermi_stat(ctx, sgnq, sgnE, b):
+    """Coulomb-factor switch used by _L_CCR, _L_FMCCR and _L_CCRTh.
+
+    Returns FermiCoulomb(b) when the produced charged lepton is the electron
+    (sgnq*sgnE > 0, i.e. it feels the daughter proton's Coulomb field), and 1
+    otherwise (positron emission / no Coulomb correction).
+    """
+    return FermiCoulomb(b, ctx.cfg) if (sgnq * sgnE) > 0 else 1.
+
+
+# ---------------------------------------------------------------------------
+# _L_BORN -- Born approximation (Phys. Rep. Eqs. 77-78)
+# ---------------------------------------------------------------------------
+
+def _L_BORN(ctx, T, sgnq):
+    """Born-approximation rate: integral p^2 [chi_+(E) + chi_+(-E)] dp (Phys. Rep. Eqs. 77-78).
+
+    Used directly as the rate when cfg.nTOp_Born_approximation=True; otherwise
+    superseded by _L_CCR + _L_FMCCR (+ _L_CCRTh).
+    """
+    cfg, me = ctx.cfg, ctx.me
+    x   = me / (cfg.kB * T)
+    xnu = me / (cfg.kB * T * ctx.T_nuOverT(T))
+
+    def integrand(p):
         E = np.sqrt(p**2 + 1.)
-        return p**2 * (ChiFunc(E, p, x, znu, sgnq) + ChiFunc(-E, p, x, znu, sgnq))
+        return p**2 * (_chi_func(ctx, E, x, xnu, sgnq) + _chi_func(ctx, -E, x, xnu, sgnq))
 
-    def _L_BORN_int(p, T, sgnq):
-        x   = me / (cfg.kB * T)
-        xnu = me / (cfg.kB * T * T_nuOverT(T))
-        return IPENdp(p, x, xnu, sgnq)
+    return quad(integrand, 0., max(7., 30. / x), epsrel=epsrel_low, limit=quad_limit)[0]
 
-    def _L_BORN(T, sgnq):
-        x = me / (cfg.kB * T)
-        return quad(_L_BORN_int, 0., max(7., 30. / x), args=(T, sgnq), epsrel=epsrel_low, limit=quad_limit)[0]
 
-    # ------------------------------------------------------------------
-    # Finite-mass corrections
-    # ------------------------------------------------------------------
-    gA         = cfg.gA
-    deltakappa = cfg.deltakappa
+# ---------------------------------------------------------------------------
+# _L_CCR -- T=0 Coulomb + resummed radiative corrections (Phys. Rep. Eq. 101)
+# ---------------------------------------------------------------------------
 
-    def ChiFunc_FM(en, pe, x, znu, sgnq):
-        M_sgnq = (mp + mn - sgnq * Q) / (2 * me)
-        f_1 = ((1. + sgnq * gA)**2. + 2. * deltakappa * sgnq * gA) / (1. + 3. * gA**2)
-        f_2 = ((1. - sgnq * gA)**2. - 2. * deltakappa * sgnq * gA) / (1. + 3. * gA**2)
-        f_3 = (gA**2 - 1.) / (1. + 3. * gA**2)
-        enu    = en - sgnq * Q / me
-        FD2_en = FD2(-en, x)
-        return (f_1 * FD_nu_e2p0(enu, 0, znu) * FD2_en * (pe**2 / (M_sgnq * en))
-                + f_2 * FD_nu_e3p0(enu, 0, znu) * FD2_en * (-1. / M_sgnq)
-                + (f_1 + f_2 + f_3) / (2. * x * M_sgnq)
-                  * (FD_nu_e4p2(enu, 0, znu) * FD2_en + FD_nu_e2p2(enu, 0, znu) * FD2_en * pe**2)
-                + (f_1 + f_2 + f_3) / (2. * M_sgnq)
-                  * (FD_nu_e4p1(enu, 0, znu) * FD2_en + FD_nu_e2p1(enu, 0, znu) * FD2_en * pe**2)
-                - (f_1 + f_2) / (x * M_sgnq)
-                  * (FD_nu_e3p1(enu, 0, znu) * FD2_en + FD_nu_e2p1(enu, 0, znu) * FD2_en * pe**2 / (-en))
-                - f_3 * 3. / (x * M_sgnq) * FD_nu_e2p0(enu, 0, znu) * FD2_en
-                + f_3 / (3 * M_sgnq) * FD_nu_e3p1(enu, 0, znu) * FD2_en * pe**2 / en
-                + f_3 * 2. / (2. * x * 3. * M_sgnq) * FD_nu_e3p2(enu, 0, znu) * FD2_en * pe**2 / en
-                - (f_1 + f_2 + f_3) * 3. / (2. * x) * (1. - (mn / mp)**sgnq)
-                  * (FD_nu_e2p1(enu, 0, znu) * FD2_en))
+def _L_CCR(ctx, T, sgnq):
+    """Born integrand x FermiCoulomb x RadCorrResum (Phys. Rep. Eq. 101).
 
-    def IPENdpFMCCR(p, x, znu, sgnq):
-        eOFpe = np.sqrt(p**2 + 1.)
-        b     = p / eOFpe
-        return p**2 * (ChiFunc_FM(eOFpe,  p, x, znu, sgnq)
-                       * RadCorrResum(b, np.abs(sgnq * Q / me - eOFpe), eOFpe, cfg)
-                       * FermiStat(sgnq,  1, b)
-                       + ChiFunc_FM(-eOFpe, p, x, znu, sgnq)
-                       * RadCorrResum(b, np.abs(sgnq * Q / me + eOFpe), eOFpe, cfg)
-                       * FermiStat(sgnq, -1, b))
+    T=0 Coulomb correction (FermiCoulomb) and resummed QED + short-distance
+    radiative corrections (RadCorrResum, Czarnecki et al. 2004) applied to
+    the Born chi function.
+    """
+    cfg, me, Q = ctx.cfg, ctx.me, ctx.Q
+    x   = me / (cfg.kB * T)
+    xnu = me / (cfg.kB * T * ctx.T_nuOverT(T))
 
-    def _L_FMCCR_int(p, T, sgnq):
-        x   = me / (cfg.kB * T)
-        xnu = me / (cfg.kB * T * T_nuOverT(T))
-        return IPENdpFMCCR(p, x, xnu, sgnq)
-
-    def _L_FMCCR(T, sgnq):
-        x = me / (cfg.kB * T)
-        return quad(_L_FMCCR_int, 0., max(7., 30. / x), args=(T, sgnq), epsrel=epsrel_low, limit=quad_limit)[0]
-
-    # ------------------------------------------------------------------
-    # T=0 radiative corrections
-    # ------------------------------------------------------------------
-    def IPENdpCCR(p, x, znu, sgnq):
+    def integrand(p):
         E = np.sqrt(p**2 + 1.)
         b = p / E
-        return p**2 * (ChiFunc(E,  p, x, znu, sgnq)
+        return p**2 * (_chi_func(ctx, E, x, xnu, sgnq)
                        * RadCorrResum(b, np.abs(sgnq * Q / me - E), E, cfg)
-                       * FermiStat(sgnq,  1, b)
-                       + ChiFunc(-E, p, x, znu, sgnq)
+                       * _fermi_stat(ctx, sgnq, 1, b)
+                       + _chi_func(ctx, -E, x, xnu, sgnq)
                        * RadCorrResum(b, np.abs(sgnq * Q / me + E), E, cfg)
-                       * FermiStat(sgnq, -1, b))
+                       * _fermi_stat(ctx, sgnq, -1, b))
 
-    def _L_CCR_int(p, T, sgnq):
-        x   = me / (cfg.kB * T)
-        xnu = me / (cfg.kB * T * T_nuOverT(T))
-        return IPENdpCCR(p, x, xnu, sgnq)
+    return quad(integrand, 0., max(7., 30. / x), epsrel=epsrel_low, limit=quad_limit)[0]
 
-    def _L_CCR(T, sgnq):
-        x = me / (cfg.kB * T)
-        return quad(_L_CCR_int, 0., max(7., 30. / x), args=(T, sgnq), epsrel=epsrel_low, limit=quad_limit)[0]
 
-    # ------------------------------------------------------------------
-    # Spectral-distortion correction to the Born rate (optional)
-    # Ref: PRIMAT-Main.m, δχ / IPENdpSD / ΛnTOpSD.
-    #
-    # The integrand is built from dFDneu_func (passed in from main.py), which
-    # returns the deviation δf of the actual neutrino distribution from the
-    # Fermi-Dirac at temperature Tν.  The correction to χ is:
-    #
-    #   δχ(en, pe, x, znu, sgnq) =
-    #       dFDneu(en − sgnq Q/me, x, znu, sgnq) × FD(-en, x) × (en − sgnq Q/me)²
-    #
-    # which has the same pe-integrand structure as the Born IPENdp:
-    #   IPENdpSD = pe² × [δχ(en_pe, ...) + δχ(−en_pe, ...)]
-    #
-    # This is added on top of the CCR (or Born) contribution, exactly as the
-    # finite-nucleon-mass term is added.
-    # ------------------------------------------------------------------
-    if dFDneu_func is not None:
-        def DeltaChiFunc(en, pe, x, znu, sgnq):
-            """Spectral-distortion correction to χ.
+# ---------------------------------------------------------------------------
+# _L_FMCCR -- finite-nucleon-mass correction (Phys. Rep. §III.G)
+# ---------------------------------------------------------------------------
 
-            en  : E/me (electron energy in units of me)
-            pe  : p/me (electron momentum)
-            x   : me/(kB Tγ)
-            znu : me/(kB Tν)
-            sgnq: +1 (n→p) or −1 (p→n)
-            """
-            # Neutrino energy shifted by the weak endpoint sgnq·Q/me
-            en_nu = en - sgnq * (Q / me)
-            return dFDneu_func(en_nu, x, znu, sgnq) * FD2(-en, x) * en_nu**2
+def _chi_func_fm(ctx, en, pe, x, znu, sgnq):
+    """chi_FM: finite-nucleon-mass correction to chi_+/- (Phys. Rep. §III.G,
+    Fokker-Planck expansion to first order in T/m_N).
 
-        def IPENdpSD(p, x, znu, sgnq):
-            E = np.sqrt(p**2 + 1.)
-            return p**2 * (DeltaChiFunc( E, p, x, znu, sgnq)
-                         + DeltaChiFunc(-E, p, x, znu, sgnq))
+    f_1, f_2, f_3 are the Fokker-Planck expansion coefficients built from g_A
+    and delta_kappa = kappa_p - kappa_n; M_sgnq is the average nucleon mass
+    shifted by +/-Q, in units of m_e.
+    """
+    me, mn, mp, Q = ctx.me, ctx.mn, ctx.mp, ctx.Q
+    gA, deltakappa = ctx.gA, ctx.deltakappa
+    M_sgnq = (mp + mn - sgnq * Q) / (2 * me)
+    f_1 = ((1. + sgnq * gA)**2. + 2. * deltakappa * sgnq * gA) / (1. + 3. * gA**2)
+    f_2 = ((1. - sgnq * gA)**2. - 2. * deltakappa * sgnq * gA) / (1. + 3. * gA**2)
+    f_3 = (gA**2 - 1.) / (1. + 3. * gA**2)
+    enu    = en - sgnq * Q / me
+    FD2_en = FD2(-en, x)
+    return (f_1 * FD_nu_e2p0(enu, 0, znu) * FD2_en * (pe**2 / (M_sgnq * en))
+            + f_2 * FD_nu_e3p0(enu, 0, znu) * FD2_en * (-1. / M_sgnq)
+            + (f_1 + f_2 + f_3) / (2. * x * M_sgnq)
+              * (FD_nu_e4p2(enu, 0, znu) * FD2_en + FD_nu_e2p2(enu, 0, znu) * FD2_en * pe**2)
+            + (f_1 + f_2 + f_3) / (2. * M_sgnq)
+              * (FD_nu_e4p1(enu, 0, znu) * FD2_en + FD_nu_e2p1(enu, 0, znu) * FD2_en * pe**2)
+            - (f_1 + f_2) / (x * M_sgnq)
+              * (FD_nu_e3p1(enu, 0, znu) * FD2_en + FD_nu_e2p1(enu, 0, znu) * FD2_en * pe**2 / (-en))
+            - f_3 * 3. / (x * M_sgnq) * FD_nu_e2p0(enu, 0, znu) * FD2_en
+            + f_3 / (3 * M_sgnq) * FD_nu_e3p1(enu, 0, znu) * FD2_en * pe**2 / en
+            + f_3 * 2. / (2. * x * 3. * M_sgnq) * FD_nu_e3p2(enu, 0, znu) * FD2_en * pe**2 / en
+            - (f_1 + f_2 + f_3) * 3. / (2. * x) * (1. - (mn / mp)**sgnq)
+              * (FD_nu_e2p1(enu, 0, znu) * FD2_en))
 
-        def _L_SD_int(p, T, sgnq):
-            x   = me / (cfg.kB * T)
-            xnu = me / (cfg.kB * T * T_nuOverT(T))
-            return IPENdpSD(p, x, xnu, sgnq)
 
-        def _L_SD(T, sgnq):
-            """Born-level spectral-distortion contribution to the n<->p rate."""
-            x = me / (cfg.kB * T)
-            return quad(_L_SD_int, 0., max(7., 30. / x),
-                        args=(T, sgnq), epsrel=epsrel_low, limit=quad_limit)[0]
-    else:
-        _L_SD = None
+def _L_FMCCR(ctx, T, sgnq):
+    """Finite-nucleon-mass correction x Coulomb x radiative (Phys. Rep. §III.G).
 
-    # ------------------------------------------------------------------
-    # Finite-temperature radiative corrections (optional, uses vegas)
-    #
-    # Loaded from the fingerprinted cache in rates/weak/ when
-    # cfg.include_nTOp_thermal=True and a cache file is present (see the
-    # module docstring and cache_utils).  A fingerprint mismatch (or a
-    # header-less legacy file) is reported but used anyway: recomputing this
-    # term is a multi-minute Monte-Carlo integration, far too slow to trigger
-    # automatically for what is itself only a ~1e-3-level refinement of
-    # L_CCR + L_FMCCR.  Only a *missing* cache file triggers a fresh
-    # computation.  Set cfg.include_nTOp_thermal=False to skip this term, or
-    # delete the cache files and re-run with save_nTOp_thermal=True to force
-    # a refresh stamped with the current configuration's fingerprint.
-    # ------------------------------------------------------------------
+    Skipped (not added) when cfg.nTOp_Born_approximation=True (Born-only mode).
+    """
+    cfg, me, Q = ctx.cfg, ctx.me, ctx.Q
+    x   = me / (cfg.kB * T)
+    xnu = me / (cfg.kB * T * ctx.T_nuOverT(T))
+
+    def integrand(p):
+        eOFpe = np.sqrt(p**2 + 1.)
+        b     = p / eOFpe
+        return p**2 * (_chi_func_fm(ctx, eOFpe, p, x, xnu, sgnq)
+                       * RadCorrResum(b, np.abs(sgnq * Q / me - eOFpe), eOFpe, cfg)
+                       * _fermi_stat(ctx, sgnq, 1, b)
+                       + _chi_func_fm(ctx, -eOFpe, p, x, xnu, sgnq)
+                       * RadCorrResum(b, np.abs(sgnq * Q / me + eOFpe), eOFpe, cfg)
+                       * _fermi_stat(ctx, sgnq, -1, b))
+
+    return quad(integrand, 0., max(7., 30. / x), epsrel=epsrel_low, limit=quad_limit)[0]
+
+
+# ---------------------------------------------------------------------------
+# _L_SD -- spectral-distortion correction (optional)
+# ---------------------------------------------------------------------------
+
+def _delta_chi_func(ctx, en, x, znu, sgnq, dFDneu_func):
+    """delta_chi: spectral-distortion correction to chi_+/- (PRIMAT-Main.m).
+
+    delta_chi(en) = dFDneu(en - sgnq*Q/me, x, znu, sgnq) x g(-en, x) x (en - sgnq*Q/me)^2,
+    same structure as _chi_func but with the deviation dFDneu of the actual
+    neutrino distribution from Fermi-Dirac in place of g_nu.
+    """
+    en_nu = en - sgnq * (ctx.Q / ctx.me)
+    return dFDneu_func(en_nu, x, znu, sgnq) * FD2(-en, x) * en_nu**2
+
+
+def _L_SD(ctx, T, sgnq, dFDneu_func):
+    """Born-level spectral-distortion contribution to the n<->p rate.
+
+    Added on top of the base rate (Born or CCR+FMCCR[+CCRTh]) whenever
+    dFDneu_func is supplied to ComputeWeakRates.  See
+    PyPR._setup_background_and_cosmo for the construction and sign convention
+    of dFDneu_func.
+    """
+    cfg, me = ctx.cfg, ctx.me
+    x   = me / (cfg.kB * T)
+    xnu = me / (cfg.kB * T * ctx.T_nuOverT(T))
+
+    def integrand(p):
+        E = np.sqrt(p**2 + 1.)
+        return p**2 * (_delta_chi_func(ctx, E, x, xnu, sgnq, dFDneu_func)
+                       + _delta_chi_func(ctx, -E, x, xnu, sgnq, dFDneu_func))
+
+    return quad(integrand, 0., max(7., 30. / x), epsrel=epsrel_low, limit=quad_limit)[0]
+
+
+# ---------------------------------------------------------------------------
+# _L_CCRTh -- finite-temperature radiative corrections (Phys. Rep. §III.H,
+# Eqs. 107-113; Brown & Sawyer 2001)
+# ---------------------------------------------------------------------------
+
+def _L_CCRTh_interpolants(ctx):
+    """Build interpolants for the finite-temperature radiative correction L_CCRTh.
+
+    Returns a pair ``(L_nTOpCCRTh, L_pTOnCCRTh)`` of callables T[K] -> float,
+    giving the additive thermal correction for n->p (sgnq=+1) and p->n
+    (sgnq=-1) respectively.  When ``ctx.cfg.include_nTOp_thermal`` is False,
+    both are the zero function.
+
+    Loaded from the fingerprinted cache in rates/weak/ when
+    cfg.include_nTOp_thermal=True and a cache file is present (see the
+    module docstring and cache_utils).  A fingerprint mismatch (or a
+    header-less legacy file) is reported but used anyway: recomputing this
+    term is a multi-minute Monte-Carlo integration, far too slow to trigger
+    automatically for what is itself only a ~1e-3-level refinement of
+    L_CCR + L_FMCCR.  Only a *missing* cache file triggers a fresh
+    computation.  Set cfg.include_nTOp_thermal=False to skip this term, or
+    delete the cache files and re-run with save_nTOp_thermal=True to force
+    a refresh stamped with the current configuration's fingerprint.
+    """
+    cfg = ctx.cfg
+    me, Q, xi_nu = ctx.me, ctx.Q, ctx.xi_nu
+    T_nuOverT = ctx.T_nuOverT
+    my_dir = ctx.my_dir
+
+    if not cfg.include_nTOp_thermal:
+        return (lambda T: 0.0), (lambda T: 0.0)
+
     _td       = my_dir + "/rates/weak/"
     _nTh_path = _td + "nTOp_thermal_corrections.txt"
     _pTh_path = _td + "pTOn_thermal_corrections.txt"
-    _have_thermal_cache = (cfg.include_nTOp_thermal
-                           and os.path.exists(_nTh_path) and os.path.exists(_pTh_path))
+    _have_thermal_cache = os.path.exists(_nTh_path) and os.path.exists(_pTh_path)
 
-    if cfg.include_nTOp_thermal and not _have_thermal_cache:
+    if not _have_thermal_cache:
         try:
             import vegas
             _have_vegas = True
@@ -757,15 +776,15 @@ def ComputeWeakRates(Tvec, cfg, dFDneu_func=None):
                 return resvec * (en - sgnq * q)**2
 
             return (cfg.alphaem / (2 * np.pi) * (BE(x * k) / k)
-                    * (A(E, k) * (FD2_vec(-E, x) * FermiStat(sgnq,  1, pE / E)
+                    * (A(E, k) * (FD2_vec(-E, x) * _fermi_stat(ctx, sgnq,  1, pE / E)
                                   * (Chitilde_vec(E - k, znu, sgnq) + Chitilde_vec(E + k, znu, sgnq)
                                      - 2 * Chitilde_vec(E, znu, sgnq))
-                                  + FD2_vec(E, x) * FermiStat(sgnq, -1, pE / E)
+                                  + FD2_vec(E, x) * _fermi_stat(ctx, sgnq, -1, pE / E)
                                   * (Chitilde_vec(-E + k, znu, sgnq) + Chitilde_vec(-E - k, znu, sgnq)
                                      - 2 * Chitilde_vec(-E, znu, sgnq)))
-                       - k * B(E) * (FD2_vec(-E, x) * FermiStat(sgnq,  1, pE / E)
+                       - k * B(E) * (FD2_vec(-E, x) * _fermi_stat(ctx, sgnq,  1, pE / E)
                                      * (Chitilde_vec(E - k, znu, sgnq) - Chitilde_vec(E + k, znu, sgnq))
-                                     + FD2_vec(E, x) * FermiStat(sgnq, -1, pE / E)
+                                     + FD2_vec(E, x) * _fermi_stat(ctx, sgnq, -1, pE / E)
                                      * (Chitilde_vec(-E + k, znu, sgnq) - Chitilde_vec(-E - k, znu, sgnq)))))
 
         def IPENCCRDiffBremsstrahlung(E, k, x, znu, sgnq):
@@ -792,13 +811,13 @@ def ComputeWeakRates(Tvec, cfg, dFDneu_func=None):
                 return resvec * (en - sgnq * q)**2
 
             res_fac  = cfg.alphaem / (2. * np.pi * k)
-            res1_fac = FD2_vec(-E, x) * FermiStat(sgnq,  1, pE / E)
+            res1_fac = FD2_vec(-E, x) * _fermi_stat(ctx, sgnq,  1, pE / E)
             res1vec  = Fp * Chitilde_vec(E + k, znu, sgnq)
             argvec   = k
             my_index = np.where(np.abs(argvec) < np.abs(E - sgnq * q))[0]
             res1vec[my_index] -= Fp[my_index] * FD2_vec(E[my_index] - sgnq * q, znu) * (np.abs(E[my_index] - sgnq * q) - k[my_index])**2
             res1vec *= res1_fac
-            res2_fac = FD2_vec(E, x) * FermiStat(sgnq, -1, pE / E)
+            res2_fac = FD2_vec(E, x) * _fermi_stat(ctx, sgnq, -1, pE / E)
             res2vec  = Fm * Chitilde_vec(-E + k, znu, sgnq)
             my_index = np.where(np.abs(argvec) < np.abs(E + sgnq * q))[0]
             res2vec[my_index] -= Fp[my_index] * FD2_vec(-E[my_index] - sgnq * q, znu) * (np.abs(E[my_index] + sgnq * q) - k[my_index])**2
@@ -808,7 +827,7 @@ def ComputeWeakRates(Tvec, cfg, dFDneu_func=None):
         def C1dE(E, x, znu, sgnq):
             pE = np.sqrt(E**2 - 1.)
             return (-(cfg.alphaem * E) / (2. * np.pi * pE) * (2. * np.pi**2) / (3. * x**2)
-                    * (ChiFunc(E, pE, x, znu, sgnq) + ChiFunc(-E, pE, x, znu, sgnq)))
+                    * (_chi_func(ctx, E, x, znu, sgnq) + _chi_func(ctx, -E, x, znu, sgnq)))
 
         def C2dE1dE2(e1v, e2v, x, znu, sgnq):
             resvec       = np.zeros(len(e1v))
@@ -978,7 +997,7 @@ def ComputeWeakRates(Tvec, cfg, dFDneu_func=None):
 
         T_th, L_nTh, L_pTh = _T_th, L_nTh_data, L_pTh_data
 
-    elif cfg.include_nTOp_thermal:
+    else:
         cached_hash  = read_cache_fingerprint_hash(_nTh_path)
         thermal_hash = fingerprint_hash(_thermal_fingerprint(cfg))
         if cfg.verbose and cached_hash is not None and cached_hash != thermal_hash:
@@ -989,35 +1008,133 @@ def ComputeWeakRates(Tvec, cfg, dFDneu_func=None):
         T_th, L_nTh = np.loadtxt(_nTh_path, unpack=True)
         T_th, L_pTh = np.loadtxt(_pTh_path,  unpack=True)
 
-    if cfg.include_nTOp_thermal:
-        L_nTOpCCRTh = interp1d(T_th, L_nTh, bounds_error=False, fill_value="extrapolate", kind='quadratic')
-        L_pTOnCCRTh = interp1d(T_th, L_pTh, bounds_error=False, fill_value="extrapolate", kind='quadratic')
-    else:
-        L_nTOpCCRTh = lambda T: 0.0
-        L_pTOnCCRTh = lambda T: 0.0
+    L_nTOpCCRTh = interp1d(T_th, L_nTh, bounds_error=False, fill_value="extrapolate", kind='quadratic')
+    L_pTOnCCRTh = interp1d(T_th, L_pTh, bounds_error=False, fill_value="extrapolate", kind='quadratic')
+    return L_nTOpCCRTh, L_pTOnCCRTh
 
-    # ------------------------------------------------------------------
-    # Assembled rates  (sgnq = +1: n→p,  sgnq = -1: p→n)
-    #
-    # nTOp_rate_ dispatches among the correction levels at each temperature T:
-    #   Born-only  (cfg.nTOp_Born_approximation=True):  returns _L_BORN(T, sgnq).
-    #   Full CCR   (default):                  _L_CCR + _L_FMCCR [+ _L_CCRTh]
-    # In both cases the spectral-distortion correction _L_SD is added on top
-    # when dFDneu_func was supplied.  T is in Kelvin, return value in s⁻¹.
-    # ------------------------------------------------------------------
-    def nTOp_rate_(T, sgnq):
-        if cfg.nTOp_Born_approximation:
-            base = _L_BORN(T, sgnq)
-        else:
+
+# ---------------------------------------------------------------------------
+# Ordered list of named correction terms (IDEAS.md §6.3) and main driver
+# ---------------------------------------------------------------------------
+
+def _correction_terms(ctx, T, sgnq, dFDneu_func, thermal_interp):
+    """Ordered list of (name, value) additive corrections to Gamma_{n<->p}(T).
+
+    Mirrors Table 1 of the Phys. Rep.: Born / +RC (CCR) / +FM (FMCCR) /
+    +thermal (CCRTh) / +SD (spectral distortion).  ``ComputeWeakRates`` sums
+    these terms to get the rate at temperature T; the same list lets the test
+    suite (or a notebook) inspect or pin each term's contribution to
+    Neff/YP/D-H individually.
+
+    Parameters
+    ----------
+    ctx : _RateContext
+    T : float
+        Photon temperature [K].
+    sgnq : +1 or -1
+        +1 for n->p, -1 for p->n.
+    dFDneu_func : callable or None
+        Spectral-distortion function, see ComputeWeakRates.
+    thermal_interp : (L_nTOpCCRTh, L_pTOnCCRTh)
+        Interpolants returned by :func:`_L_CCRTh_interpolants`.
+
+    Returns
+    -------
+    list of (str, float)
+    """
+    cfg = ctx.cfg
+    terms = []
+    if cfg.nTOp_Born_approximation:
+        terms.append(("Born", _L_BORN(ctx, T, sgnq)))
+    else:
+        terms.append(("CCR", _L_CCR(ctx, T, sgnq)))
+        terms.append(("FMCCR", _L_FMCCR(ctx, T, sgnq)))
+        if cfg.include_nTOp_thermal:
+            L_nTOpCCRTh, L_pTOnCCRTh = thermal_interp
             L_CCRTh = L_nTOpCCRTh(T) if sgnq == 1 else L_pTOnCCRTh(T)
-            base = (_L_CCR(T, sgnq) + _L_FMCCR(T, sgnq))
-            if cfg.include_nTOp_thermal:
-                base += L_CCRTh
-        # Spectral-distortion correction (Born level), added on top of the
-        # base rate regardless of whether Born or CCR is used for the base.
-        if _L_SD is not None:
-            base += _L_SD(T, sgnq)
-        return base
+            terms.append(("CCRTh", L_CCRTh))
+    if dFDneu_func is not None:
+        terms.append(("SD", _L_SD(ctx, T, sgnq, dFDneu_func)))
+    return terms
+
+
+def ComputeWeakRates(Tvec, cfg, dFDneu_func=None):
+    """Compute n↔p weak rate tables over the BBN temperature range.
+
+    Evaluates the forward rate Γ_{n→p}(T) and backward rate Γ_{p→n}(T) on the
+    photon-temperature grid Tg_vec, by summing up to five additive correction
+    terms (depending on cfg flags) returned by :func:`_correction_terms`:
+
+    Γ_{n→p} = K × [_L_BORN + _L_CCR + _L_FMCCR] + _L_CCRTh + _L_SD
+
+    where:
+      _L_BORN   — Born rate ∫ p² [χ₊(E)+χ₊(−E)] dp  (Phys. Rep. Eqs. 77–78).
+      _L_CCR    — Born integrand × FermiCoulomb × RadCorrResum (T=0 Coulomb
+                  + resummed radiative corrections; Phys. Rep. Eq. 101).
+      _L_FMCCR  — Finite-nucleon-mass correction × Coulomb × radiative
+                  (Fokker-Planck expansion; Phys. Rep. §III.G).
+                  Skipped if cfg.nTOp_Born_approximation=True (Born-only mode).
+      _L_CCRTh  — Finite-temperature radiative corrections (Brown & Sawyer 2001;
+                  Phys. Rep. §III.H, Eqs. 107–113).  Only if
+                  cfg.include_nTOp_thermal=True; loaded from the fingerprinted
+                  cache in rates/weak/ when valid, otherwise recomputed (slow,
+                  uses vegas if available).  See _L_CCRTh_interpolants.
+      _L_SD     — Spectral-distortion correction: the difference between the
+                  actual neutrino distribution f_ν(E) (from NEVO) and the
+                  equilibrium Fermi–Dirac, passed in via dFDneu_func.
+
+    The overall rate constant K is normalised via the neutron lifetime:
+        K = 1 / (τ_n × Fn)     (Phys. Rep. Eq. 89–91)
+    where Fn = ComputeFn(cfg) is the free-decay phase-space integral.
+
+    Parameters
+    ----------
+    Tvec       : list [Tg_vec, Tnu_vec], both float arrays in Kelvin (as output
+                 by PyPR._setup_background_and_cosmo).
+    cfg        : PyPRConfig instance.
+    dFDneu_func: callable or None.
+        If provided, adds the spectral-distortion correction _L_SD.  Signature:
+            dFDneu_func(en, x, znu, sgnq) → float
+        where en = E/mₑ, x = mₑ/(kB Tγ), znu = mₑ/(kB Tν), sgnq = ±1.
+        Must encode the sign convention for blocking factors (en < 0), as
+        described in PyPR._setup_background_and_cosmo.
+
+    Returns
+    -------
+    [T_all, frwrd, bkwrd] : list
+        T_all  — 1-D float array, photon temperatures in Kelvin.
+        frwrd  — 1-D float array, Γ_{n→p}(T) in s⁻¹.
+        bkwrd  — 1-D float array, Γ_{p→n}(T) in s⁻¹.
+
+    Example:
+        >>> rates = ComputeWeakRates([Tg_vec, Tnu_vec], cfg)
+        >>> T_K, lam_nTOp, lam_pTOn = rates
+    """
+    me = cfg.me * cfg.MeV
+    mn = cfg.mn * cfg.MeV
+    mp = cfg.mp * cfg.MeV
+    Q  = mn - mp
+
+    xi_nu  = cfg.munuOverTnu
+    my_dir = cfg.data_dir
+
+    Tg_vec, Tnu_vec = Tvec
+    T_nuOverT = interp1d(Tg_vec * cfg.MeV_to_Kelvin, Tnu_vec / Tg_vec,
+                         bounds_error=False, fill_value="extrapolate", kind='linear')
+
+    _setup_fd_impls(cfg.numba_installed)
+
+    ctx = _RateContext(cfg=cfg, me=me, mn=mn, mp=mp, Q=Q, xi_nu=xi_nu,
+                        T_nuOverT=T_nuOverT, gA=cfg.gA, deltakappa=cfg.deltakappa,
+                        my_dir=my_dir)
+
+    # Built once: the thermal-correction interpolants are independent of T
+    # and reused at every grid point below.
+    thermal_interp = _L_CCRTh_interpolants(ctx)
+
+    def nTOp_rate_(T, sgnq):
+        return sum(value for _, value in
+                   _correction_terms(ctx, T, sgnq, dFDneu_func, thermal_interp))
 
     nTOp_frwrd_vec = np.vectorize(lambda T: nTOp_rate_(T, +1))
     nTOp_bkwrd_vec = np.vectorize(lambda T: nTOp_rate_(T, -1))
