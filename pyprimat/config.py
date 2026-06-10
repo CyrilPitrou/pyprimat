@@ -79,14 +79,14 @@ DEFAULT_PARAMS: dict = {
     "n_temperature_table":        2000,
 
     # ---- n <--> p weak rates ----------------------------------------------
-    "compute_nTOp":          True, #If False they are read from previously stored files.
-    "save_nTOp":             False, # If True, the computed n<->p rates are saved to files for inspection and reuse.
+    "compute_nTOp":               True, #If False they are read from previously stored files.
+    "save_nTOp":                  False, # If True, the computed n<->p rates are saved to files for inspection and reuse.
     "sampling_nTOp":              200,   # total points in the single n<->p rate grid
-    "compute_nTOp_thermal":  False, # If True the thermal corrections to the weak rates are re-computed. But this is very slow, hence it is better to compute them only once and then read stored results
-    "include_nTOp_thermal":  True,  # If True the thermal corrections are used in the rate computation.
-    "save_nTOp_thermal":     False, #If True, the computed thermal n<->p rates are saved to files for inspection and reuse.
+    "compute_nTOp_thermal":       False, # If True the thermal corrections to the weak rates are re-computed. But this is very slow, hence it is better to compute them only once and then read stored results
+    "include_nTOp_thermal":       True,  # If True the thermal corrections are used in the rate computation.
+    "save_nTOp_thermal":          False, #If True, the computed thermal n<->p rates are saved to files for inspection and reuse.
     "sampling_nTOp_thermal":      100,
-    "nTOp_Born_approximation":              False, #If True the crude Born rate is used (off by a few percents, hence should be used only for debugging or fair comparison with other codes). 
+    "nTOp_Born_approximation":    False, #If True the crude Born rate is used (off by a few percents, hence should be used only for debugging or fair comparison with other codes). 
     "tau_n_flag":                 True, # Use neutron lifetime to normalize weak rates (instead of absolute normalization from GF, Vud, gA, etc.)
     "tau_n":                      878.4,  # neutron lifetime [s]; overrides the class-level constant when tau_n_flag=True
     "std_tau_n":                  0.5,    # 1σ uncertainty on tau_n [s], used for MC sampling
