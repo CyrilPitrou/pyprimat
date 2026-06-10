@@ -40,6 +40,7 @@ pytest Tests/test_plasma.py -v     # a single file, verbose
 |--------|---------|
 | `slow` | runs at least one full PyPRIMAT solve; deselect with `-m "not slow"` |
 | `reference` | high-precision runs (numerical_precision=1e-10, n_temperature_table=10000, sampling_nTOp=500, T_start_cosmo=100 MeV) that reproduce the CLAUDE.md values to YP ±1e-5, D/H ±3e-9; ~60 s total |
+| `wheel` | builds a wheel and `pip install`s it into a clean venv before running a smoke solve; also marked `slow` |
 
 ## Structure
 
@@ -60,3 +61,4 @@ pytest Tests/test_plasma.py -v     # a single file, verbose
 | `test_large_network.py` | The large network: it loads (~59 nuclides, ~433 reactions) and passes the formal conservation check; the vectorised rate buffer stays finite/bounded across the LT range; and a full solve conserves baryon number exactly while matching the medium network on the light elements. |
 | `test_nuclear_qed.py` | QED corrections to radiative-capture rates (Pitrou & Pospelov 2020): correction factors are > 1 and sub-percent; the npTOdg polynomial matches its T9→0 cap; the four Kroll-formula reactions increase monotonically with T9; reference magnitudes at T9=0.1 GK are pinned to ±2e-6; non-QED reactions are unchanged; p_* variations stack correctly on the corrected median; and a full solve with the flag on shifts D/H by a detectable but sub-percent amount. |
 | `test_regression.py` | Final abundances: loose default-precision sanity checks, tight `reference`-marked checks against the published CLAUDE.md values, no-numba full solve checks (pure-Python kernels must match JIT to 1e-4), and the `amax` cutoff verification (large network filtered to A ≤ 20 matches medium light elements to ~1e-3). |
+| `test_wheel_smoke.py` | The `wheel`-marked "pip install" smoke test: builds a wheel, installs it into a clean venv, and runs a small-network solve there to catch package-data/path regressions (e.g. `rates/` not shipped, or a path computed relative to the source tree instead of the installed package) that an editable install would not reveal. |
