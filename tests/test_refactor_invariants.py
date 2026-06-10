@@ -58,6 +58,46 @@ def test_gn_and_taun_come_from_defaults():
 
 
 # ---------------------------------------------------------------------------
+# §6.1 — pluggable extra energy density (extra_rho)
+# ---------------------------------------------------------------------------
+
+def test_extra_rho_is_additive_in_hubble():
+    """Each ``extra_rho`` callable adds ``rho(Tg)`` to ``rho_tot`` in ``_Hubble``.
+
+    ``_Hubble`` returns ``H = MeV_to_secm1 * sqrt(rho_tot * 8*pi/(3*Mpl^2))``,
+    so adding a constant extra energy density ``extra`` [MeV^4] through the
+    ``extra_rho`` plug-in (IDEAS.md §6.1) must increase ``H^2`` by exactly
+    ``extra * 8*pi/(3*Mpl^2)``, independently of everything else `_Hubble`
+    computes.
+    """
+    from pyprimat.main import PyPR
+    base = {"network": "small", "verbose": False}
+    p0 = PyPR(base)
+    extra = 1.e-2  # MeV^4, an arbitrary but sizeable extra radiation density
+    p1 = PyPR(base, extra_rho=[lambda Tg: extra])
+
+    Tg = 1.0  # MeV
+    H0 = p0._Hubble(Tg, Tg, Tg, Tg)
+    H1 = p1._Hubble(Tg, Tg, Tg, Tg)
+    assert H1 > H0
+
+    dH2 = (H1 / p0.cfg.MeV_to_secm1)**2 - (H0 / p0.cfg.MeV_to_secm1)**2
+    assert dH2 == pytest.approx(extra * 8. * np.pi / (3. * p0.cfg.Mpl**2), rel=1e-12)
+
+
+def test_ede_is_appended_to_extra_rho():
+    """``fEDE > 0`` appends exactly one ``rho_EDE`` callable to
+    ``self._extra_rho``, via the same generic plug-in mechanism that
+    ``extra_rho=`` callers use (IDEAS.md §6.1)."""
+    from pyprimat.main import PyPR
+    p_no_ede = PyPR({"network": "small", "verbose": False})
+    assert p_no_ede._extra_rho == []
+
+    p_ede = PyPR({"network": "small", "verbose": False, "fEDE": 0.05})
+    assert len(p_ede._extra_rho) == 1
+
+
+# ---------------------------------------------------------------------------
 # 1b — electron-thermo tabulation reproduces the exact integrals
 # ---------------------------------------------------------------------------
 

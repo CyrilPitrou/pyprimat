@@ -58,9 +58,21 @@ class PyPR:
     ----------
     params : dict, optional
         Run-time parameters overriding defaults (see ``config.DEFAULT_PARAMS``).
+    extra_rho : list of callable, optional
+        Extra contributions to the total energy density entering the
+        Friedmann equation (IDEAS.md §6.1).  Each element is a function
+        ``rho(Tg) -> MeV^4`` of the photon temperature ``Tg`` [MeV],
+        summed into ``rho_tot`` by :meth:`_Hubble`.  This is the generic
+        plug-in point for "dark sector" components; Early Dark Energy
+        (``cfg.fEDE > 0``) is implemented as the first such plug-in (see
+        :meth:`_setup_EDE`) and is appended automatically -- callers do not
+        need to include it here.
+
+        Example: a constant extra radiation density of dRho [MeV^4],
+            >>> PyPR({"network": "small"}, extra_rho=[lambda Tg: dRho])
     """
 
-    def __init__(self, params=None):
+    def __init__(self, params=None, extra_rho=None):
 
         # ------------------------------------------------------------------
         # 1. Build configuration
@@ -88,8 +100,9 @@ class PyPR:
         self.plasma = PyPRthermo.Plasma(cfg)
 
         # ------------------------------------------------------------------
-        # 3. Build EDE energy-density function if fEDE > 0
+        # 3. Pluggable extra energy-density components (IDEAS.md §6.1)
         # ------------------------------------------------------------------
+        self._extra_rho = list(extra_rho) if extra_rho is not None else []
         self._setup_EDE()
 
         # ------------------------------------------------------------------
@@ -120,12 +133,14 @@ class PyPR:
     def _setup_EDE(self):
         """Build the EDE energy-density function from cfg.fEDE/zcEDE/wnEDE.
 
-        Sets self._rho_EDE(Tg) to a callable if fEDE > 0, else None.
-        Must be called after self.plasma is set, since it evaluates rho_g.
+        If fEDE > 0, appends a ``rho_EDE(Tg) -> MeV^4`` callable to
+        ``self._extra_rho`` (the generic extra-energy-density plug-in list,
+        IDEAS.md §6.1); otherwise a no-op.  Must be called after self.plasma
+        and self._extra_rho are set, since it evaluates rho_g and appends to
+        that list.
         """
         cfg = self.cfg
         if cfg.fEDE == 0.:
-            self._rho_EDE = None
             return
 
         thermo  = self.plasma
@@ -144,7 +159,7 @@ class PyPR:
         def rho_EDE(T):
             return 2. * rhocEDEac / (1. + (TcEDE / T)**(3. * cfg.wnEDE + 3.))
 
-        self._rho_EDE = rho_EDE
+        self._extra_rho.append(rho_EDE)
 
     # ======================================================================
     # Private: background thermodynamics + cosmological setup
@@ -157,7 +172,8 @@ class PyPR:
         rho_pl  = thermo.rho_g(Tg) + thermo.rho_e(Tg) - thermo.PQEDofT(Tg) + Tg * thermo.dPQEDdT(Tg)
         rho_3nu = thermo.rho_nu(Tnue) + thermo.rho_nu(Tnumu) + thermo.rho_nu(Tnutau)
         rho_tot = rho_pl + rho_3nu + thermo.rho_nu_extra(Tg)
-        if self._rho_EDE is not None: rho_tot += self._rho_EDE(Tg)
+        for rho_extra in self._extra_rho:
+            rho_tot += rho_extra(Tg)
         # For analytic spectral distortions the neutrino phase-space distribution
         # is shifted from a perfect FD, adding extra energy density.  The NEVO
         # case needs no correction: the NEVO temperatures are defined as the
