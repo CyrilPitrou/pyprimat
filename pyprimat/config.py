@@ -14,9 +14,9 @@ No file I/O happens here.  Nuclear rate data are loaded separately in
 """
 
 import os
-from functools import cached_property
 import numpy as np
-from scipy.special import zeta
+
+from .constants import CONST
 
 __all__ = ['DEFAULT_PARAMS', 'PyPRConfig']
 
@@ -214,165 +214,78 @@ class PyPRConfig:
         return self.network == "large"
 
     # ------------------------------------------------------------------
-    # Class-level physical constants (identical for every instance)
+    # Physical constants and unit-conversion factors
+    # ------------------------------------------------------------------
+    # All fixed PDG values, CGS<->natural-units conversion factors, and the
+    # purely-constant derived quantities (sW2, s0bar, s0CMB, n0CMB, mB,
+    # HubbleOverh, the fixed temperature eras T_start/T_weak/T_nucl/T_end,
+    # ...) live in pyprimat.constants.Constants (see that module for
+    # definitions, formulas and citations). They are re-exposed here as
+    # plain class attributes so existing code (cfg.me, cfg.MeV_to_Kelvin,
+    # cfg.s0bar, ...) is unaffected; new physics code may instead import
+    # CONST directly from pyprimat.constants.
+    Kelvin         = CONST.Kelvin
+    second         = CONST.second
+    cm             = CONST.cm
+    gram           = CONST.gram
+    erg            = CONST.erg
+    kB             = CONST.kB
+    clight         = CONST.clight
+    hbar           = CONST.hbar
+    Mpc            = CONST.Mpc
+    MeV            = CONST.MeV
+    keV            = CONST.keV
+    alphaem        = CONST.alphaem
+    GF             = CONST.GF
+    mZ             = CONST.mZ
+    me             = CONST.me
+    mn             = CONST.mn
+    mp             = CONST.mp
+    T0CMB          = CONST.T0CMB
+    MeV_to_Kelvin  = CONST.MeV_to_Kelvin
+    MeV_to_secm1   = CONST.MeV_to_secm1
+    MeV_to_g       = CONST.MeV_to_g
+    MeV_to_cmm1    = CONST.MeV_to_cmm1
+    MeV4_to_gcmm3  = CONST.MeV4_to_gcmm3
+    T_start        = CONST.T_start
+    T_weak         = CONST.T_weak
+    T_nucl         = CONST.T_nucl
+    T_end          = CONST.T_end
+    sW2            = CONST.sW2
+    geL            = CONST.geL
+    geR            = CONST.geR
+    gmuL           = CONST.gmuL
+    gmuR           = CONST.gmuR
+    gA             = CONST.gA
+    kappa_p        = CONST.kappa_p
+    kappa_n        = CONST.kappa_n
+    deltakappa     = CONST.deltakappa
+    Vud            = CONST.Vud
+    radproton      = CONST.radproton
+    s0bar          = CONST.s0bar
+    s0CMB          = CONST.s0CMB
+    n0CMB          = CONST.n0CMB
+    ma             = CONST.ma
+    He4Overma      = CONST.He4Overma
+    HOverma        = CONST.HOverma
+    mB             = CONST.mB
+    maOvermB       = CONST.maOvermB
+    HubbleOverh    = CONST.HubbleOverh
+
+    # ------------------------------------------------------------------
+    # Quantities depending on overridable parameters (GN, T_start_cosmo_MeV)
     # ------------------------------------------------------------------
 
-    # CGS base units (dimensionless by convention)
-    Kelvin: float = 1.
-    second: float = 1.
-    cm:     float = 1.
-    gram:   float = 1.
-
-    @cached_property
-    def erg(self) -> float:
-        return self.gram * self.cm**2 / self.second
-
-    # Fundamental constants (PDG)
-    kB:     float = 1.380649e-16          # Boltzmann [erg/K]
-    clight: float = 2.99792458e+10        # speed of light [cm/s]
-    hbar:   float = 6.62607015 / (2 * np.pi) * 1e-27  # Planck [erg·s]
-    Mpc:    float = 3.08567758149e+24     # [cm]
-    MeV:    float = 1.602176634e-6        # [erg]
-    keV:    float = 1.602176634e-9        # [erg]
-    # Electroweak sector (PDG)
-    alphaem: float = 1. / 137.035999084
-    GF:      float = 1.1663787e-5 * 1.e-6   # [MeV^-2]
-    mZ:      float = 91.1876e3               # [MeV]
-    # Fermion masses [MeV]
-    me: float = 0.51099895
-    mn: float = 939.56542052
-    mp: float = 938.27208816
-    # CMB / cosmological fixed quantities
-    T0CMB: float = 2.7255                  # photon temperature today [K]
-
-    # Conversion factors (MeV-based natural units <-> CGS)
-    @cached_property
-    def MeV_to_Kelvin(self) -> float:
-        return self.MeV / self.kB
-
-    @cached_property
-    def MeV_to_secm1(self) -> float:
-        return self.MeV / self.hbar
-
-    @cached_property
-    def MeV_to_g(self) -> float:
-        return self.MeV / self.clight**2
-
-    @cached_property
-    def MeV_to_cmm1(self) -> float:
-        return self.MeV / (self.hbar * self.clight)
-
-    @cached_property
-    def MeV4_to_gcmm3(self) -> float:
-        return self.MeV_to_g * self.MeV_to_cmm1**3
-
-    # Temperature eras [K]
+    # Temperature era set by the overridable T_start_cosmo_MeV [K].
     @property
     def T_start_cosmo(self) -> float:
         return self.T_start_cosmo_MeV * self.MeV_to_Kelvin
 
-    @cached_property
-    def T_start(self) -> float:
-        return 10.0 * self.MeV_to_Kelvin
-
-    @cached_property
-    def T_weak(self) -> float:
-        return 1.0 * self.MeV_to_Kelvin
-
-    @cached_property
-    def T_nucl(self) -> float:
-        return 0.11 * self.MeV_to_Kelvin
-
-    @cached_property
-    def T_end(self) -> float:
-        return 1.e-3 * self.MeV_to_Kelvin
-
-    @cached_property
-    def sW2(self) -> float:
-        return 0.5 * (1. - np.sqrt(1. - 2.*np.sqrt(2.)*np.pi*self.alphaem / (self.GF * self.mZ**2)))
-
-    @cached_property
-    def geL(self) -> float:
-        return 0.5 + self.sW2
-
-    @cached_property
-    def geR(self) -> float:
-        return self.sW2
-
-    @cached_property
-    def gmuL(self) -> float:
-        return -0.5 + self.sW2
-
-    @cached_property
-    def gmuR(self) -> float:
-        return self.sW2
-
     # Gravity: GN [MeV^-2] is overridable, so it lives in DEFAULT_PARAMS only.
+    # tau_n [s] is similarly overridable (DEFAULT_PARAMS), used by weak_rates.
     @property
     def Mpl(self) -> float:
         return 1. / np.sqrt(self.GN)
-
-    # Weak rate nuclear structure constants (PDG).
-    # tau_n [s] is overridable, so it lives in DEFAULT_PARAMS only.
-    gA:          float = 1.2756
-    kappa_p:     float = 2.79284734463 - 1.
-    kappa_n:     float = -1.91304273
-    Vud:         float = 0.9738
-    radproton:   float = 0.8409e-13        # proton charge radius [cm]
-
-    @cached_property
-    def deltakappa(self) -> float:
-        return self.kappa_p - self.kappa_n
-
-
-    @cached_property
-    def s0bar(self) -> float:
-        """Dimensionless prefactor in the photon entropy density: s_γ = s̄ T³.
-
-        For a relativistic boson gas with g=2 (photon) the entropy density is
-            s_γ = (2π²/45) × 2 × T³ = (4π²/45) T³  [Phys. Rep. Eq. 24].
-        s̄ ≡ 4π²/45 is factored out so that s_γ(T) = s̄ × T³ wherever T³
-        appears, making the scaling explicit.
-        """
-        return 4. * np.pi**2 / 45.
-
-    @cached_property
-    def s0CMB(self) -> float:
-        """Present-day CMB photon entropy density  [MeV³].
-
-        s0CMB = s̄ × T0CMB³,  the entropy density of the photon background
-        today (T0CMB in Kelvin, converted to MeV by /MeV_to_Kelvin).
-        Used to track the comoving entropy and define the scale factor a(T).
-        """
-        return self.s0bar * (self.T0CMB / self.MeV_to_Kelvin)**3  # [MeV^3]
-
-    @cached_property
-    def n0CMB(self) -> float:
-        """Present-day CMB photon number density  [MeV³].
-
-        n_γ = (2ζ(3)/π²) T³  for a bosonic gas with g=2 (photon).
-        n0CMB = n_γ(T0CMB), the present CMB photon number density in MeV³.
-        Used together with eta0b = n_B/n_γ to set the comoving baryon density.
-        """
-        return (2. * zeta(3)) / np.pi**2 * (self.T0CMB / self.MeV_to_Kelvin)**3  # [MeV^3]
-
-    # Atomic masses
-    ma:         float = 931.494061         # 1 u.m.a. [MeV]
-    He4Overma:  float = 4.0026032541
-    HOverma:    float = 1.00782503223
-
-    @cached_property
-    def mB(self) -> float:
-        percentHe = 24.7 / 100.
-        return ((1. - percentHe) * self.HOverma + percentHe * self.He4Overma / 4.) * self.ma
-
-    @cached_property
-    def maOvermB(self) -> float:
-        return self.ma / self.mB
-
-    @property
-    def HubbleOverh(self) -> float:
-        return 100. * (1.e+5 * self.cm * self.MeV_to_cmm1) / (self.second * self.MeV_to_secm1) / (self.Mpc * self.MeV_to_cmm1)
 
     @property
     def rhocOverh2(self) -> float:
