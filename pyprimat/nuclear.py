@@ -24,6 +24,7 @@ import os
 import re
 import csv
 from dataclasses import dataclass
+from functools import lru_cache
 from math import factorial
 from collections import Counter
 
@@ -405,10 +406,8 @@ def reaction_stoichiometry(name):
     # We use the detailed_balance.csv to determine the split between reactants
     # and products, avoiding the need for the hardcoded tokens and aliases for
     # most reactions.
-    from .config import PyPRConfig
-    cfg = PyPRConfig() # Temp config to get paths
-    _, _, _, _, db, _ = _reaction_catalog(cfg)
-    
+    _, _, _, _, db, _ = _reaction_catalog(_default_data_dir())
+
     if name not in db:
         # Fallback to tokenisation for reactions not in detailed_balance.csv
         tokens = [t for t in _tokenise(name) if t not in {"g", "TO"}]
@@ -447,10 +446,8 @@ def to_filename(name):
     if "TO" in name:
         return name
 
-    from .config import PyPRConfig
-    cfg = PyPRConfig()
-    _, _, _, _, db, _ = _reaction_catalog(cfg)
-    
+    _, _, _, _, db, _ = _reaction_catalog(_default_data_dir())
+
     if name in db: return name
 
     tokens = _tokenise(name)
@@ -699,25 +696,48 @@ class NetworkDefinition:
         return r
 
 
-def _reaction_catalog(cfg):
-    """Load nuclide metadata, reaction stoichiometry and detailed balance tables."""
-    data_dir = os.path.join(cfg.data_dir, "rates", "nuclear", "data")
-    tables_dir = os.path.join(cfg.data_dir, "rates", "nuclear", "tables")
-    _, nuc_rows = _read_csv(os.path.join(data_dir, "nuclides.csv"))
+def _default_data_dir() -> str:
+    """Package data root (``cfg.data_dir`` is always this same path).
+
+    Defined here so :func:`reaction_stoichiometry` and :func:`to_filename` can
+    reach :func:`_reaction_catalog` without constructing a throwaway
+    ``PyPRConfig`` (which re-reads ``nuclides.csv`` and would create a
+    config<->nuclear circular import).
+    """
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+@lru_cache(maxsize=None)
+def _reaction_catalog(data_dir: str):
+    """Load nuclide metadata, reaction stoichiometry and detailed balance tables.
+
+    Parameters
+    ----------
+    data_dir : str
+        Package data root, i.e. ``cfg.data_dir`` (the directory containing
+        ``rates/``).  This is a fixed path for a given PyPRIMAT installation,
+        so the result is cached with :func:`functools.lru_cache`: the three
+        CSV files under ``rates/nuclear/data/`` are read at most once per
+        process instead of on every :func:`load_network`,
+        :func:`reaction_stoichiometry` or :func:`to_filename` call.
+    """
+    base = os.path.join(data_dir, "rates", "nuclear", "data")
+    tables_dir = os.path.join(data_dir, "rates", "nuclear", "tables")
+    _, nuc_rows = _read_csv(os.path.join(base, "nuclides.csv"))
     nuc_order = [row[0] for row in nuc_rows]
     nuc_NZ = {row[0]: (int(row[1]), int(row[2])) for row in nuc_rows}
 
-    _, db_rows = _read_csv(os.path.join(data_dir, "detailed_balance.csv"))
+    _, db_rows = _read_csv(os.path.join(base, "detailed_balance.csv"))
     db = {row[0]: (float(row[2]), float(row[3]), float(row[4])) for row in db_rows}
 
     # Prefer the generated data copy.  The repository-root mirror is accepted so
     # users can inspect or regenerate the catalog without changing loader code.
-    rxn_path = os.path.join(data_dir, "reactions_large.csv")
+    rxn_path = os.path.join(base, "reactions_large.csv")
     if not os.path.exists(rxn_path):
-        rxn_path = os.path.join(cfg.data_dir, "rates", "nuclear", "reactions_large.csv")
+        rxn_path = os.path.join(data_dir, "rates", "nuclear", "reactions_large.csv")
     _, rxn_rows = _read_csv(rxn_path)
     rxn_map = {row[0]: (row[1], row[2]) for row in rxn_rows}
-    return tables_dir, data_dir, nuc_order, nuc_NZ, db, rxn_map
+    return tables_dir, base, nuc_order, nuc_NZ, db, rxn_map
 
 
 # Electric charge of each lepton bookkeeping token (A=0, not in ODE state vector).
@@ -913,7 +933,7 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None):
     else:
         raise ValueError(f"era must be 'MT' or 'LT', got {era!r}")
 
-    tables_dir, data_dir, nuc_order, nuc_NZ, db, rxn_map = _reaction_catalog(cfg)
+    tables_dir, data_dir, nuc_order, nuc_NZ, db, rxn_map = _reaction_catalog(cfg.data_dir)
 
     # cfg.amax: if set, drop any reaction whose stoichiometry involves a nuclide
     # with mass number A = N + Z > amax.  Only meaningful for network="large";
