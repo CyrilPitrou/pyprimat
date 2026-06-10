@@ -8,7 +8,7 @@ from pyprimat.nuclear import compute_detailed_balance_coefficients, reaction_spe
 def test_detailed_balance_consistency():
     """Verify that compute_detailed_balance_coefficients reproduces the values in detailed_balance.csv."""
     cfg = PyPRConfig()
-    db_csv_path = os.path.join(cfg.working_dir, "rates", "nuclear", "data", "detailed_balance.csv")
+    db_csv_path = os.path.join(cfg.data_dir, "rates", "nuclear", "data", "detailed_balance.csv")
     
     with open(db_csv_path, 'r') as f:
         reader = csv.DictReader(f)

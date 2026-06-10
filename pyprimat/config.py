@@ -396,7 +396,7 @@ class PyPRConfig:
                 )
 
         if self.network != "small":
-            path = os.path.join(self.working_dir, "rates", "nuclear",
+            path = os.path.join(self.data_dir, "rates", "nuclear",
                                 "networks", f"{self.network}.txt")
             if not os.path.exists(path):
                 raise ValueError(
@@ -502,7 +502,7 @@ class PyPRConfig:
     def _load_nuclide_data(self):
         """Load mass excesses, spins, and (N, Z) from nuclides.csv."""
         import csv
-        path = os.path.join(self.working_dir, "rates", "nuclear", "data", "nuclides.csv")
+        path = os.path.join(self.data_dir, "rates", "nuclear", "data", "nuclides.csv")
         
         self.Nuclides = {}
         self.NuclExcessMass = {}
@@ -516,7 +516,10 @@ class PyPRConfig:
                 self.NuclExcessMass[name] = float(row['mass_excess_keV'])
                 self.NuclSpin[name] = float(row['spin'])
 
-    # Path helper: working dir is the pyprimat/ package directory, where rates/ lives.
+    # Path helper: the pyprimat/ package directory, where rates/ lives.
+    # Used only for *reading* package data; output paths are resolved against
+    # the current working directory (see PyPR._write_time_evolution /
+    # _write_final_result).
     @property
-    def working_dir(self) -> str:
+    def data_dir(self) -> str:
         return os.path.dirname(os.path.abspath(__file__))

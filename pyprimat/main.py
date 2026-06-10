@@ -214,7 +214,7 @@ class PyPR:
             # the computation.
             nevo_file = ("NEVOPRIMAT_col_1_7.csv" if cfg.QED_corrections
                          else "NEVOPRIMAT_NoQED_col_1_7.csv")
-            nevo_path = cfg.working_dir + "/rates/NEVO/" + nevo_file
+            nevo_path = cfg.data_dir + "/rates/NEVO/" + nevo_file
             table = np.loadtxt(nevo_path, delimiter=',', usecols=range(6))
             # Column layout (0-indexed):
             #   0: x = me / (kB T_com)   [dimensionless]
@@ -445,8 +445,8 @@ class PyPR:
                 #         defined so that f_actual(y) = (1+δf(y))/(e^y+1).
                 nevo_full_file = ("NEVOPRIMAT.csv" if cfg.QED_corrections
                                   else "NEVOPRIMAT_NoQED.csv")
-                nevo_full_path = cfg.working_dir + "/rates/NEVO/" + nevo_full_file
-                grid_path      = cfg.working_dir + "/rates/NEVO/NEVOGrid.csv"
+                nevo_full_path = cfg.data_dir + "/rates/NEVO/" + nevo_full_file
+                grid_path      = cfg.data_dir + "/rates/NEVO/NEVOGrid.csv"
 
                 table_full = np.loadtxt(nevo_full_path, delimiter=',')   # (600, 86)
                 y_nodes    = np.loadtxt(grid_path,      delimiter=',')   # (80,)
@@ -1060,8 +1060,9 @@ class PyPR:
         in abundance-vector order (``n`` and ``p`` first).
 
         Enabled by ``output_final_result=True``; the destination is
-        ``output_final_file`` (relative paths resolve against the package root,
-        like ``output_file``).  Typical use -- get the full nuclide vector of a
+        ``output_final_file`` (relative paths resolve against the current
+        working directory, like ``output_file``).  Typical use -- get the
+        full nuclide vector of a
         single run without going through ``get_quantity`` for each name::
 
             PyPR(params={'output_final_result': True,
@@ -1077,10 +1078,9 @@ class PyPR:
             ...
         """
         cfg  = self.cfg
-        path = cfg.output_final_file
-        # Resolve relative paths against the package root (same rule as output_file).
-        if not os.path.isabs(path):
-            path = os.path.join(cfg.working_dir, path)
+        # Resolve relative paths against the current working directory (the
+        # universal convention), same rule as output_file.
+        path = os.path.abspath(cfg.output_final_file)
         out_dir = os.path.dirname(path)
         if out_dir:
             os.makedirs(out_dir, exist_ok=True)
@@ -1166,8 +1166,9 @@ class PyPR:
 
         Nheating_out = self._N_NEVO_of_Tg(T_out)
 
-        out_path = (cfg.output_file if os.path.isabs(cfg.output_file)
-                    else os.path.join(cfg.working_dir, cfg.output_file))
+        # Resolve relative paths against the current working directory (the
+        # universal convention), not the installed-package directory.
+        out_path = os.path.abspath(cfg.output_file)
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         out_data = np.column_stack((a_out, T_out, t_out, H_out,
                                     Tnue_out, Tnumu_out, Tnutau_out, Nheating_out,

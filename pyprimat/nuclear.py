@@ -172,7 +172,7 @@ def load_reaction_names(cfg_or_dir, network: str | None = None) -> list[str]:
     Parameters
     ----------
     cfg_or_dir : PyPRConfig or str
-        Either a configuration object with ``working_dir`` or a direct path to
+        Either a configuration object with ``data_dir`` or a direct path to
         the ``networks`` directory.  Accepting both forms lets module constants
         be initialised without constructing a full configuration.
     network : str, optional
@@ -191,8 +191,8 @@ def load_reaction_names(cfg_or_dir, network: str | None = None) -> list[str]:
     >>> len(load_reaction_names("/repo/rates/nuclear/networks", "small"))
     12
     """
-    if hasattr(cfg_or_dir, "working_dir"):
-        nets_dir = os.path.join(cfg_or_dir.working_dir, "rates", "nuclear", "networks")
+    if hasattr(cfg_or_dir, "data_dir"):
+        nets_dir = os.path.join(cfg_or_dir.data_dir, "rates", "nuclear", "networks")
         network = network or cfg_or_dir.network
     else:
         nets_dir = os.fspath(cfg_or_dir)
@@ -701,8 +701,8 @@ class NetworkDefinition:
 
 def _reaction_catalog(cfg):
     """Load nuclide metadata, reaction stoichiometry and detailed balance tables."""
-    data_dir = os.path.join(cfg.working_dir, "rates", "nuclear", "data")
-    tables_dir = os.path.join(cfg.working_dir, "rates", "nuclear", "tables")
+    data_dir = os.path.join(cfg.data_dir, "rates", "nuclear", "data")
+    tables_dir = os.path.join(cfg.data_dir, "rates", "nuclear", "tables")
     _, nuc_rows = _read_csv(os.path.join(data_dir, "nuclides.csv"))
     nuc_order = [row[0] for row in nuc_rows]
     nuc_NZ = {row[0]: (int(row[1]), int(row[2])) for row in nuc_rows}
@@ -714,7 +714,7 @@ def _reaction_catalog(cfg):
     # users can inspect or regenerate the catalog without changing loader code.
     rxn_path = os.path.join(data_dir, "reactions_large.csv")
     if not os.path.exists(rxn_path):
-        rxn_path = os.path.join(cfg.working_dir, "rates", "nuclear", "reactions_large.csv")
+        rxn_path = os.path.join(cfg.data_dir, "rates", "nuclear", "reactions_large.csv")
     _, rxn_rows = _read_csv(rxn_path)
     rxn_map = {row[0]: (row[1], row[2]) for row in rxn_rows}
     return tables_dir, data_dir, nuc_order, nuc_NZ, db, rxn_map

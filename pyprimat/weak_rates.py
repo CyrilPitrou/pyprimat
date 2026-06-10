@@ -438,7 +438,7 @@ def ComputeWeakRates(Tvec, cfg, dFDneu_func=None):
     Q  = mn - mp
 
     xi_nu  = cfg.munuOverTnu
-    my_dir = cfg.working_dir
+    my_dir = cfg.data_dir
 
     Tg_vec, Tnu_vec = Tvec
     T_nuOverT = interp1d(Tg_vec * cfg.MeV_to_Kelvin, Tnu_vec / Tg_vec,
@@ -923,13 +923,13 @@ def InterpolateWeakRates(cfg):
     Returns quadratic spline interpolants for Γ_{n→p}(T) and Γ_{p→n}(T).
 
     Args:
-        cfg : PyPRConfig instance (provides working_dir).
+        cfg : PyPRConfig instance (provides data_dir).
 
     Returns:
         [frwrd, bkwrd] : two scipy interp1d objects (extrapolating), each mapping
                          T in Kelvin → rate in s⁻¹.
     """
-    nd = os.path.join(cfg.working_dir, "rates", "weak", "")
+    nd = os.path.join(cfg.data_dir, "rates", "weak", "")
 
     def _load(fname):
         tab = np.loadtxt(nd + fname)

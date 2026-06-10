@@ -43,7 +43,7 @@ The constructor accepts an optional parameter dict that overrides any default in
 Scripts live in `runfiles/`. Run from the repo root:
 
 ```bash
-python runfiles/PyPRIMAT_run.py           # Standard SM run (outputs runfiles/results/output_tables.tsv)
+python runfiles/PyPRIMAT_run.py           # Standard SM run (outputs results/output_tables.tsv)
 python runfiles/PyPRIMAT_compare.py       # Small vs large network comparison
 python runfiles/PyPRIMAT_reference_run.py # High-precision reference run (~2 min)
 ```
@@ -63,7 +63,7 @@ python runfiles/PyPRIMAT_reference_run.py # High-precision reference run (~2 min
 | `compute_nTOp_thermal_flag` | False | Also recompute thermal radiative corrections (very slow, requires `vegas`) |
 | `save_nTOp_thermal_flag` | False | Save recomputed thermal corrections to disk |
 | `output_time_evolution` | False | Write time-evolution table to `output_file` |
-| `output_file` | `runfiles/results/output_tables.tsv` | Output file path |
+| `output_file` | `results/output_tables.tsv` | Output file path (relative paths resolve against the current working directory) |
 | `output_n_points` | 500 | Number of interpolated rows in output file |
 
 ### n↔p weak rate workflow

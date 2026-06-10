@@ -167,7 +167,7 @@ def _load_tables(cfg):
         d2PQEDdT2 = lambda T: 0.
         return
 
-    plasma_dir = os.path.join(cfg.working_dir, "rates", "plasma")
+    plasma_dir = os.path.join(cfg.data_dir, "rates", "plasma")
     p_file   = os.path.join(plasma_dir, "QED_P_int.txt")
     dp_file  = os.path.join(plasma_dir, "QED_dP_intdT.txt")
     d2p_file = os.path.join(plasma_dir, "QED_d2P_intdT2.txt")
@@ -413,7 +413,7 @@ def _build_electron_tables(cfg):
         _rho_e_tab = _p_e_tab = _drho_e_dT_tab = _dp_e_dT_tab = None
         return
 
-    cache_path = os.path.join(cfg.working_dir, "rates", "plasma",
+    cache_path = os.path.join(cfg.data_dir, "rates", "plasma",
                               "electron_thermo_cache.txt")
     _ELECTRON_CACHE_PATH = cache_path
 
