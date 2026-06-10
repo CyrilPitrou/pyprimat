@@ -155,9 +155,14 @@ _KEY12_REACTIONS = ORDER_SMALL[1:]
 
 
 def _network_dir_from_cwd() -> str:
-    """Return the repository's network-list directory for import-time defaults."""
+    """Return the package's network-list directory for import-time defaults.
+
+    ``rates/`` lives inside the ``pyprimat`` package (it is shipped as package
+    data), so the path is resolved relative to this file — never the current
+    working directory — and works for both editable and regular installs.
+    """
     return os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "rates", "nuclear", "networks")
+        os.path.join(os.path.dirname(__file__), "rates", "nuclear", "networks")
     )
 
 
