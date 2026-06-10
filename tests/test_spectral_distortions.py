@@ -3,6 +3,12 @@ import pytest
 import numpy as np
 from pyprimat.main import PyPR
 
+# Each test below runs two full PyPR().solve() calls with
+# spectral_distortions on/off (a fingerprint mismatch against the shipped
+# weak-rate cache also triggers a recompute) -- "solve" tier (IDEAS.md sec 7.2).
+pytestmark = [pytest.mark.slow, pytest.mark.solve]
+
+
 def test_spectral_distortions_effect():
     """Verify that spectral distortions have a small but non-zero effect on D/H."""
     params_base = {

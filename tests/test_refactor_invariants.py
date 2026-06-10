@@ -19,6 +19,8 @@ from pyprimat.config import PyPRConfig
 # 1a — MC reuse must be independent of n_jobs
 # ---------------------------------------------------------------------------
 
+@pytest.mark.slow
+@pytest.mark.solve
 def test_mc_njobs_independence():
     """Same seeds must give identical samples for serial vs parallel runs."""
     from pyprimat.main import mc_uncertainty

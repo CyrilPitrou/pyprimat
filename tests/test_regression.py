@@ -22,27 +22,33 @@ pytestmark = pytest.mark.slow
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.solve
 def test_small_network_YPBBN(solved_small):
     assert solved_small._results["YPBBN"] == pytest.approx(0.2469156, abs=1e-4)
 
 
+@pytest.mark.solve
 def test_small_network_DoH(solved_small):
     assert solved_small._results["DoH"] == pytest.approx(2.43647e-5, rel=2e-3)
 
 
+@pytest.mark.solve
 def test_large_network_YPBBN(solved_large):
     assert solved_large._results["YPBBN"] == pytest.approx(0.2469190, abs=1e-4)
 
 
+@pytest.mark.solve
 def test_large_network_DoH(solved_large):
     assert solved_large._results["DoH"] == pytest.approx(2.43718e-5, rel=2e-3)
 
 
+@pytest.mark.solve
 def test_Neff_close_to_standard(solved_small):
     """Neff should be close to 3.044 for the standard model."""
     assert solved_small._results["Neff"] == pytest.approx(3.044, abs=0.005)
 
 
+@pytest.mark.solve
 def test_nTOp_Born_approximation_lowers_YP(solved_small):
     """Born-level n<->p rates (no radiative corrections) give lower YP."""
     from pyprimat.main import PyPR
@@ -52,12 +58,14 @@ def test_nTOp_Born_approximation_lowers_YP(solved_small):
     assert r_born._results["YPBBN"] < solved_small._results["YPBBN"] - 0.001
 
 
+@pytest.mark.solve
 def test_Li7oH_order_of_magnitude(solved_small):
     """Li7/H should be in the range 1e-10 to 1e-9."""
     Li7 = solved_small._results["Li7oH"]
     assert 1e-10 < Li7 < 1e-9
 
 
+@pytest.mark.solve
 def test_He3oH_order_of_magnitude(solved_small):
     """He3/H should be in the range 1e-6 to 1e-4."""
     He3 = solved_small._results["He3oH"]
@@ -109,6 +117,7 @@ def test_reference_large_DoH(ref_large):
 # No-numba full solve: pure-Python kernels must agree with the JIT path
 # ---------------------------------------------------------------------------
 
+@pytest.mark.solve
 def test_no_numba_small_matches_numba(solved_small):
     """Pure-Python (numba_installed=False) must agree with the JIT path to 1e-4."""
     from pyprimat.main import PyPR
@@ -117,6 +126,7 @@ def test_no_numba_small_matches_numba(solved_small):
     assert r_nn["DoH"]   == pytest.approx(solved_small._results["DoH"],   rel=1e-4)
 
 
+@pytest.mark.solve
 def test_no_numba_medium_smoke():
     """Pure-Python medium network solve completes and YP is physically reasonable."""
     from pyprimat.main import PyPR
@@ -129,6 +139,7 @@ def test_no_numba_medium_smoke():
 # amax cutoff: large network filtered to A <= 20 matches medium to ~1e-3
 # ---------------------------------------------------------------------------
 
+@pytest.mark.solve
 def test_amax_filter_light_elements_match_medium(solved_large):
     """With amax=20, heavy reactions (A>20) are dropped; light elements match medium."""
     from pyprimat.main import PyPR

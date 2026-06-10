@@ -184,6 +184,7 @@ _NEFF_TOL = 0.0001   # tighter than any inter-case difference
 
 
 @pytest.mark.slow
+@pytest.mark.solve
 @pytest.mark.parametrize("incomplete,qed", [
     (True,  True),
     (False, True),
@@ -202,6 +203,7 @@ def test_neff_four_combinations(incomplete, qed):
 
 
 @pytest.mark.slow
+@pytest.mark.solve
 def test_neff_free_gas_exact():
     """The free-gas instantaneous limit (incomplete=F, QED=F) must give
     Neff = 3 exactly (to within 1e-6), since T_ν = T_γ (11/4)^{-1/3} exactly
@@ -215,6 +217,7 @@ def test_neff_free_gas_exact():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.slow
+@pytest.mark.solve
 def test_neff_incomplete_decoupling_raises_neff():
     """Incomplete decoupling always raises Neff relative to instantaneous,
     for both QED settings, because neutrinos are partially reheated."""
@@ -227,6 +230,7 @@ def test_neff_incomplete_decoupling_raises_neff():
 
 
 @pytest.mark.slow
+@pytest.mark.solve
 def test_neff_qed_raises_neff_for_instantaneous():
     """QED corrections raise Neff in the instantaneous-decoupling case,
     because they increase the photon entropy relative to neutrinos."""
@@ -236,6 +240,7 @@ def test_neff_qed_raises_neff_for_instantaneous():
 
 
 @pytest.mark.slow
+@pytest.mark.solve
 def test_neff_qed_effect_smaller_than_decoupling_effect():
     """The QED correction to Neff (with instantaneous decoupling) is smaller
     than the incomplete-decoupling correction (with QED on), reflecting the
@@ -246,9 +251,11 @@ def test_neff_qed_effect_smaller_than_decoupling_effect():
 
 
 # ---------------------------------------------------------------------------
-# NEVO file selection test (unit, no solve)
+# NEVO file selection test (unit, no solve -- but slow: see marker below)
 # ---------------------------------------------------------------------------
 
+@pytest.mark.slow  # incomplete_decoupling/QED_corrections != cache fingerprint
+                    # -> PyPR.__init__ recomputes the n<->p weak rates twice (~3 s)
 def test_nevo_file_selection():
     """Verify that _setup_background_and_cosmo selects the correct NEVO file:
     the QED table for QED_corrections=True, the NoQED table otherwise.

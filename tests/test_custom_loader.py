@@ -112,6 +112,7 @@ def test_parthenope_conservation():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.slow
+@pytest.mark.solve
 def test_parthenope_solve_is_physical():
     """A full solve with parthenope rates gives physically reasonable YP and D/H."""
     from pyprimat.main import PyPR

@@ -135,3 +135,39 @@ def test_forward_rate_increases_with_T(rate_interpolants):
     rate_low  = nTOp_frwrd_HT(1.0  * MeV_to_K)
     rate_high = nTOp_frwrd_HT(10.0 * MeV_to_K)
     assert rate_high > rate_low
+
+
+# ---------------------------------------------------------------------------
+# RecomputeWeakRates — recompute path vs the fingerprinted cache (IDEAS 7.1)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.slow
+def test_recomputed_rates_match_cached():
+    """The recompute path (weak_rate_cache=False) must agree with the cache.
+
+    conftest.py's session-scoped ``solved_small``/``solved_large`` fixtures
+    deliberately use the *default* config (``weak_rate_cache=True``), so they
+    load the shipped, fingerprinted ``rates/weak/nTOp_*.txt`` tables instead
+    of paying the ~1.8 s ``ComputeWeakRates`` integration on every test
+    session -- that is what keeps the default test tier cheap.
+
+    This is the one dedicated test that exercises the recompute path
+    (``RecomputeWeakRates`` falling through to ``ComputeWeakRates`` when
+    ``weak_rate_cache=False``) and checks it reproduces the cached tables:
+    both describe the same physics for the same ``[T_gamma_vec, T_nue_vec]``,
+    just one read from disk (quadratic interpolation of the saved grid) and
+    the other freshly integrated (quadratic interpolation of a freshly built
+    grid) -- so they should agree to well within a percent.
+    """
+    from pyprimat.main import PyPR
+    from pyprimat.config import PyPRConfig
+
+    r_cached = PyPR({"network": "small"})                        # loads rates/weak/*.txt
+    r_fresh  = PyPR({"network": "small", "weak_rate_cache": False})  # forces ComputeWeakRates
+
+    MeV_to_K = PyPRConfig().MeV_to_Kelvin
+    for T_MeV in [0.5, 1.0, 3.0, 10.0]:
+        T_K = T_MeV * MeV_to_K
+        for cached, fresh in ((r_cached._nTOp_frwrd, r_fresh._nTOp_frwrd),
+                              (r_cached._nTOp_bkwrd, r_fresh._nTOp_bkwrd)):
+            assert fresh(T_K) == pytest.approx(cached(T_K), rel=2e-3)

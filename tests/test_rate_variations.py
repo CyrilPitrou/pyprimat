@@ -18,6 +18,7 @@ from pyprimat import PyPR, mc_uncertainty
 
 
 @pytest.mark.slow
+@pytest.mark.solve
 def test_solve_variation():
     """Varying p_npTOdg shifts D/H; reverting p=0 restores the baseline."""
     inst = PyPR(params={"network": "small", "verbose": False})
@@ -40,6 +41,7 @@ def test_solve_variation():
 
 
 @pytest.mark.slow
+@pytest.mark.solve
 def test_mc_large_network():
     """MC uncertainty spread is positive for D/H and B10 in the large network."""
     mc = mc_uncertainty(5, ["DoH", "B10"],

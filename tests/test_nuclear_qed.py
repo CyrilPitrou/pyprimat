@@ -190,6 +190,7 @@ class TestQEDCorrectionInNetwork:
 # ---------------------------------------------------------------------------
 
 @pytest.mark.slow
+@pytest.mark.solve
 def test_solve_qed_corrections_shift_DoH():
     """nuclear_qed_corrections=True shifts D/H relative to the baseline.
 

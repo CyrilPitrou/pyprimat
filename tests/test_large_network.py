@@ -58,6 +58,7 @@ def test_large_rate_buffer_is_finite_and_bounded():
 
 @_needs_ac2024
 @pytest.mark.slow
+@pytest.mark.solve
 def test_large_solve_conserves_baryon_and_matches_medium():
     """Full large-network solve: baryon number conserved, and the light-element
     finals agree with the medium network (the heavy channels are tiny)."""
