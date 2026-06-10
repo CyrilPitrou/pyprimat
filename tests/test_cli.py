@@ -21,10 +21,12 @@ def test_cli_default_summary(capsys):
     rc = main([])
     assert rc == 0
     out = capsys.readouterr().out
-    # CLAUDE.md reference values for the default small-network run.
+    # Default small-network run, loading the shipped fingerprinted weak-rate
+    # cache (rates/weak/nTOp_*.txt).  Within the CLAUDE.md tolerances
+    # (YP 0.2469156 +/-1e-5, D/H 2.43647e-5 +/-3e-9).
     assert "Neff     = 3.04397730" in out
-    assert "YP (BBN) = 0.24691064" in out
-    assert "D/H      = 2.4365458e-05" in out
+    assert "YP (BBN) = 0.24691081" in out
+    assert "D/H      = 2.4365492e-05" in out
 
 
 def test_cli_json_matches_default_summary(capsys):
@@ -33,8 +35,8 @@ def test_cli_json_matches_default_summary(capsys):
     assert rc == 0
     results = json.loads(capsys.readouterr().out)
     assert results["Neff"]   == pytest.approx(3.043977298557919, rel=1e-12)
-    assert results["YPBBN"]  == pytest.approx(0.24691064109381858, rel=1e-12)
-    assert results["DoH"]    == pytest.approx(2.4365458170964833e-05, rel=1e-12)
+    assert results["YPBBN"]  == pytest.approx(0.24691080737348087, rel=1e-12)
+    assert results["DoH"]    == pytest.approx(2.4365492014999738e-05, rel=1e-12)
 
 
 def test_cli_omegabh2_override_changes_doh(capsys):
@@ -44,4 +46,4 @@ def test_cli_omegabh2_override_changes_doh(capsys):
     results = json.loads(capsys.readouterr().out)
     # A higher baryon density measurably increases D/H away from the
     # Omegabh2=0.022425 reference value above.
-    assert results["DoH"] != pytest.approx(2.4365458170964833e-05, rel=1e-6)
+    assert results["DoH"] != pytest.approx(2.4365492014999738e-05, rel=1e-6)

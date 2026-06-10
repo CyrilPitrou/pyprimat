@@ -138,6 +138,66 @@ def test_forward_rate_increases_with_T(rate_interpolants):
 
 
 # ---------------------------------------------------------------------------
+# Vectorised fixed-order quadrature convergence (IDEAS 5.1)
+# ---------------------------------------------------------------------------
+
+def test_gauss_legendre_converged():
+    """The fixed-order Gauss-Legendre rate quadrature is converged (IDEAS §5.1).
+
+    ComputeWeakRates replaced the per-grid-point adaptive scipy.quad with a
+    single fixed-order Gauss-Legendre rule (``_N_GL`` nodes) vectorised over the
+    whole temperature grid.  The physics-numerics gate for that change is that
+    the rates are *converged* in the node count: re-evaluating them with twice
+    as many nodes must not move Gamma_{n->p}/Gamma_{p->n} by more than 1e-5,
+    i.e. far below the 1e-4 level at which the weak physics flags move Neff/YP.
+    This pins ``_N_GL`` against an accidental reduction.
+
+    The residual ~1e-6 wiggle sits entirely in the low-temperature
+    free-neutron-decay regime, where the integrand develops a near-sharp Fermi
+    step at the decay endpoint E = Q/m_e (slow for any Gauss rule) -- and where
+    the n<->p rates no longer matter to BBN (neutrons are already frozen).  At
+    the freeze-out temperatures that *do* matter the integrand is smooth and the
+    convergence is far tighter, which is why the standard-run YP/D-H shift only
+    by ~2e-7 / ~3e-11 (see the WEAK_RATE_FORMAT_VERSION notes in weak_rates.py).
+
+    The test calls ComputeWeakRates directly (which never writes to the
+    rates/weak/ cache -- only RecomputeWeakRates does), with
+    include_nTOp_thermal=False so it exercises purely the vectorised CCR+FMCCR
+    quadrature and needs no on-disk thermal table.
+    """
+    import numpy as np
+    import pyprimat.plasma as plasma
+
+    cfg = PyPRConfig({"include_nTOp_thermal": False})
+    plasma.initialise(cfg)
+
+    # Representative photon-temperature grid [MeV] over the BBN range, with a
+    # post-decoupling neutrino ratio (the exact ratio is irrelevant to a
+    # convergence check; any smooth T_nu(T_gamma) exercises the same integrand).
+    MeV_to_K = cfg.MeV_to_Kelvin
+    Tg  = np.logspace(np.log10(cfg.T_end / MeV_to_K),
+                      np.log10(cfg.T_start / MeV_to_K), 60)
+    Tnu = Tg * (4. / 11.) ** (1. / 3.)
+
+    _, f0, b0 = wr.ComputeWeakRates([Tg, Tnu], cfg)
+
+    # Refine the Gauss-Legendre rule to 2*_N_GL nodes and recompute.
+    nodes0, weights0 = wr._GL_NODES, wr._GL_WEIGHTS
+    try:
+        wr._GL_NODES, wr._GL_WEIGHTS = np.polynomial.legendre.leggauss(2 * wr._N_GL)
+        _, f1, b1 = wr.ComputeWeakRates([Tg, Tnu], cfg)
+    finally:
+        wr._GL_NODES, wr._GL_WEIGHTS = nodes0, weights0
+
+    # Forward rate is strictly positive everywhere: pure relative tolerance.
+    assert np.max(np.abs(f1 - f0) / np.abs(f0)) < 1e-5
+    # Backward rate passes through ~0 at low T; only compare where it is an
+    # appreciable fraction of the forward rate.
+    mask = np.abs(b0) > 1e-6 * np.abs(f0).max()
+    assert np.max(np.abs(b1[mask] - b0[mask]) / np.abs(b0[mask])) < 1e-5
+
+
+# ---------------------------------------------------------------------------
 # RecomputeWeakRates — recompute path vs the fingerprinted cache (IDEAS 7.1)
 # ---------------------------------------------------------------------------
 
