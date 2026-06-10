@@ -33,6 +33,11 @@ all = [
     "numdifftools",
     "vegas",
 ]
+notebooks = [
+    "matplotlib",
+    "pandas",
+    "papermill",
+]
 
 [tool.setuptools]
 packages = ["pyprimat"]
