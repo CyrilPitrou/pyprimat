@@ -78,9 +78,14 @@ class PyPR:
             self._t0 = time.time()
 
         # ------------------------------------------------------------------
-        # 2. Initialise thermodynamics module (loads QED/neutrino tables)
+        # 2. Initialise thermodynamics (loads QED/neutrino tables)
         # ------------------------------------------------------------------
-        PyPRthermo.initialise(cfg)
+        # A per-instance Plasma object (rather than the module-level default)
+        # so that several PyPR instances coexisting in the same process
+        # (e.g. QED_corrections=True/False comparisons, MC workers) each
+        # carry their own QED/electron-thermo tables without overwriting
+        # one another's state.
+        self.plasma = PyPRthermo.Plasma(cfg)
 
         # ------------------------------------------------------------------
         # 3. Build EDE energy-density function if fEDE > 0
@@ -116,14 +121,14 @@ class PyPR:
         """Build the EDE energy-density function from cfg.fEDE/zcEDE/wnEDE.
 
         Sets self._rho_EDE(Tg) to a callable if fEDE > 0, else None.
-        Must be called after PyPRthermo.initialise() since it evaluates rho_g.
+        Must be called after self.plasma is set, since it evaluates rho_g.
         """
         cfg = self.cfg
         if cfg.fEDE == 0.:
             self._rho_EDE = None
             return
 
-        thermo  = PyPRthermo
+        thermo  = self.plasma
         acEDE   = 1. / (1. + cfg.zcEDE)
         amaxEDE = acEDE * (4. / (3. * cfg.wnEDE - 1.))**(1. / (3. * cfg.wnEDE + 3.))
         TmaxEDE = cfg.T0CMB / amaxEDE / cfg.MeV_to_Kelvin   # [MeV]
@@ -148,7 +153,7 @@ class PyPR:
     # Friedmann expansion rate
     def _Hubble(self, Tg, Tnue, Tnumu, Tnutau):
         cfg     = self.cfg
-        thermo  = PyPRthermo
+        thermo  = self.plasma
         rho_pl  = thermo.rho_g(Tg) + thermo.rho_e(Tg) - thermo.PQEDofT(Tg) + Tg * thermo.dPQEDdT(Tg)
         rho_3nu = thermo.rho_nu(Tnue) + thermo.rho_nu(Tnumu) + thermo.rho_nu(Tnutau)
         rho_tot = rho_pl + rho_3nu + thermo.rho_nu_extra(Tg)
@@ -194,7 +199,7 @@ class PyPR:
         ``_setup_derived_cosmo``, ``_setup_weak_rates``, and ``solve()``.
         """
         cfg    = self.cfg
-        thermo = PyPRthermo
+        thermo = self.plasma
 
         Tstartcosmo  = cfg.T_start_cosmo / cfg.MeV_to_Kelvin
         Tstart = cfg.T_start / cfg.MeV_to_Kelvin   # [MeV]
@@ -294,7 +299,7 @@ class PyPR:
                            + 10.*cfg.alphaem**(3./2.) * np.sqrt(np.pi/3.) / np.pi**2)
                 _sbar_ref = _ratio3 * (4.*np.pi**2 / 45.)
             else:
-                _sbar_ref = 11.*np.pi**2 / 45.   # = thermo._sigma_inf
+                _sbar_ref = 11.*np.pi**2 / 45.   # = plasma._sigma_inf
 
             def _T_nu_inst(Tg):
                 return (thermo.spl(Tg) / _sbar_ref)**(1. / 3.)
@@ -429,7 +434,7 @@ class PyPR:
                     extra_int = Inty3_mu + y_sz * Inty3_sz
                     # rho_nu(Tnu) = Nnu * 7π⁴/120 × (kTnu)⁴/(2π²) × prefactor,
                     # so ρ_νSD/rho_nu = Nnu × extra_int / (Nnu × Inty3_FD).
-                    return PyPRthermo.rho_nu(Tnu) * extra_int / Inty3_FD
+                    return self.plasma.rho_nu(Tnu) * extra_int / Inty3_FD
 
                 self._rho_nu_SD = _rho_nu_SD
 
@@ -675,7 +680,7 @@ class PyPR:
         Requires self._Tg_vec, self._Tnu_vec to be set.
         """
         cfg    = self.cfg
-        thermo = PyPRthermo
+        thermo = self.plasma
 
         # N_eff
         def N_eff(Tg, Tnue, Tnumu, Tnutau):
