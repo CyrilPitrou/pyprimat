@@ -50,7 +50,11 @@ MyOptions = {
     "nTOp_Born_approximation":             False,
     "sampling_nTOp_thermal":     100,
     "spectral_distortions":      False,
-    "nuclear_qed_corrections":   True
+    # Keep False for the standard validation run: the CLAUDE.md reference
+    # values (YP, D/H) were produced without the radiative-capture QED
+    # corrections, so enabling them shifts D/H outside the validation
+    # tolerance (set True only for dedicated QED-correction studies).
+    "nuclear_qed_corrections":   False
 }
 
 # ---------------------------------------------------------------------------

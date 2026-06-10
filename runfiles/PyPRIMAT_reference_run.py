@@ -66,6 +66,10 @@ MyOptions = {
     # Omegabh2
     "Omegabh2":                   omegabh2,
 
+    # Standard physics: the reference values are defined without the
+    # radiative-capture QED corrections.
+    "nuclear_qed_corrections":    False,
+
     # Output
     "output_time_evolution":      False,
 }
