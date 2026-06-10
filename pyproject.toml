@@ -16,6 +16,7 @@ requires-python = ">=3.10"
 dependencies = [
     "numpy",
     "scipy",
+    "joblib",
 ]
 
 [project.optional-dependencies]

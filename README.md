@@ -28,12 +28,12 @@ pip install -e ".[recommended]"
 ## Quick start
 
 ```python
-from PyPR import PyPR
+from pyprimat import PyPR
 
 result = PyPR({"Omegabh2": 0.022425}).solve()
 
-print(f"YP  (BBN) = {result['YPBBN']:.6f}")   # ~0.246915
-print(f"D/H = {result['DoH']:.5f}") # ~2.43647
+print(f"YP  (BBN) = {result['YPBBN']:.6f}")  # ~0.246915
+print(f"D/H = {result['DoH']:.5e}")          # ~2.43647e-05
 ```
 
 The constructor accepts an optional parameter dict that overrides any default in `pyprimat/config.py`. All keys are optional.

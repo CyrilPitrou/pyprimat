@@ -170,7 +170,7 @@ class PyPRConfig:
     Usage::
 
         cfg = PyPRConfig()                    # all defaults
-        cfg = PyPRConfig({"Omegabh2": 0.022, "is_small": False})
+        cfg = PyPRConfig({"Omegabh2": 0.022, "network": "medium"})
 
     After construction every key in ``DEFAULT_PARAMS`` is an attribute, plus
     all physical constants listed below.
