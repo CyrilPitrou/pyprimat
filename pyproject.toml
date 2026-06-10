@@ -19,6 +19,9 @@ dependencies = [
     "joblib",
 ]
 
+[project.scripts]
+pyprimat = "pyprimat.cli:main"
+
 [project.optional-dependencies]
 recommended = [
     "numba",
