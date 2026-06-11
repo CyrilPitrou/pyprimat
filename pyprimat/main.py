@@ -61,7 +61,7 @@ class PyPR:
         Run-time parameters overriding defaults (see ``config.DEFAULT_PARAMS``).
     extra_rho : list of callable, optional
         Extra contributions to the total energy density entering the
-        Friedmann equation (IDEAS.md §6.1).  Each element is a function
+        Friedmann equation.  Each element is a function
         ``rho(Tg) -> MeV^4`` of the photon temperature ``Tg`` [MeV],
         summed into ``rho_tot`` by :meth:`_Hubble`.  This is the generic
         plug-in point for "dark sector" components; Early Dark Energy
@@ -101,7 +101,7 @@ class PyPR:
         self.plasma = PyPRthermo.Plasma(cfg)
 
         # ------------------------------------------------------------------
-        # 3. Pluggable extra energy-density components (IDEAS.md §6.1)
+        # 3. Pluggable extra energy-density components
         # ------------------------------------------------------------------
         self._extra_rho = list(extra_rho) if extra_rho is not None else []
         self._setup_EDE()
@@ -135,8 +135,8 @@ class PyPR:
         """Build the EDE energy-density function from cfg.fEDE/zcEDE/wnEDE.
 
         If fEDE > 0, appends a ``rho_EDE(Tg) -> MeV^4`` callable to
-        ``self._extra_rho`` (the generic extra-energy-density plug-in list,
-        IDEAS.md §6.1); otherwise a no-op.  Must be called after self.plasma
+        ``self._extra_rho`` (the generic extra-energy-density plug-in list);
+        otherwise a no-op.  Must be called after self.plasma
         and self._extra_rho are set, since it evaluates rho_g and appends to
         that list.
         """
@@ -227,7 +227,7 @@ class PyPR:
         #          spectral distortion, extra neutrino energy density)
         # ------------------------------------------------------------------
         # The neutrino sector is encapsulated in a NeutrinoHistory object
-        # (pyprimat.neutrino_history, IDEAS.md §6.2): NEVOTable for incomplete
+        # (pyprimat.neutrino_history): NEVOTable for incomplete
         # decoupling, InstantaneousDecoupling otherwise, optionally decorated
         # with the analytic μ+y spectral distortion (AnalyticDistortion).  It
         # exposes the three flavour temperature functions, the NEVO heating

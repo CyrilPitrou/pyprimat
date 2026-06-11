@@ -29,48 +29,31 @@ DEFAULT_PARAMS: dict = {
     "debug":                 False, #If you want the debug messages to be printed, set this to True.  This is separate from the verbose, which controls the printing of general messages from the code.
     "numerical_precision":        1.e-7, # for finite differences (solve_ivp). 1e-6 should be enough.
     "numba_installed":                 True,  # will be re-checked at runtime. Allows just-in-time compilation for faster execution.
-    #Legacy should be removed
     "analytic_entropy_derivative": True, # Use analytic derivative of entropy for plasma thermodynamics. If False, the code will compute the derivative numerically at runtime (using numdifftools if available, or finite differences as a fallback).  This is much slower, but allows testing the impact of numerical vs. analytic derivatives on the final BBN results.
     "numdiff_installed":               True,  # will be re-checked at runtime and used only if analytic_entropy_derivative is False.
 
     # ---- physics settings ------------------------------------------------
     # ---- neutrino decoupling ----------------------
-    "incomplete_decoupling":      True, # Whether to use non-instantaneous (incomplete) neutrino decoupling.
-    # True (default) = full treatment: neutrino temperatures are read from the pre-computed NEVO table and differ slightly from the instantaneous-decoupling prediction due to partial reheating by e+e- annihilations.  
-    # False = instantaneous (complete) decoupling approximation: the three neutrino flavour temperatures are all set equal to the instantaneous-decoupling value derived from EM entropy conservation, Tν/Tγ = (4/11)^(1/3), and the neutrino energy density is fixed to the free-gas value with that temperature ratio.  
-    # Note: the NEVO table was itself computed with incomplete decoupling, so the combination incomplete_decoupling=False with spectral_distortions=True is physically inconsistent and should be used only for diagnostic purposes.
-    
+    "incomplete_decoupling":      True, # True: non-instantaneous neutrino decoupling, read from the pre-computed NEVO table.
+    # False: instantaneous decoupling (Tnu/Tgamma fixed by EM entropy conservation; see neutrino_history.InstantaneousDecoupling).
+    # incomplete_decoupling=False with spectral_distortions=True (NEVO-based) is physically inconsistent and rejected; see PyPRConfig validation.
+
     # ---- electromagnetic plasma -------------------
     "QED_corrections":            True,  # Whether to include QED interaction corrections to the EM plasma equation of state.
-    "tabulate_electron_thermo":   True,  # pre-tabulate rho_e/p_e and derivatives once, then interpolate (faster background solve)
-    "n_electron_table":           2000,  # number of log-spaced grid points for the electron-thermo tables
-    "recompute_electron_thermo":  False, # force recomputation of the electron-thermo table even if a cache file exists. 
-    "save_electron_thermo":       False, # Set True only to deliberately refresh the shipped table.
+    "n_electron_table":           2000,  # number of log-spaced grid points for the electron-thermo (rho_e/p_e and derivatives) tables
+    "recompute_electron_thermo":  False, # If False, load rates/plasma/electron_thermo_cache.txt when its fingerprint matches; otherwise (or if True) recompute and overwrite it. See plasma.Plasma._build_electron_tables.
     "recompute_qed_corrections":  False, # True: always compute analytically and overwrite rates/plasma/QED_*.txt; False: load from files if present, otherwise compute on the fly without saving
 
     # ---- spectral distortions ---------------------
-    "spectral_distortions":       False, #Spectral distortions: corrections to n<->p weak rates from deviations of the neutrino phase-space distribution from a perfect Fermi-Dirac.
-    # Two sub-modes (selected by analytic_distortions):
-    #
-    #   analytic_distortions=False (default): uses the full NEVO spectrum file
-    #     (86-column version, not _col_1_7).  Requires incomplete_decoupling=True.
-    #     The distortion is read directly from the NEVO table columns 6–85.
-    #
-    #   analytic_distortions=True: parameterises the distortion analytically as
-    #     a μ-type (chemical-potential shift) and/or y-type (SZ-like) distortion,
-    #     controlled by delta_xi_nu and y_SZ.  Can be used with or without
-    #     incomplete_decoupling.  Also adds the extra neutrino energy density
-    #     ρ_νSD to the Friedmann equation via closed-form integrals.
+    "spectral_distortions":       False, # Corrections to n<->p weak rates from deviations of the neutrino phase-space distribution from a perfect Fermi-Dirac.
+    # Two sub-modes, selected by analytic_distortions (see neutrino_history.py):
+    #   False (default): read the distortion from the full NEVO spectrum file
+    #     (86-column, not _col_1_7); requires incomplete_decoupling=True.
+    #   True: analytic mu-type + y-type (SZ) distortion controlled by
+    #     delta_xi_nu/y_SZ, also contributing rho_nuSD to the Friedmann equation.
     "analytic_distortions":       False,
-    # δξ_ν: shift of the reduced chemical potential ξ = μ/T for the μ-type
-    # distortion.  The neutrino distribution becomes
-    #   f_ν(y) → 1/(e^{y-(ξ+δξ)}+1)  (from 1/(e^{y-ξ}+1))
-    # For antineutrinos the chemical potential flips sign. The same chemical potential shift is applied to all three neutrino flavours (ν_e, ν_μ, ν_τ).  
-    "delta_xi_nu":                0.,
-    # YSZ: amplitude of the y-type (Sunyaev–Zel'dovich-like) distortion,
-    #   δf^SZ(y) = (1/y²) d/dy(y⁴ df_FD/dy)
-    # This is the leading-order spectral shape produced by heating a Fermi-Dirac.
-    "y_SZ":                       0.,
+    "delta_xi_nu":                0., # Amplitude of the mu-type (chemical-potential shift) distortion, same for all three flavours; see neutrino_history.AnalyticDistortion.
+    "y_SZ":                       0., # Amplitude of the y-type (Sunyaev-Zel'dovich-like) distortion; see neutrino_history.AnalyticDistortion.
 
     # ---- fundamental constants (overridable for sensitivity studies) --------
     "GN":                         6.70883e-45,   # Newton's constant [MeV^-2]
@@ -80,36 +63,14 @@ DEFAULT_PARAMS: dict = {
     "n_temperature_table":        2000,
 
     # ---- n <--> p weak rates ----------------------------------------------
-    # Fingerprinted self-validating cache (IDEAS.md §1.2): rates/weak/nTOp_*.txt
-    # carry a header recording the config fields that affect their content
-    # (see weak_rates._weak_rate_fingerprint).  RecomputeWeakRates loads the
-    # cache only if its fingerprint matches the current config, and otherwise
-    # recomputes from scratch (~2 s) -- so e.g. spectral_distortions=True or a
-    # non-default sampling_nTOp/munuOverTnu/incomplete_decoupling can never
-    # silently fall back to a stale table.  There is no longer a
-    # "compute_nTOp" switch: loading is always either valid or bypassed.
+    # rates/weak/nTOp_*.txt carry a fingerprint header recording the config
+    # fields that affect their content; RecomputeWeakRates loads the cache
+    # only if its fingerprint matches, and otherwise recomputes from scratch
+    # (~2 s).  See weak_rates.RecomputeWeakRates for the full cache logic.
     "weak_rate_cache":            True,  # If False, never load the cache (always recompute); save_nTOp still controls whether the result is written back.
-    # save_nTOp/save_nTOp_thermal default to False rather than the "always
-    # save" behaviour one might expect from a cache: with a single shared
-    # cache file per quantity, a recompute triggered by a *non-default*
-    # configuration (e.g. a test using nTOp_Born_approximation=True or a
-    # one-off sampling_nTOp=500 study) would otherwise overwrite the tracked
-    # rates/weak/*.txt with a non-default fingerprint, leaving the working
-    # tree dirty and causing the *next* default-config run to miss the cache
-    # too.  The standard-SM runfiles (PyPRIMAT_run.py) explicitly set
-    # save_nTOp=True so the shipped tables stay refreshed for that
-    # configuration; set it yourself when intentionally regenerating a cache
-    # for a specific configuration (see generate_table_CLASS_CAMB.py).
-    "save_nTOp":                  False, # If True, the computed n<->p rates are saved to rates/weak/ with a fingerprint header.
+    "save_nTOp":                  False, # If True, the computed n<->p rates are saved to rates/weak/ with a fingerprint header (see weak_rates.RecomputeWeakRates for why this defaults to False).
     "sampling_nTOp":              200,   # total points in the single n<->p rate grid
-    "include_nTOp_thermal":       True,  # If True the thermal corrections are used in the rate computation.
-    # Thermal corrections (rates/weak/{nTOp,pTOn}_thermal_corrections.txt) use
-    # the same fingerprint header, but a fingerprint mismatch on an *existing*
-    # file is only reported (not auto-recomputed): regenerating this term is a
-    # multi-minute Monte-Carlo integration (see weak_rates.ComputeWeakRates),
-    # too slow to trigger automatically on every flag change.  Only a missing
-    # cache file triggers a recompute.  Set save_nTOp_thermal=True (after
-    # deleting the stale files, if any) to refresh them for the current config.
+    "include_nTOp_thermal":       True,  # If True the thermal corrections are used in the rate computation (see weak_rates._L_CCRTh_interpolants for the cache rules).
     "save_nTOp_thermal":          False, #If True, the computed thermal n<->p rates are saved to rates/weak/ with a fingerprint header.
     "sampling_nTOp_thermal":      100,
     "nTOp_Born_approximation":    False, #If True the crude Born rate is used (off by a few percents, hence should be used only for debugging or fair comparison with other codes). 
@@ -118,12 +79,10 @@ DEFAULT_PARAMS: dict = {
     "std_tau_n":                  0.5,    # 1σ uncertainty on tau_n [s], used for MC sampling
         
     # ---- finite-temperature weak-rate radiative corrections ----------------
-    # Accuracy knobs for the thermal n<->p radiative correction integral, only
-    # used when the thermal-correction cache must be recomputed (missing
-    # rates/weak/{nTOp,pTOn}_thermal_corrections.txt; see weak_rates.nTOp_rate_
-    # and weak_rates.ComputeWeakRates).
-    # The integral is evaluated with the `vegas` Monte-Carlo library when
-    # available; otherwise it falls back to scipy.integrate.dblquad.
+    # Accuracy knobs for the thermal n<->p radiative correction integral, used
+    # only when the thermal-correction cache must be recomputed (see
+    # weak_rates._L_CCRTh_interpolants).  Evaluated with the `vegas`
+    # Monte-Carlo library when available, else scipy.integrate.dblquad.
     "vegas_n_eval":               20000,   # vegas: evaluations per iteration
     "vegas_n_itn":                20,      # vegas: number of iterations
     "epsrel_thermal":             1.e-2,   # dblquad fallback: relative tolerance
@@ -180,10 +139,9 @@ DEFAULT_PARAMS: dict = {
     # ---- cosmological inputs ----------------------------------------------
     "Omegabh2":                   0.022425,
     "DeltaNeff":                  0.,
-    "munuOverTnu":                0., #Reduced chemical potential of neutrinos (same for all flavours, ν_e, ν_μ, ν_τ).  The neutrino distribution becomes f_ν(y) → 1/(e^{y-(ξ+δξ)}+1)  (from 1/(e^{y-ξ}+1)). 
-    # Note: the combination munuOverTnu != 0 with incomplete_decoupling=False is physically inconsistent since NEVO tables were obtained assuming it vanishes.
-    # To explore such physics it is preferable to work with full decoupling of neutrinos (incomplete_decoupling=False).
-     
+    "munuOverTnu":                0., # Reduced chemical potential xi = mu/T of neutrinos (same for all flavours, nu_e, nu_mu, nu_tau).
+    # munuOverTnu != 0 with incomplete_decoupling=True is physically inconsistent (the NEVO table assumes it vanishes); use incomplete_decoupling=False to explore non-zero values.
+
     # ---- Early Dark Energy ------------------------------------------------
     "fEDE":                       0.,     # EDE fraction at peak; 0 = disabled
     "zcEDE":                      1.e8,   # redshift of EDE peak

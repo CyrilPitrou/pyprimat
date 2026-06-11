@@ -1,15 +1,14 @@
 """
-Notebook smoke test (IDEAS.md §8.5).
+Notebook smoke test.
 
 Executes the two *fast* demonstration notebooks end-to-end with
 ``papermill`` and checks they run without raising:
 
-* ``AbundanceEvolution.ipynb`` -- explicitly called out as "fast" in
-  IDEAS.md §8 (small/medium/large solves, ~5 s total).
+* ``AbundanceEvolution.ipynb`` -- small/medium/large solves, ~5 s total.
 * ``CompareSmallNetworks.ipynb`` -- two small-network solves (~4 s total).
 
 This is a regression guard against import-path bugs (the notebooks still
-imported the pre-reorganisation ``pypr`` package name -- IDEAS.md §1.1/§8.5)
+imported the pre-reorganisation ``pypr`` package name)
 and against API drift in ``pyprimat.main.PyPR``: a renamed/removed attribute
 that the notebooks rely on (``r.A``, ``r.abundance_names``, ``r[name](t)``,
 ...) makes one of these cells raise, and papermill re-raises that as a

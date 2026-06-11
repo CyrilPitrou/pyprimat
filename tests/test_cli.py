@@ -1,5 +1,5 @@
 """
-Tests for the ``pyprimat`` console-script CLI (IDEAS.md §2.2).
+Tests for the ``pyprimat`` console-script CLI.
 
 ``pyprimat.cli.main()`` is invoked in-process (no subprocess) with an
 explicit ``argv`` list, which is exactly what the ``pyprimat`` console

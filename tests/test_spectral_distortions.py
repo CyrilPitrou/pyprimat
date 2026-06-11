@@ -5,7 +5,7 @@ from pyprimat.main import PyPR
 
 # Each test below runs two full PyPR().solve() calls with
 # spectral_distortions on/off (a fingerprint mismatch against the shipped
-# weak-rate cache also triggers a recompute) -- "solve" tier (IDEAS.md sec 7.2).
+# weak-rate cache also triggers a recompute) -- "solve" tier.
 pytestmark = [pytest.mark.slow, pytest.mark.solve]
 
 

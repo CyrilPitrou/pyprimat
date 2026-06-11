@@ -1,12 +1,15 @@
-npTOdg
-dpTOHe3g, dpTOHe3g_parthenope.txt
-ddTOHe3n, ddTOHe3n_parthenope.txt
-ddTOtp, ddTOtp_parthenope.txt
-tpTOag
-tdTOan
-taTOLi7g
-He3nTOtp
-He3dTOap
-He3aTOBe7g
-Be7nTOLi7p
-Li7pTOaa
+# Small (12-reaction) network using thermonuclear rates extracted from the
+# Parthenope 3.0 Fortran source (parthenope3.0.f), default PIS2020 selection.
+# Each entry maps a reaction to its dedicated *_parthenope3.0.txt rate table.
+npTOdg, npTOdg_parthenope3.0.txt
+dpTOHe3g, dpTOHe3g_parthenope3.0.txt
+ddTOHe3n, ddTOHe3n_parthenope3.0.txt
+ddTOtp, ddTOtp_parthenope3.0.txt
+tpTOag, tpTOag_parthenope3.0.txt
+tdTOan, tdTOan_parthenope3.0.txt
+taTOLi7g, taTOLi7g_parthenope3.0.txt
+He3nTOtp, He3nTOtp_parthenope3.0.txt
+He3dTOap, He3dTOap_parthenope3.0.txt
+He3aTOBe7g, He3aTOBe7g_parthenope3.0.txt
+Be7nTOLi7p, Be7nTOLi7p_parthenope3.0.txt
+Li7pTOaa, Li7pTOaa_parthenope3.0.txt

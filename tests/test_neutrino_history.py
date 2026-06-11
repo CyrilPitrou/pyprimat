@@ -1,4 +1,4 @@
-"""Tests for the pluggable neutrino-sector background (IDEAS.md §6.2).
+"""Tests for the pluggable neutrino-sector background.
 
 ``pyprimat.neutrino_history.make_neutrino_history`` assembles a
 ``NeutrinoHistory`` (temperatures, heating, spectral distortion, extra energy

@@ -70,28 +70,35 @@ def test_spl_positive():
         assert thermo.spl(T) > 0
 
 
-def test_electron_thermo_cache_not_clobbered_by_nondefault_fingerprint():
-    """A non-default fingerprint must not overwrite the shipped electron cache.
+def test_electron_thermo_cache_refreshed_on_fingerprint_mismatch():
+    """A fingerprint mismatch triggers a recompute that overwrites the cache
+    with the new configuration's fingerprint (electron-thermo recompute is
+    cheap, ~0.7 s, so the cache is always kept consistent with the last run --
+    unlike the more expensive weak-rate cache, see weak_rates.RecomputeWeakRates).
 
-    The shipped rates/plasma/electron_thermo_cache.txt is fingerprinted on
-    (n_electron_table, T_start_cosmo_MeV) with the defaults.  Building a Plasma
-    with a different T_start_cosmo_MeV recomputes the table in memory, but with
-    save_electron_thermo=False (the default) it must NOT rewrite the tracked
-    file -- otherwise e.g. the T_start_cosmo_MeV=100 reference run would churn
-    the shipped table and perturb later default runs (IDEAS.md §8.2).
+    The shipped rates/plasma/electron_thermo_cache.txt is restored afterwards
+    so this test does not leave the working tree dirty.
     """
     import os
-    from pyprimat.plasma import Plasma
+    from pyprimat.cache_utils import fingerprint_hash, read_cache_fingerprint_hash
+    from pyprimat.plasma import Plasma, ELECTRON_THERMO_FORMAT_VERSION
 
     cfg = PyPRConfig()
     cache_path = os.path.join(cfg.data_dir, "rates", "plasma",
                               "electron_thermo_cache.txt")
     before = open(cache_path, "rb").read()
 
-    # Different fingerprint -> guaranteed recompute path inside Plasma.__init__.
-    Plasma(PyPRConfig({"T_start_cosmo_MeV": 100.0}))
+    try:
+        # Different fingerprint -> guaranteed recompute path inside Plasma.__init__.
+        cfg_alt = PyPRConfig({"T_start_cosmo_MeV": 100.0})
+        Plasma(cfg_alt)
 
-    assert open(cache_path, "rb").read() == before, (
-        "electron_thermo_cache.txt was modified by a non-default run "
-        "(save_electron_thermo should gate the write)"
-    )
+        expected_hash = fingerprint_hash({
+            "format_version":   ELECTRON_THERMO_FORMAT_VERSION,
+            "n_electron_table": cfg_alt.n_electron_table,
+            "T_start_cosmo_MeV": cfg_alt.T_start_cosmo_MeV,
+        })
+        assert read_cache_fingerprint_hash(cache_path) == expected_hash
+    finally:
+        with open(cache_path, "wb") as f:
+            f.write(before)

@@ -37,7 +37,7 @@ pytest tests/test_plasma.py -v         # a single file, verbose
 
 ## Markers
 
-Three speed tiers (IDEAS.md sec 7.2):
+Three speed tiers:
 
 | Marker | Meaning |
 |--------|---------|
@@ -60,12 +60,11 @@ this single default-precision solve -- a second solve with different flags, a
 Monte-Carlo loop, etc. -- is tagged `solve` (and `solved_large`, used only by
 `test_regression.py`, is entirely in the `slow`/`solve`/`reference` tiers).
 
-**Deferred (IDEAS.md sec 7.3)**: replacing `solve`-tier tests with
-era-level tests (e.g. seeding the LT era directly via Saha, instead of
-integrating the HT+MT eras first) would shrink the `solve` tier further, but
-needs the era integrations to be exposed as callable units first
-(IDEAS.md sec 4.6, part of the Phase 4 architecture work) -- not yet done, so
-the `solve` tier still runs full three-era solves.
+**Deferred**: replacing `solve`-tier tests with era-level tests (e.g.
+seeding the LT era directly via Saha, instead of integrating the HT+MT eras
+first) would shrink the `solve` tier further, but needs the era integrations
+to be exposed as callable units first (a future architecture phase) -- not
+yet done, so the `solve` tier still runs full three-era solves.
 
 ## Structure
 

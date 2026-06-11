@@ -1,5 +1,5 @@
 """
-"pip install" smoke test (IDEAS.md §2/§7): build a wheel, install it in a
+"pip install" smoke test: build a wheel, install it in a
 clean virtual environment, and run a small BBN solve.
 
 Why this test exists
@@ -8,7 +8,7 @@ The editable install used during development (``pip install -e .`` / running
 straight from a git checkout) resolves ``rates/`` relative to the source tree
 no matter how the path is computed, so a bug in the package-data path
 resolution (e.g. the stale ``../rates`` left over from the package
-reorganisation, IDEAS.md §1.1) is invisible there.  It only shows up once the
+reorganisation) is invisible there.  It only shows up once the
 package is installed as a *wheel* into ``site-packages`` -- a different
 directory layout entirely.  Building the wheel also exercises the
 ``[tool.setuptools.package-data]`` declaration in ``pyproject.toml``: if a

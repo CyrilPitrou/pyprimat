@@ -191,8 +191,8 @@ class Plasma:
       ``cfg.QED_corrections`` is False).
     - :meth:`rho_e`, :meth:`drho_e_dT`, :meth:`p_e`, :meth:`dp_e_dT`: e±
       energy density / pressure and their Tγ-derivatives [MeV⁴ / MeV³],
-      dispatching to a pre-built cubic interpolant when
-      ``cfg.tabulate_electron_thermo`` is True.
+      dispatching to a pre-built cubic interpolant (see
+      :meth:`_build_electron_tables`).
     - :meth:`rho_nu_extra`, :meth:`rho_SM`, :meth:`p_SM`, :meth:`spl`,
       :meth:`spl_and_dspl_dT`, :meth:`dspl_dT`, :meth:`T_nu_decoupling`:
       composite quantities built from the above plus the cfg-independent
@@ -245,9 +245,8 @@ class Plasma:
         self.dPQEDdT   = None   # d(δP)/dTγ [MeV³]
         self.d2PQEDdT2 = None   # d²(δP)/dTγ² [MeV²]
 
-        # Electron-thermodynamics interpolants (set by
-        # _build_electron_tables when cfg.tabulate_electron_thermo is True;
-        # left as None to fall through to the exact quad-based methods).
+        # Electron-thermodynamics interpolants, built by
+        # _build_electron_tables below (placeholders until that call returns).
         self._rho_e_tab     = None
         self._p_e_tab       = None
         self._drho_e_dT_tab = None
@@ -489,32 +488,21 @@ class Plasma:
         The computed arrays are stored in ``rates/plasma/electron_thermo_cache.txt``
         (one row per temperature, columns: T ρ_e p_e dρ_e/dT dp_e/dT) so that
         subsequent runs load from disk instead of repeating the ~8000 quad
-        calls (~0.7 s).  The file carries a fingerprint header (IDEAS.md §1.2,
-        see cache_utils) recording ``n_electron_table`` and
+        calls (~0.7 s).  The file carries a fingerprint header (see
+        cache_utils) recording ``n_electron_table`` and
         ``T_start_cosmo_MeV`` -- the two config entries that determine the grid
         -- so a stale cache (e.g. left over from a run with a different
         ``n_electron_table``) is detected and rebuilt automatically.  Set
         ``cfg.recompute_electron_thermo = True`` to force a fresh computation
-        regardless of the fingerprint.
-
-        The recomputed table is written back to disk only when
-        ``cfg.save_electron_thermo`` is True (default False); otherwise it is
-        used in memory but the tracked cache file is left untouched, so a run
-        with a non-default fingerprint (e.g. ``T_start_cosmo_MeV != 40``) does
-        not silently churn the shipped table (IDEAS.md §8.2, mirroring
-        ``save_nTOp`` for the weak-rate cache).
-
-        If ``cfg.tabulate_electron_thermo`` is False this function does nothing
-        and the exact quad path is used at every call.
+        regardless of the fingerprint.  Whenever the table is recomputed
+        (fingerprint mismatch, missing file, or ``recompute_electron_thermo``)
+        it is written back to ``rates/plasma/electron_thermo_cache.txt`` with
+        the current fingerprint, so the cache is always self-consistent with
+        the configuration that last ran.
 
         Sets ``self._rho_e_tab``, ``self._p_e_tab``, ``self._drho_e_dT_tab``,
-        ``self._dp_e_dT_tab`` (or leaves them ``None``).
+        ``self._dp_e_dT_tab``.
         """
-        if not cfg.tabulate_electron_thermo:
-            self._rho_e_tab = self._p_e_tab = None
-            self._drho_e_dT_tab = self._dp_e_dT_tab = None
-            return
-
         cache_path = os.path.join(cfg.data_dir, "rates", "plasma",
                                   "electron_thermo_cache.txt")
 
@@ -561,20 +549,16 @@ class Plasma:
         self._dp_e_dT_tab   = interp1d(grid, dp_e_dT_arr,   kind='cubic',
                                   bounds_error=False, fill_value="extrapolate")
 
-        # Save to disk for future runs -- but only when explicitly requested
-        # (cfg.save_electron_thermo, default False).  Otherwise a run whose
-        # fingerprint differs from the shipped cache (e.g. a non-default
-        # T_start_cosmo_MeV) would silently overwrite the tracked
-        # electron_thermo_cache.txt; see config.py / IDEAS.md §8.2.
-        if cfg.save_electron_thermo:
-            try:
-                write_cache_with_fingerprint(
-                    cache_path, fp,
-                    [grid, rho_e_arr, p_e_arr, drho_e_dT_arr, dp_e_dT_arr],
-                    col_header='grid rho_e p_e drho_e_dT dp_e_dT')
-            except Exception as exc:
-                import warnings
-                warnings.warn(f"[plasma] Could not write electron-thermo cache: {exc}")
+        # Save to disk so future runs with the same fingerprint can load
+        # instead of recomputing.
+        try:
+            write_cache_with_fingerprint(
+                cache_path, fp,
+                [grid, rho_e_arr, p_e_arr, drho_e_dT_arr, dp_e_dT_arr],
+                col_header='grid rho_e p_e drho_e_dT dp_e_dT')
+        except Exception as exc:
+            import warnings
+            warnings.warn(f"[plasma] Could not write electron-thermo cache: {exc}")
 
         if cfg.verbose:
             print(f"[init]  Electron-thermo tables built ({cfg.n_electron_table} points).")
@@ -588,8 +572,8 @@ class Plasma:
 
         For T < me/30 the contribution is exponentially suppressed and
         returned as exactly 0 (see ``_ELEC_THERMO_LOWT_RATIO``).
-        Uses a pre-built cubic interpolant when available, otherwise falls
-        back to numerical quadrature.
+        Uses the pre-built cubic interpolant from
+        :meth:`_build_electron_tables`.
 
         Parameters
         ----------
@@ -605,8 +589,6 @@ class Plasma:
         -------
         >>> p.rho_e(0.511)   # at Tγ ≃ me, e± contribution is comparable to photons
         """
-        if self._rho_e_tab is None:
-            return self._rho_e_exact(Tg)
         if Tg < self._cfg.me / _ELEC_THERMO_LOWT_RATIO:
             return 0.0
         return float(self._rho_e_tab(Tg))
@@ -624,8 +606,6 @@ class Plasma:
         float
             dρ_e/dTγ in MeV³.
         """
-        if self._drho_e_dT_tab is None:
-            return self._drho_e_dT_exact(Tg)
         if Tg < self._cfg.me / _ELEC_THERMO_LOWT_RATIO:
             return 0.0
         return float(self._drho_e_dT_tab(Tg))
@@ -643,8 +623,6 @@ class Plasma:
         float
             p_e in MeV⁴.
         """
-        if self._p_e_tab is None:
-            return self._p_e_exact(Tg)
         if Tg < self._cfg.me / _ELEC_THERMO_LOWT_RATIO:
             return 0.0
         return float(self._p_e_tab(Tg))
@@ -662,8 +640,6 @@ class Plasma:
         float
             dp_e/dTγ in MeV³.
         """
-        if self._dp_e_dT_tab is None:
-            return self._dp_e_dT_exact(Tg)
         if Tg < self._cfg.me / _ELEC_THERMO_LOWT_RATIO:
             return 0.0
         return float(self._dp_e_dT_tab(Tg))

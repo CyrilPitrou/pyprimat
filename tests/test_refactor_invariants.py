@@ -66,7 +66,7 @@ def test_extra_rho_is_additive_in_hubble():
 
     ``_Hubble`` returns ``H = MeV_to_secm1 * sqrt(rho_tot * 8*pi/(3*Mpl^2))``,
     so adding a constant extra energy density ``extra`` [MeV^4] through the
-    ``extra_rho`` plug-in (IDEAS.md §6.1) must increase ``H^2`` by exactly
+    ``extra_rho`` plug-in must increase ``H^2`` by exactly
     ``extra * 8*pi/(3*Mpl^2)``, independently of everything else `_Hubble`
     computes.
     """
@@ -88,7 +88,7 @@ def test_extra_rho_is_additive_in_hubble():
 def test_ede_is_appended_to_extra_rho():
     """``fEDE > 0`` appends exactly one ``rho_EDE`` callable to
     ``self._extra_rho``, via the same generic plug-in mechanism that
-    ``extra_rho=`` callers use (IDEAS.md §6.1)."""
+    ``extra_rho=`` callers use."""
     from pyprimat.main import PyPR
     p_no_ede = PyPR({"network": "small", "verbose": False})
     assert p_no_ede._extra_rho == []
@@ -103,15 +103,14 @@ def test_ede_is_appended_to_extra_rho():
 
 @pytest.mark.parametrize("T", [0.05, 0.2, 0.5, 1.0, 5.0])
 def test_tabulated_electron_thermo_matches_exact(T):
+    """The cubic-interpolant table (always used) reproduces the exact quad
+    integrals (``_*_exact``) to within the interpolation tolerance."""
     import pyprimat.plasma as thermo
-    # exact (tabulation off)
-    thermo.initialise(PyPRConfig({"tabulate_electron_thermo": False}))
-    exact = (thermo.rho_e(T), thermo.p_e(T),
-             thermo.drho_e_dT(T), thermo.dp_e_dT(T))
-    # tabulated (default on)
-    thermo.initialise(PyPRConfig({"tabulate_electron_thermo": True}))
-    tab = (thermo.rho_e(T), thermo.p_e(T),
-           thermo.drho_e_dT(T), thermo.dp_e_dT(T))
+    thermo.initialise(PyPRConfig())
+    p = thermo._default
+    tab   = (p.rho_e(T), p.p_e(T), p.drho_e_dT(T), p.dp_e_dT(T))
+    exact = (p._rho_e_exact(T), p._p_e_exact(T),
+             p._drho_e_dT_exact(T), p._dp_e_dT_exact(T))
     for e, t in zip(exact, tab):
         assert t == pytest.approx(e, rel=1e-5)
 

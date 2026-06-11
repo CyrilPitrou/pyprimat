@@ -4,8 +4,7 @@ import numpy as np
 from pyprimat.main import mc_uncertainty, MCResult, MCQuantityResult
 
 # Every test in this module runs at least one mc_uncertainty() loop, i.e.
-# several full PyPR().solve() calls -- squarely in the "solve" tier
-# (IDEAS.md sec 7.2).
+# several full PyPR().solve() calls -- squarely in the "solve" tier.
 pytestmark = [pytest.mark.slow, pytest.mark.solve]
 
 _BASE = {"network": "small"}

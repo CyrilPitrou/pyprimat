@@ -3,7 +3,7 @@
 pyprimat.cli
 ============
 
-Command-line entry point for PyPRIMAT (IDEAS.md §2.2).
+Command-line entry point for PyPRIMAT.
 
 This wraps the same "build a params dict and call PyPR" pattern used by
 ``runfiles/PyPRIMAT_run.py``, exposing the handful of options most users

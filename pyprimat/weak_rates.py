@@ -82,14 +82,14 @@ __all__ = ['ComputeWeakRates', 'InterpolateWeakRates', 'RecomputeWeakRates', 'Co
 exp_cutoff = 3e+2
 
 # ---------------------------------------------------------------------------
-# Fingerprinted cache for the n<->p weak-rate tables (IDEAS.md §1.2)
+# Fingerprinted cache for the n<->p weak-rate tables
 # ---------------------------------------------------------------------------
 # Bump this whenever a code change alters the *numerical content* of the
 # cached files for a fixed configuration (new physics term, changed formula,
 # different file layout, ...).  Bumping it invalidates every existing cache
 # file regardless of its fingerprint.
 #
-#   v1 -> v2 (IDEAS.md §5.1): the n<->p rate integrals are now evaluated with
+#   v1 -> v2: the n<->p rate integrals are now evaluated with
 #   a fixed-order Gauss-Legendre rule vectorised over the whole temperature
 #   grid (ComputeWeakRates), replacing the per-grid-point adaptive
 #   scipy.integrate.quad.  The two agree to ~1e-6 on the rates, i.e. far below
@@ -112,8 +112,8 @@ WEAK_RATE_FORMAT_VERSION = 2
 #       passed in as Tvec.
 #   DeltaNeff -- extra radiation density alters the background Tg(t)
 #       history (PRIMAT-Main.m / Phys. Rep. background ODEs); explicitly
-#       called out in IDEAS.md §1.2 even though it is not a "neutrino
-#       distribution" parameter per se.
+#       called out here even though it is not a "neutrino distribution"
+#       parameter per se.
 _BACKGROUND_FINGERPRINT_FIELDS = [
     "incomplete_decoupling",
     "QED_corrections",
@@ -156,8 +156,8 @@ def _weak_rate_fingerprint(cfg):
     """Fingerprint dict for the n<->p weak-rate cache files.
 
     Identifies the configuration that produced
-    ``rates/weak/nTOp_{frwrd,bkwrd}.txt``.  Per IDEAS.md §1.2,
-    ``tau_n_flag``/``tau_n`` are deliberately *excluded*: they only rescale
+    ``rates/weak/nTOp_{frwrd,bkwrd}.txt``.  ``tau_n_flag``/``tau_n`` are
+    deliberately *excluded*: they only rescale
     the interpolated rates after the fact (see
     ``PyPR._setup_weak_rates`` / ``_NormWeakRates``), so they never change
     the cached values themselves.
@@ -486,7 +486,6 @@ def ComputeFn(cfg):
 
 # ---------------------------------------------------------------------------
 # Fixed-order Gauss-Legendre quadrature for the n<->p rate integrals
-# (IDEAS.md §5.1)
 # ---------------------------------------------------------------------------
 # The Born / CCR / FMCCR / SD integrands are all of the form
 #     p^2 * [chi_+(E) + chi_+(-E)]  with  E = sqrt(p^2+1)
@@ -650,9 +649,8 @@ class _RateContext:
     Built once per :func:`ComputeWeakRates` call and threaded through every
     correction-term function below (`_L_BORN`, `_L_CCR`, `_L_FMCCR`, `_L_SD`,
     `_L_CCRTh_interpolants`), so that each term is a short, independently
-    named module-level function -- mirroring Table 1 of the Phys. Rep.
-    (IDEAS.md §4.3/§6.3) -- instead of a closure nested 500 lines deep inside
-    one function.
+    named module-level function -- mirroring Table 1 of the Phys. Rep. --
+    instead of a closure nested 500 lines deep inside one function.
 
     Attributes
     ----------
@@ -708,7 +706,7 @@ def _fermi_stat(ctx, sgnq, sgnE, b):
 
 
 # ---------------------------------------------------------------------------
-# Vectorised chi function and quadrature grid (IDEAS.md §5.1)
+# Vectorised chi function and quadrature grid
 # ---------------------------------------------------------------------------
 
 def _chi_func_v(ctx, E, x, znu, sgnq):
@@ -1203,7 +1201,7 @@ def _L_CCRTh_interpolants(ctx):
 
 
 # ---------------------------------------------------------------------------
-# Ordered list of named correction terms (IDEAS.md §6.3) and main driver
+# Ordered list of named correction terms and main driver
 # ---------------------------------------------------------------------------
 
 def _correction_terms(ctx, T_arr, sgnq, dFDneu_func, thermal_interp):
@@ -1215,7 +1213,7 @@ def _correction_terms(ctx, T_arr, sgnq, dFDneu_func, thermal_interp):
     notebook) inspect or pin each term's contribution to Neff/YP/D-H
     individually.
 
-    Vectorised (IDEAS.md §5.1): every term is evaluated on the whole photon
+    Vectorised: every term is evaluated on the whole photon
     temperature grid ``T_arr`` at once and returned as a numpy array, so the
     values are arrays rather than scalars.
 
@@ -1330,7 +1328,7 @@ def ComputeWeakRates(Tvec, cfg, dFDneu_func=None):
     # per-era count and the network used three separate HT/MT/LT grids).
     T_all = np.logspace(np.log10(cfg.T_end), np.log10(cfg.T_start), cfg.sampling_nTOp)
 
-    # Each correction term is already vectorised over T_all (IDEAS.md §5.1), so
+    # Each correction term is already vectorised over T_all, so
     # the forward / backward rates are just the element-wise sum of the term
     # arrays -- no Python loop over the grid.
     def nTOp_rate_(sgnq):
@@ -1379,7 +1377,7 @@ def InterpolateWeakRates(cfg):
 def RecomputeWeakRates(Tvec, cfg, dFDneu_func=None):
     """Load the n<->p weak-rate tables from the fingerprinted cache, or recompute.
 
-    Implements the loader logic of IDEAS.md §1.2:
+    Implements the cache-loading logic:
 
     1. Compute the fingerprint hash of the current configuration
        (:func:`_weak_rate_fingerprint`).
@@ -1402,6 +1400,16 @@ def RecomputeWeakRates(Tvec, cfg, dFDneu_func=None):
     rescale the interpolated rates afterwards (see
     `PyPR._setup_weak_rates` / `_NormWeakRates`), so a cache built with one
     `tau_n` remains valid for any other.
+
+    `cfg.save_nTOp` defaults to False rather than "always save": with a
+    single shared cache file per quantity, a recompute triggered by a
+    non-default configuration (e.g. a one-off `sampling_nTOp=500` study)
+    would otherwise overwrite `rates/weak/*.txt` with a fingerprint that
+    does not match the default config, leaving the working tree dirty and
+    making the *next* default-config run miss the cache too.  The standard
+    runfiles (`PyPRIMAT_run.py`) set `save_nTOp=True` so the shipped tables
+    stay refreshed for that configuration; set it yourself only when
+    deliberately regenerating a cache for a specific configuration.
 
     Parameters
     ----------

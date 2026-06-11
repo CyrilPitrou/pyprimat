@@ -3,8 +3,8 @@
 neutrino_history.py — pluggable neutrino-sector background for PyPRIMAT
 ======================================================================
 
-IDEAS.md §6.2.  The neutrino sector entering the cosmological background is the
-natural interface for non-standard neutrino physics.  It is fully described by
+The neutrino sector entering the cosmological background is the natural
+interface for non-standard neutrino physics.  It is fully described by
 four ingredients, all functions of the photon temperature T_gamma [MeV]:
 
     * temperatures  — the three flavour temperatures T_nue, T_numu, T_nutau,

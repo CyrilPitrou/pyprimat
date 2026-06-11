@@ -198,6 +198,40 @@ def test_gauss_legendre_converged():
 
 
 # ---------------------------------------------------------------------------
+# Weak-rate cache fingerprint — chemical-potential / distortion sensitivity
+# ---------------------------------------------------------------------------
+
+def test_fingerprint_changes_with_munuOverTnu():
+    """A change in munuOverTnu must invalidate the weak-rate cache.
+
+    munuOverTnu shifts the neutrino Fermi-Dirac occupation that enters every
+    n<->p rate integral, so a cache built for one value must not be silently
+    reused for another.  This pins ``_BACKGROUND_FINGERPRINT_FIELDS``
+    (weak_rates.py) to keep including ``munuOverTnu``.
+    """
+    cfg0 = PyPRConfig({"munuOverTnu": 0.0})
+    cfg1 = PyPRConfig({"munuOverTnu": 0.1})
+
+    fp0 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg0))
+    fp1 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg1))
+    assert fp0 != fp1
+
+
+def test_fingerprint_changes_with_delta_xi_nu():
+    """A change in delta_xi_nu (analytic spectral-distortion amplitude) must
+    invalidate the weak-rate cache, for the same reason as munuOverTnu above.
+    """
+    common = {"spectral_distortions": True, "analytic_distortions": True,
+              "incomplete_decoupling": False}
+    cfg0 = PyPRConfig({**common, "delta_xi_nu": 0.0})
+    cfg1 = PyPRConfig({**common, "delta_xi_nu": 0.05})
+
+    fp0 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg0))
+    fp1 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg1))
+    assert fp0 != fp1
+
+
+# ---------------------------------------------------------------------------
 # RecomputeWeakRates — recompute path vs the fingerprinted cache (IDEAS 7.1)
 # ---------------------------------------------------------------------------
 

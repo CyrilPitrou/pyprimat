@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-cache_utils.py — fingerprinted self-validating cache files (IDEAS.md §1.2)
+cache_utils.py — fingerprinted self-validating cache files
 ============================================================================
 
 Several expensive precomputations (n<->p weak rates, their finite-temperature
