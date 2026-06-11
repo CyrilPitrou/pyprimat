@@ -495,7 +495,14 @@ class Plasma:
         -- so a stale cache (e.g. left over from a run with a different
         ``n_electron_table``) is detected and rebuilt automatically.  Set
         ``cfg.recompute_electron_thermo = True`` to force a fresh computation
-        and overwrite the cache regardless of its fingerprint.
+        regardless of the fingerprint.
+
+        The recomputed table is written back to disk only when
+        ``cfg.save_electron_thermo`` is True (default False); otherwise it is
+        used in memory but the tracked cache file is left untouched, so a run
+        with a non-default fingerprint (e.g. ``T_start_cosmo_MeV != 40``) does
+        not silently churn the shipped table (IDEAS.md §8.2, mirroring
+        ``save_nTOp`` for the weak-rate cache).
 
         If ``cfg.tabulate_electron_thermo`` is False this function does nothing
         and the exact quad path is used at every call.
@@ -554,15 +561,20 @@ class Plasma:
         self._dp_e_dT_tab   = interp1d(grid, dp_e_dT_arr,   kind='cubic',
                                   bounds_error=False, fill_value="extrapolate")
 
-        # Save to disk for future runs.
-        try:
-            write_cache_with_fingerprint(
-                cache_path, fp,
-                [grid, rho_e_arr, p_e_arr, drho_e_dT_arr, dp_e_dT_arr],
-                col_header='grid rho_e p_e drho_e_dT dp_e_dT')
-        except Exception as exc:
-            import warnings
-            warnings.warn(f"[plasma] Could not write electron-thermo cache: {exc}")
+        # Save to disk for future runs -- but only when explicitly requested
+        # (cfg.save_electron_thermo, default False).  Otherwise a run whose
+        # fingerprint differs from the shipped cache (e.g. a non-default
+        # T_start_cosmo_MeV) would silently overwrite the tracked
+        # electron_thermo_cache.txt; see config.py / IDEAS.md §8.2.
+        if cfg.save_electron_thermo:
+            try:
+                write_cache_with_fingerprint(
+                    cache_path, fp,
+                    [grid, rho_e_arr, p_e_arr, drho_e_dT_arr, dp_e_dT_arr],
+                    col_header='grid rho_e p_e drho_e_dT dp_e_dT')
+            except Exception as exc:
+                import warnings
+                warnings.warn(f"[plasma] Could not write electron-thermo cache: {exc}")
 
         if cfg.verbose:
             print(f"[init]  Electron-thermo tables built ({cfg.n_electron_table} points).")

@@ -45,6 +45,13 @@ DEFAULT_PARAMS: dict = {
     "tabulate_electron_thermo":   True,  # pre-tabulate rho_e/p_e and derivatives once, then interpolate (faster background solve)
     "n_electron_table":           2000,  # number of log-spaced grid points for the electron-thermo tables
     "recompute_electron_thermo":  False, # force recomputation of the electron-thermo table even if a cache file exists
+    # save_electron_thermo mirrors save_nTOp (IDEAS.md §1.2/§8.2): a run whose
+    # (n_electron_table, T_start_cosmo_MeV) fingerprint differs from the shipped
+    # cache recomputes the table in memory but, by default, does NOT overwrite
+    # the tracked rates/plasma/electron_thermo_cache.txt.  This keeps e.g. a
+    # T_start_cosmo_MeV=100 reference run from churning the shipped (T_start=40)
+    # file.  Set True only to deliberately refresh the shipped table.
+    "save_electron_thermo":       False,
     "recompute_qed_corrections":  False, # True: always compute analytically and overwrite rates/plasma/QED_*.txt; False: load from files if present, otherwise compute on the fly without saving
 
     # ---- spectral distortions ---------------------

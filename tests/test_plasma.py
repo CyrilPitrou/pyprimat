@@ -68,3 +68,30 @@ def test_rho_nu_scaling():
 def test_spl_positive():
     for T in [0.1, 1.0, 10.0]:
         assert thermo.spl(T) > 0
+
+
+def test_electron_thermo_cache_not_clobbered_by_nondefault_fingerprint():
+    """A non-default fingerprint must not overwrite the shipped electron cache.
+
+    The shipped rates/plasma/electron_thermo_cache.txt is fingerprinted on
+    (n_electron_table, T_start_cosmo_MeV) with the defaults.  Building a Plasma
+    with a different T_start_cosmo_MeV recomputes the table in memory, but with
+    save_electron_thermo=False (the default) it must NOT rewrite the tracked
+    file -- otherwise e.g. the T_start_cosmo_MeV=100 reference run would churn
+    the shipped table and perturb later default runs (IDEAS.md §8.2).
+    """
+    import os
+    from pyprimat.plasma import Plasma
+
+    cfg = PyPRConfig()
+    cache_path = os.path.join(cfg.data_dir, "rates", "plasma",
+                              "electron_thermo_cache.txt")
+    before = open(cache_path, "rb").read()
+
+    # Different fingerprint -> guaranteed recompute path inside Plasma.__init__.
+    Plasma(PyPRConfig({"T_start_cosmo_MeV": 100.0}))
+
+    assert open(cache_path, "rb").read() == before, (
+        "electron_thermo_cache.txt was modified by a non-default run "
+        "(save_electron_thermo should gate the write)"
+    )
