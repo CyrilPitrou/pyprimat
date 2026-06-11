@@ -44,9 +44,9 @@ ambiguity of the old prefix-free names (``npdg``).
 
 Usage::
 
-    python generate_from_primat/convert_ac2024_rates.py \
-        --input generate_from_primat/BBNRatesAC2024.dat \
-        --primat generate_from_primat/PRIMAT-main.m \
+    python generate_rates/convert_ac2024_rates.py \
+        --input generate_rates/BBNRatesAC2024.dat \
+        --primat generate_rates/PRIMAT-Main.m \
         --outdir Rates/nuclear/tables \
         --suffix "_parthenope" \
         --produce-csv
@@ -54,9 +54,19 @@ Usage::
 import argparse
 import os
 import re
+import sys
 
 import numpy as np
 from scipy.interpolate import interp1d
+
+# Make the script self-contained when run as `python generate_rates/convert_ac2024_rates.py`
+# from the repo root: put both this script's directory (for the sibling
+# `nuclide_table` / `nuclear_data` imports) and the repo root (for
+# `from pyprimat.config import PyPRConfig`) on sys.path.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+for _p in (_HERE, os.path.dirname(_HERE)):     # generate_rates/ and repo root
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 # Standard target grid: 500 points, log-uniform from T9 = 1e-3 to 1e1.
 GRID_NPTS = 500
@@ -486,11 +496,11 @@ def write_analytic_file(block, grid, outdir, suffix=""):
 #
 # Each entry is (source, reac, forward) where `reac` is the PRIMAT reaction
 # string "reactants > products ; name" and `forward` is the raw Mathematica
-# forward[T9] expression. These were extracted once from PRIMAT-main.m's
+# forward[T9] expression. These were extracted once from PRIMAT-Main.m's
 # DefineAnalyticRates; embedding them here makes the rate files regenerable from
 # BBNRatesAC2024.dat alone, with no PRIMATreference/ folder. To refresh this
-# table after PRIMAT-main.m changes, run:
-#     python generate_from_primat/convert_ac2024_rates.py --dump-analytic <path-to-PRIMAT-main.m>
+# table after PRIMAT-Main.m changes, run:
+#     python generate_rates/convert_ac2024_rates.py --dump-analytic <path-to-PRIMAT-Main.m>
 # and paste the printed literal back here.
 # ---------------------------------------------------------------------------
 _ANALYTIC_REACTIONS = [
@@ -805,15 +815,15 @@ def _dump_analytic_literal(primat_path):
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--input", default="generate_from_primat/BBNRatesAC2024.dat",
+    p.add_argument("--input", default="generate_rates/BBNRatesAC2024.dat",
                    help="the tabulated AC2024 reaction-rate compilation")
-    p.add_argument("--nubase", default="generate_from_primat/nubase_4.mas20.txt",
+    p.add_argument("--nubase", default="generate_rates/nubase_4.mas20.txt",
                    help="the NUBASE2020 evaluation (nuclide masses and spins)")
     p.add_argument("--tabdir", default="pyprimat/rates/nuclear/tables",
                    help="the directory for reaction rate tables (.txt)")
     p.add_argument("--outdir", dest="tabdir",
                    help="alias for --tabdir")
-    p.add_argument("--datadir", default="pyprimat/rates/nuclear/tables",
+    p.add_argument("--datadir", default="pyprimat/rates/nuclear/data",
                    help="the directory for network structure files (.csv)")
     p.add_argument("--suffix", default="",
                    help="optional suffix for generated rate files")
@@ -851,20 +861,24 @@ def main(argv=None):
         write_reaction_file(blk, blk_grid, args.tabdir, args.suffix)
     print(f"parsed {len(tab_blocks)} tabulated reactions from {args.input}")
 
-    # 2. Analytic reactions (evaluated on the grid).  If --primat is provided,
-    #    extract them from that file. Otherwise, skip analytic generation.
-    ana_blocks = []
+    # 2. Analytic reactions (evaluated on the grid).  By default, use the
+    #    embedded _ANALYTIC_REACTIONS table (the single source of truth, so the
+    #    rate set is regenerable from BBNRatesAC2024.dat alone).  --primat is a
+    #    verification override: re-extract the same entries from PRIMAT-Main.m
+    #    and check they match.
     if args.primat:
         entries = extract_analytic_from_primat(args.primat)
-        ana_blocks, skipped = build_analytic_blocks(entries)
-        for blk in ana_blocks:
-            write_analytic_file(blk, grid, args.tabdir, args.suffix)
-        print(f"built {len(ana_blocks)} analytic reactions from {args.primat}")
-        if skipped:
-            print(f"  ({len(skipped)} analytic blocks skipped: "
-                  f"{[n for n, _ in skipped]})")
+        source = args.primat
     else:
-        print("Skipping analytic reaction generation (no --primat provided)")
+        entries = _ANALYTIC_REACTIONS
+        source = "the embedded _ANALYTIC_REACTIONS table"
+    ana_blocks, skipped = build_analytic_blocks(entries)
+    for blk in ana_blocks:
+        write_analytic_file(blk, grid, args.tabdir, args.suffix)
+    print(f"built {len(ana_blocks)} analytic reactions from {source}")
+    if skipped:
+        print(f"  ({len(skipped)} analytic blocks skipped: "
+              f"{[n for n, _ in skipped]})")
 
     # 3. Report any <reactants>TO<products> name collisions across both sets.
     names = {}

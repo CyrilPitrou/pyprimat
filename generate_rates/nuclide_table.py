@@ -218,7 +218,7 @@ def make_detailed_balance(nuclide_table):
     energy released (positive = exothermic).  Reactions that emit a lepton
     (decays) have no reverse rate and must not be passed here.
     """
-    from generate_from_primat.nuclear_data import detailed_balance
+    from nuclear_data import detailed_balance
     cfg = _DBConfig(nuclide_table)
 
     def to_canonical(side):
