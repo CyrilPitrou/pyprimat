@@ -74,7 +74,7 @@ on any non-`#` line that is not purely numeric.
 **Improve:** require an explicit `--in-place` (or a distinct output path) and
 skip/guard non-numeric lines.  Add a one-line module docstring.
 
-## #8 — `GRID_NPTS` / T9 bounds duplicated between generator and config
+## #8 — `GRID_NPTS` / T9 bounds duplicated between generator and config [DONE]
 
 `convert_ac2024_rates.py:62-64` hard-codes `GRID_NPTS=500`,
 `GRID_T9_MIN=1e-3`, `GRID_T9_MAX=1e1`, duplicating PyPRIMAT's
@@ -84,7 +84,11 @@ drift, the "standard 500-point grid" comments become false.
 **Improve:** single-source them (import from `pyprimat.config`/`constants`), or
 at least assert equality at start-up.
 
-## #9 — Two naming systems + collisions only *warned*
+**Done:** `GRID_NPTS`/`GRID_T9_MIN`/`GRID_T9_MAX` are now read from
+`pyprimat.config.DEFAULT_PARAMS["rate_grid_*"]` (a plain dict, no `PyPRConfig`
+instantiation). Output unchanged.
+
+## #9 — Two naming systems + collisions only *warned* [DONE]
 
 Rate **filenames** use the short tokens `a`/`d`/`t` (`_CANON_TOKEN`,
 `convert_ac2024_rates.py:82`), while the **CSVs** use `He4`/`H2`/`H3`
@@ -96,7 +100,16 @@ distinct reactions mapping to one file).
 **Improve:** make a collision an error (or at minimum list which reactions
 collided), and document the dual naming convention in one place.
 
-## #10 — Obscure scalar-broadcast guard
+**Done:** added a documentation block above `_CANON_TOKEN` explaining the two
+naming systems and pointing to `nuclide_table.resolve_token`/`canonical_name`
+as the CSV-side source of truth. Replaced the warning with
+`check_name_collisions()`: a name shared by the *same* reaction's tabulated and
+analytic forms is reported as an intentional override (analytic wins, as
+before); a name shared by two *different* reactions now raises `ValueError`
+listing the offending names. Currently 0 collisions either way, so output is
+unchanged.
+
+## #10 — Obscure scalar-broadcast guard [DONE]
 
 `write_analytic_file` (`convert_ac2024_rates.py:466`) uses
 `block["rate"](grid) * np.ones_like(grid)` to broadcast T9-independent analytic
@@ -105,12 +118,18 @@ rates (constants, decays) to the grid shape.
 **Improve:** `np.broadcast_to(block["rate"](grid), grid.shape)` (or
 `np.full_like`) reads clearer and states the intent.
 
-## #11 — `main()` is one long function
+**Done:** now `np.array(np.broadcast_to(block["rate"](grid), grid.shape), dtype=float)`.
+
+## #11 — `main()` is one long function [DONE]
 
 `convert_ac2024_rates.py::main` runs four distinct stages inline (tabulated
 tables / analytic tables / collision report / network CSVs).
 
 **Improve:** extract one helper per stage for readability and unit-testing.
+
+**Done:** extracted `_parse_args`, `_generate_tabulated`, `_generate_analytic`;
+`main()` now calls these plus `check_name_collisions` and
+`unified_reactions`/`write_network_files`.
 
 ---
 

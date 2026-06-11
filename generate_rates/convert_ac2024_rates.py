@@ -68,10 +68,15 @@ for _p in (_HERE, os.path.dirname(_HERE)):     # generate_rates/ and repo root
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-# Standard target grid: 500 points, log-uniform from T9 = 1e-3 to 1e1.
-GRID_NPTS = 500
-GRID_T9_MIN = 1.0e-3
-GRID_T9_MAX = 1.0e1
+# Standard target grid: single-sourced from PyPRIMAT's own master-grid
+# defaults (pyprimat.config.DEFAULT_PARAMS["rate_grid_*"]) so the generator
+# and the runtime grid-resampling in pypr.nuclear.UpdateNuclearRates can never
+# silently drift apart (IMPROVEMENTS.md #8).  DEFAULT_PARAMS is a plain dict,
+# so importing it has no side effects (no PyPRConfig instantiation).
+from pyprimat.config import DEFAULT_PARAMS
+GRID_NPTS = DEFAULT_PARAMS["rate_grid_npts"]
+GRID_T9_MIN = DEFAULT_PARAMS["rate_grid_T9_min"]
+GRID_T9_MAX = DEFAULT_PARAMS["rate_grid_T9_max"]
 
 # Numbers may use Fortran 'D'/'d' double-precision exponents (e.g. 1.1133D+10).
 _NUM = r"[-+]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eEdD][-+]?[0-9]+)?"
@@ -85,6 +90,20 @@ def _to_float(token):
 def standard_grid():
     return np.logspace(np.log10(GRID_T9_MIN), np.log10(GRID_T9_MAX), GRID_NPTS)
 
+
+# ---------------------------------------------------------------------------
+# Naming conventions (IMPROVEMENTS.md #9)
+#
+# Two different naming systems are used by design, for two different audiences:
+#   * Rate FILENAMES (<reactants>TO<products>.txt, built by reaction_name below)
+#     use the short single-letter tokens a/d/t for He4/H2/H3, matching AC2024's
+#     own spelling and keeping filenames short.
+#   * The CSVs (reactions_large.csv etc., built in write_network_files via
+#     nuclide_table.resolve_token/canonical_name) spell nuclides out in full
+#     (He4/H2/H3/...), matching PyPRIMAT's runtime ``Nuclides`` keys.
+# _CANON_TOKEN below only affects filenames; resolve_token/canonical_name in
+# nuclide_table.py are the single source of truth for the CSV spelling.
+# ---------------------------------------------------------------------------
 
 # Canonical short tokens so the same nuclide always yields the same name,
 # whether the source spells it 'He4' or 'a' (AC2024 uses a/d/t; PRIMAT-main.m
@@ -473,7 +492,10 @@ def build_analytic_blocks(entries):
 
 
 def write_analytic_file(block, grid, outdir, suffix=""):
-    rate = np.asarray(block["rate"](grid) * np.ones_like(grid), dtype=float)
+    # block["rate"](grid) may be a T9-independent scalar (constants, decays) or
+    # an array already shaped like `grid`; broadcast_to states that intent
+    # explicitly (replaces the `* np.ones_like(grid)` idiom, IMPROVEMENTS.md #10).
+    rate = np.array(np.broadcast_to(block["rate"](grid), grid.shape), dtype=float)
     # Analytic rates carry a single constant multiplicative uncertainty factor
     # f (the AddReaction argument): the 1-sigma band is [rate/f, rate*f]. We
     # store it as the (temperature-independent) error column, matching the
@@ -690,6 +712,61 @@ _ANALYTIC_REACTIONS = [
 # All three are derived here, once, from AC2024 + the analytic table + NUBASE.
 
 
+def _canon_side(tokens):
+    """Canonicalise a reactant/product token list for *reaction-identity*
+    comparisons (order-independent, spelling-independent): nuclides become
+    their :func:`nuclide_table.canonical_name`, photons become ``'g'``, and
+    leptons (``Bm``/``Bp``) are kept as-is."""
+    from nuclide_table import resolve_token
+    out = []
+    for tok in tokens:
+        t = resolve_token(tok)
+        out.append(t.name if t.kind == "nuclide" else ("g" if t.kind == "photon" else tok))
+    return tuple(sorted(out))
+
+
+def check_name_collisions(tab_blocks, ana_blocks):
+    """Check <reactants>TO<products> name collisions across both block lists
+    (IMPROVEMENTS.md #9).
+
+    Two blocks can legitimately share a name: PRIMAT moves some reactions from
+    an analytic formula to a tabulated rate as data improve, so the *same*
+    reaction may appear in both ``tab_blocks`` and ``ana_blocks`` -- in that
+    case :func:`unified_reactions`/``write_*_file`` intentionally let the
+    analytic version win (last write wins).  These are reported as
+    "overrides" and are not an error.
+
+    But if two *different* reactions canonicalise to the same
+    ``<reactants>TO<products>`` name, one would silently overwrite the other's
+    rate file -- this is always a bug (a naming collision, not an override),
+    so it raises ``ValueError`` listing the offending names.
+    """
+    by_name = {}
+    for blk in tab_blocks + ana_blocks:
+        by_name.setdefault(blk["name"], []).append(blk)
+
+    overrides, bad = [], []
+    for name, blks in by_name.items():
+        if len(blks) < 2:
+            continue
+        signatures = {(_canon_side(b["reactants"]), _canon_side(b["products"]))
+                      for b in blks}
+        if len(signatures) == 1:
+            overrides.append(name)
+        else:
+            bad.append(name)
+
+    if bad:
+        raise ValueError(
+            f"{len(bad)} <reactants>TO<products> name(s) collide between "
+            f"distinct reactions, so one would silently overwrite the other's "
+            f"rate file: {sorted(bad)}. Give one of them a different short "
+            f"name in the source.")
+    if overrides:
+        print(f"  ({len(overrides)} reaction(s) given as both tabulated and "
+              f"analytic; analytic version wins: {sorted(overrides)})")
+
+
 def unified_reactions(tab_blocks, ana_blocks):
     """Merge tabulated and analytic blocks into one de-duplicated reaction list.
 
@@ -812,7 +889,7 @@ def _dump_analytic_literal(primat_path):
     print("]")
 
 
-def main(argv=None):
+def _parse_args(argv):
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--input", default="generate_rates/BBNRatesAC2024.dat",
@@ -841,31 +918,36 @@ def main(argv=None):
                         "onto the standard 500-point grid.  Analytic reactions always "
                         "use the standard grid.  PyPRIMAT's load_network resamples all "
                         "tables to a master grid at init, so mixing grids is safe.")
-    args = p.parse_args(argv)
+    return p.parse_args(argv)
 
-    if args.dump_analytic:
-        _dump_analytic_literal(args.dump_analytic)
-        return
 
-    os.makedirs(args.tabdir, exist_ok=True)
-    os.makedirs(args.datadir, exist_ok=True)
-    grid = standard_grid()
+def _generate_tabulated(args, grid):
+    """Stage 1: parse AC2024 and write one rate file per tabulated reaction.
 
-    # 1. Tabulated reactions from the AC2024 file (interpolated onto the grid,
-    #    or kept on their native grid when --keep-source-grid is set).
+    Returns the parsed blocks (needed downstream for the CSV/cross-check
+    stage).  With ``--keep-source-grid``, each file is written on its own
+    native AC2024 T9 grid (~60 points) instead of the standard grid;
+    PyPRIMAT's ``load_network`` resamples all tables to a master grid at init,
+    so mixing grids is safe.
+    """
     tab_blocks = parse_blocks(args.input)
     for blk in tab_blocks:
-        # With --keep-source-grid, write on the native AC2024 T9 grid (~60 pts)
-        # rather than the standard 500-pt grid; load_network resamples at init.
         blk_grid = blk["T9"] if args.keep_source_grid else grid
         write_reaction_file(blk, blk_grid, args.tabdir, args.suffix)
     print(f"parsed {len(tab_blocks)} tabulated reactions from {args.input}")
+    return tab_blocks
 
-    # 2. Analytic reactions (evaluated on the grid).  By default, use the
-    #    embedded _ANALYTIC_REACTIONS table (the single source of truth, so the
-    #    rate set is regenerable from BBNRatesAC2024.dat alone).  --primat is a
-    #    verification override: re-extract the same entries from PRIMAT-Main.m
-    #    and check they match.
+
+def _generate_analytic(args, grid):
+    """Stage 2: build and write one rate file per analytic reaction.
+
+    By default the embedded ``_ANALYTIC_REACTIONS`` table is the source (the
+    single source of truth, so the rate set is regenerable from
+    ``BBNRatesAC2024.dat`` alone). ``--primat`` is a verification override:
+    re-extract the same entries from ``PRIMAT-Main.m`` and check they
+    reproduce the same files. Returns the built blocks (needed downstream for
+    the collision check and the CSV stage).
+    """
     if args.primat:
         entries = extract_analytic_from_primat(args.primat)
         source = args.primat
@@ -879,16 +961,30 @@ def main(argv=None):
     if skipped:
         print(f"  ({len(skipped)} analytic blocks skipped: "
               f"{[n for n, _ in skipped]})")
+    return ana_blocks
 
-    # 3. Report any <reactants>TO<products> name collisions across both sets.
-    names = {}
-    for blk in tab_blocks + ana_blocks:
-        names[blk["name"]] = names.get(blk["name"], 0) + 1
-    collisions = sorted(n for n, c in names.items() if c > 1)
-    print(f"wrote {len(set(names))} rate files to {args.tabdir}/")
-    if collisions:
-        print(f"WARNING: {len(collisions)} colliding TO-names "
-              f"(last write wins): {collisions}")
+
+def main(argv=None):
+    args = _parse_args(argv)
+
+    if args.dump_analytic:
+        _dump_analytic_literal(args.dump_analytic)
+        return
+
+    os.makedirs(args.tabdir, exist_ok=True)
+    os.makedirs(args.datadir, exist_ok=True)
+    grid = standard_grid()
+
+    # 1+2. Write the rate tables (tabulated then analytic; on a name collision
+    #      the analytic file is written last and wins, see check_name_collisions).
+    tab_blocks = _generate_tabulated(args, grid)
+    ana_blocks = _generate_analytic(args, grid)
+
+    # 3. Check <reactants>TO<products> name collisions across both sets:
+    #    same-reaction overrides are reported, distinct-reaction collisions abort.
+    check_name_collisions(tab_blocks, ana_blocks)
+    n_files = len({blk["name"] for blk in tab_blocks + ana_blocks})
+    print(f"wrote {n_files} rate files to {args.tabdir}/")
 
     # 4. Network structure: deduce nuclides + reactions + detailed balance,
     #    run the formal A/Q conservation check, and emit the three CSVs that
