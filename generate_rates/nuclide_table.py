@@ -195,15 +195,16 @@ class _DBConfig:
     """Minimal stand-in for ``PyPRConfig`` exposing exactly what
     :func:`pyprimat.nuclear_data.detailed_balance` reads: the nuclide property dicts
     (built here for the *whole* large network) and the fundamental constants
-    (copied verbatim from a real ``PyPRConfig``).  This lets the offline
-    generator reuse the same, already-validated detailed-balance code that
-    PyPRIMAT uses for its 62 reactions, but over an arbitrary nuclide set."""
+    (copied verbatim from ``pyprimat.constants.CONST``, the frozen single
+    source of truth -- avoids instantiating a full, throwaway ``PyPRConfig``
+    just to read seven numbers; see IDEAS.md/IMPROVEMENTS.md #5).  This lets the
+    offline generator reuse the same, already-validated detailed-balance code
+    that PyPRIMAT uses for its 62 reactions, but over an arbitrary nuclide set."""
 
     def __init__(self, nuclide_table):
-        from pyprimat.config import PyPRConfig
-        base = PyPRConfig()
+        from pyprimat.constants import CONST
         for k in ("keV", "kB", "MeV", "ma", "me", "clight", "hbar"):
-            setattr(self, k, getattr(base, k))
+            setattr(self, k, getattr(CONST, k))
         self.Nuclides = {n: [r["N"], r["Z"]] for n, r in nuclide_table.items()}
         self.NuclExcessMass = {n: r["excess_keV"] for n, r in nuclide_table.items()}
         self.NuclSpin = {n: r["spin"] for n, r in nuclide_table.items()}

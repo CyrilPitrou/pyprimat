@@ -393,43 +393,34 @@ _DETAILED_BALANCE: dict[str, tuple[float, float, float]] = {
 }
 
 
-import re
 from collections import Counter
 from math import factorial
 
 import numpy as np
-from pyprimat.config import PyPRConfig
+
+from nuclide_table import load_nubase_all, resolve_token
 
 __all__ = ['detailed_balance', 'reaction_species', 'load_nubase']
 
-def _parse_spin(jpi_field):
-    """Extract the spin J as a float from a NUBASE 'Jpi' field."""
-    m = re.match(r"\s*(\d+)(?:/(\d+))?", jpi_field)
-    if m is None:
-        raise ValueError(f"cannot parse spin from {jpi_field!r}")
-    return float(m.group(1)) / float(m.group(2)) if m.group(2) else float(m.group(1))
+# Canonical names of the nuclides PyPRIMAT's runtime config tracks (the
+# small/medium nuclide set); resolve_token gives the (Z, A) NUBASE key for
+# each.
+_NUBASE_NAMES = ["n", "p", "H2", "H3", "He3", "He4", "He6",
+                 "Li6", "Li7", "Be7", "Li8", "Be8", "B8"]
 
 def load_nubase(nubase_path):
-    """Read mass excesses and spins of the BBN nuclides from a NUBASE2020 file."""
-    # Based on _NUBASE_NAMES mapping from original pyprimat/nuclear_data.py
-    _NUBASE_NAMES = {
-        "n": "1n", "p": "1H", "H2": "2H", "H3": "3H", "He3": "3He", "He4": "4He",
-        "He6": "6He", "Li6": "6Li", "Li7": "7Li", "Be7": "7Be", "Li8": "8Li",
-        "Be8": "8Be", "B8": "8B",
-    }
-    by_name = {v: k for k, v in _NUBASE_NAMES.items()}
+    """Read mass excesses and spins of the BBN nuclides from a NUBASE2020 file.
+
+    Thin wrapper around the general, (Z,A)-keyed
+    :func:`nuclide_table.load_nubase_all` reader, restricted to
+    ``_NUBASE_NAMES`` (avoids a second, independently hard-coded fixed-width
+    NUBASE parser that could drift out of sync -- see IDEAS.md/IMPROVEMENTS.md #4).
+    """
+    table = load_nubase_all(nubase_path)
     excess, spin = {}, {}
-    with open(nubase_path, encoding="latin-1") as fh:
-        for line in fh:
-            if line.startswith("#") or len(line) < 102:
-                continue
-            if line[7] != "0":
-                continue
-            key = by_name.get(line[11:16].strip())
-            if key is None:
-                continue
-            excess[key] = float(line[18:31])
-            spin[key] = _parse_spin(line[88:102])
+    for name in _NUBASE_NAMES:
+        t = resolve_token(name)
+        excess[name], spin[name] = table[(t.Z, t.A)]
     return excess, spin
 
 def reaction_species(name):
