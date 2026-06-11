@@ -1,0 +1,13 @@
+# Dependencies for the Streamlit Cloud deployment of pyprimat-gui.
+# Streamlit Cloud installs from this file in addition to `pip install .`
+# (which only covers pyproject.toml's base [project.dependencies] -
+# the "gui" and "recommended" extras are not picked up automatically).
+numpy
+scipy
+joblib
+numba
+numdifftools
+vegas
+streamlit
+plotly
+pandas
