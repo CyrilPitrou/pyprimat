@@ -2,6 +2,22 @@
 
 A Python implementation of the [PRIMAT](https://primat.org) package for precise Big Bang Nucleosynthesis (BBN) computations. It integrates coupled ODEs for the cosmological background (photon/neutrino temperatures, scale factor) and a nuclear reaction network to predict primordial abundances of H, D, He3, He4, Li7, and heavier nuclides.
 
+## Three ways to use PyPRIMAT
+
+PyPRIMAT can be driven in three equivalent ways — all three build the same
+``params`` dict and call ``PyPR(params=params).PyPRresults()``, so they
+always agree on results for the same configuration:
+
+1. **As a Python library** — `from pyprimat import PyPR` in a script or
+   notebook (see [Quick start](#quick-start)). The most flexible option:
+   the full `pyprimat.config.DEFAULT_PARAMS` surface is available.
+2. **The `pyprimat` command-line tool** — a quick one-liner for the most
+   commonly varied parameters, e.g. `pyprimat --Omegabh2 0.02242 --network
+   medium` (see [Command-line interface](#command-line-interface)).
+3. **The `pyprimat-gui` graphical interface** — a browser-based app with a
+   grouped parameter form, an interactive abundance-evolution plot, and a
+   final-abundances/ratios panel (see [Graphical interface](#graphical-interface-gui)).
+
 ## Installation
 
 Clone the repository and install in editable mode:
@@ -25,6 +41,18 @@ pip install -e ".[recommended]"
 | `numdifftools` | Recommended — numerical entropy derivatives (only if `analytic_entropy_derivative=False`) |
 | `vegas` | Recommended — Monte Carlo integration for thermal weak-rate corrections |
 
+For the graphical interface (`pyprimat-gui`), install the `gui` extra:
+
+```bash
+pip install -e ".[gui]"
+```
+
+| Package | Role |
+|---------|------|
+| `streamlit` | **Required for `pyprimat-gui`** — the web app framework |
+| `plotly` | **Required for `pyprimat-gui`** — interactive abundance-evolution plot |
+| `pandas` | **Required for `pyprimat-gui`** — final-abundance table |
+
 ## Quick start
 
 ```python
@@ -47,6 +75,78 @@ python runfiles/PyPRIMAT_run.py           # Standard SM run (outputs results/out
 python runfiles/PyPRIMAT_compare.py       # Small vs large network comparison
 python runfiles/PyPRIMAT_reference_run.py # High-precision reference run (~2 min)
 ```
+
+## Command-line interface
+
+The `pyprimat` console script wraps the same "build a `params` dict and call
+`PyPR`" pattern, exposing the most commonly varied options without writing
+any Python:
+
+```bash
+pyprimat --Omegabh2 0.02242 --network medium
+```
+
+```
+Neff     = 3.04397730
+YP (BBN) = 0.24691155
+YP (CMB) = 0.24558556
+D/H      = 2.4381479e-05
+He3/H    = 1.0387101e-05
+Li7/H    = 5.489582e-10
+--- running time: 1.22 seconds ---
+```
+
+| Flag | Description |
+|------|-------------|
+| `--Omegabh2 VALUE` | Baryon density Ω_b h² (default: 0.022425) |
+| `--DeltaNeff VALUE` | Extra relativistic degrees of freedom (default: 0) |
+| `--network {small,medium,large}` | Nuclear reaction network (default: small) |
+| `--amax A` | With `--network large`, drop reactions involving any nuclide with mass number > A (integer > 7) |
+| `--numerical_precision RTOL` | `solve_ivp` relative tolerance (default: 1e-7) |
+| `--json` | Print the full results dict as JSON instead of the short summary |
+| `--verbose` | Enable PyPRIMAT's internal progress messages (timings, cache hits, ...) |
+
+Only flags you pass are forwarded to `PyPR`; anything else falls back to
+`pyprimat.config.DEFAULT_PARAMS`. For options not exposed as flags, write a
+short script that builds a `params` dict and calls `PyPR` directly (see
+[Quick start](#quick-start)).
+
+## Graphical interface (GUI)
+
+After installing the `gui` extra (`pip install -e ".[gui]"`), launch the
+browser-based app with:
+
+```bash
+pyprimat-gui
+```
+
+From a source checkout you can also run it directly with Streamlit:
+
+```bash
+streamlit run pyprimat/gui/app.py
+# or
+python -m pyprimat.gui.launcher
+```
+
+The app mirrors a single CLI/script run:
+
+- **Sidebar** — a parameter form grouped into *Cosmology*, *Network*,
+  *Precision*, *Physics* and *Output* sections (plus an *Advanced* expander
+  covering the full `pyprimat.config.DEFAULT_PARAMS` surface), and a
+  **Run BBN** button.
+- **Final abundances tab** — the standard ratios (`Neff`, `YP` (BBN/CMB),
+  `D/H`, `³He/H`, `³He/⁴He`, `⁷Li/H`) as metric cards, a sortable table of
+  every tracked nuclide's final abundance, and a download button for an
+  `output_final.dat`-style table.
+- **Abundance evolution tab** — an interactive log-log plot of `A_i·Y_i(t)`
+  for any selection of nuclides (with "Light elements" / "All" / "Clear"
+  presets), with a toggle between cosmic time and photon temperature on the
+  x-axis.
+
+The GUI builds the same `params` dict and calls
+`PyPR(params=params).PyPRresults()` as the Python API and the `pyprimat` CLI,
+so all three agree on results for the same configuration. See `GUI.md` for
+the full design.
 
 ## Key parameters
 

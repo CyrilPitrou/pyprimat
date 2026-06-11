@@ -21,6 +21,7 @@ dependencies = [
 
 [project.scripts]
 pyprimat = "pyprimat.cli:main"
+pyprimat-gui = "pyprimat.gui.launcher:main"
 
 [project.optional-dependencies]
 recommended = [
@@ -38,9 +39,14 @@ notebooks = [
     "pandas",
     "papermill",
 ]
+gui = [
+    "streamlit",
+    "plotly",
+    "pandas",
+]
 
 [tool.setuptools]
-packages = ["pyprimat"]
+packages = ["pyprimat", "pyprimat.gui"]
 
 [tool.setuptools.package-data]
-"pyprimat" = ["rates/**/*"]
+"pyprimat" = ["rates/**/*", "gui/.streamlit/*"]

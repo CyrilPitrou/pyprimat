@@ -45,6 +45,11 @@ Three speed tiers (IDEAS.md sec 7.2):
 | `solve` | the "solve" tier: tests that run >=1 full PyPRIMAT solve at *default* (non-reference) precision; always also marked `slow`. `-m "not slow or solve"` selects the fast lane plus this tier. |
 | `reference` | high-precision runs (numerical_precision=1e-10, n_temperature_table=10000, sampling_nTOp=500, T_start_cosmo=100 MeV) that reproduce the CLAUDE.md values to YP ±1e-5, D/H ±3e-9; ~60 s total; always also marked `slow`. |
 | `wheel` | builds a wheel and `pip install`s it into a clean venv before running a smoke solve; always also marked `slow`. |
+| `gui` | drives the optional Streamlit GUI (`pyprimat.gui`) via `AppTest`; skipped if the `gui` extra is not installed; always also marked `slow` and `solve`. |
+
+`tests/test_gui.py` (`gui` marker) is skipped automatically unless the
+optional `gui` extra is installed (`pip install -e ".[gui]"`); install it to
+also exercise the Streamlit GUI end-to-end.
 
 The fast lane (`-m "not slow"`) does include *one* cheap solve: the
 `solved_small` session fixture (`conftest.py`), used by most of
@@ -82,3 +87,4 @@ the `solve` tier still runs full three-era solves.
 | `test_nuclear_qed.py` | QED corrections to radiative-capture rates (Pitrou & Pospelov 2020): correction factors are > 1 and sub-percent; the npTOdg polynomial matches its T9→0 cap; the four Kroll-formula reactions increase monotonically with T9; reference magnitudes at T9=0.1 GK are pinned to ±2e-6; non-QED reactions are unchanged; p_* variations stack correctly on the corrected median; and a full solve with the flag on shifts D/H by a detectable but sub-percent amount. |
 | `test_regression.py` | Final abundances: loose default-precision sanity checks, tight `reference`-marked checks against the published CLAUDE.md values, no-numba full solve checks (pure-Python kernels must match JIT to 1e-4), and the `amax` cutoff verification (large network filtered to A ≤ 20 matches medium light elements to ~1e-3). |
 | `test_wheel_smoke.py` | The `wheel`-marked "pip install" smoke test: builds a wheel, installs it into a clean venv, and runs a small-network solve there to catch package-data/path regressions (e.g. `rates/` not shipped, or a path computed relative to the source tree instead of the installed package) that an editable install would not reveal. |
+| `test_gui.py` | The optional Streamlit GUI (`pyprimat.gui`, see `GUI.md`): `import pyprimat` does not pull in `pyprimat.gui`/streamlit; the parameter-form metadata covers `amax` (the one `None`-default key) and the network choices; an end-to-end `AppTest` run of `pyprimat/gui/app.py` reproduces `test_cli.py`'s pinned default-run values (Neff/YPBBN/D-H and the per-nuclide table) -- i.e. the GUI drives `PyPR` identically to the CLI; the abundance-evolution panel renders with its default "light elements" nuclide selection; the `amax` widget appears only for `network='large'`; and an invalid flag combination (`spectral_distortions=True` with `incomplete_decoupling=False`) is shown as a clean `st.error` rather than a traceback. Skipped entirely if the `gui` extra is not installed. |
