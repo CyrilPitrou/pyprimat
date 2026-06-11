@@ -9,5 +9,6 @@ Public API::
 """
 
 from .main import PyPR, mc_uncertainty
+from .nuclear import nuclide_latex
 
-__all__ = ["PyPR", "mc_uncertainty"]
+__all__ = ["PyPR", "mc_uncertainty", "nuclide_latex"]

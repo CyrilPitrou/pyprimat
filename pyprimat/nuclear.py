@@ -55,6 +55,7 @@ __all__ = [
     "compile_network",
     "load_network",
     "load_reaction_names",
+    "nuclide_latex",
     "network_jacobian",
     "network_rhs",
     "phase_network",
@@ -128,6 +129,55 @@ ORDER_MT = [
 # the order supplied by ``nuclides.csv``.
 SPECIES_SMALL = ["n", "p", "H2", "H3", "He3", "He4", "Li7", "Be7"]
 SPECIES_MD = SPECIES_SMALL + ["He6", "Li8", "Li6", "B8"]
+
+# Special-cased LaTeX forms for the bookkeeping species that are not written as
+# "<element symbol><mass number>" (the neutron and the proton, i.e. bare ``n``
+# and ``p``, where the implicit mass number 1 is conventionally not shown).
+_NUCLIDE_LATEX_SPECIAL = {"n": r"\mathrm{n}", "p": r"\mathrm{p}"}
+
+# Matches every other PyPRIMAT nuclide name: an element symbol (one capital
+# letter optionally followed by a lowercase letter, e.g. "He", "B", "Na")
+# followed by its mass number (e.g. "He3", "B10", "Na23").
+_NUCLIDE_NAME_RE = re.compile(r"^([A-Z][a-z]?)(\d+)$")
+
+
+def nuclide_latex(name):
+    """Return the LaTeX form of a PyPRIMAT nuclide name, e.g. for axis labels.
+
+    PyPRIMAT names nuclides as ``"<element symbol><mass number>"`` (e.g.
+    ``"He3"``, ``"B10"``), with the neutron and proton as the bare bookkeeping
+    names ``"n"`` and ``"p"``.  This maps such a name to the standard
+    isotope notation ``${}^{A}\\mathrm{Sym}$`` (e.g. ``"He3"`` ->
+    ``r"${}^{3}\\mathrm{He}$"``), suitable for Matplotlib/Plotly labels and
+    Streamlit tables (which both support a LaTeX subset via ``$...$``).
+
+    Parameters
+    ----------
+    name : str
+        A nuclide name as it appears in ``PyPR.abundance_names``.
+
+    Returns
+    -------
+    str
+        The LaTeX representation, including the surrounding ``$...$``.
+
+    Examples
+    --------
+    >>> nuclide_latex("He3")
+    '${}^{3}\\\\mathrm{He}$'
+    >>> nuclide_latex("n")
+    '$\\\\mathrm{n}$'
+    """
+    special = _NUCLIDE_LATEX_SPECIAL.get(name)
+    if special is not None:
+        return f"${special}$"
+    m = _NUCLIDE_NAME_RE.match(name)
+    if not m:
+        # Fall back to the plain name for anything that doesn't fit the
+        # "<symbol><A>" convention, rather than raising on an unknown format.
+        return f"${name}$"
+    symbol, mass_number = m.groups()
+    return rf"${{}}^{{{mass_number}}}\mathrm{{{symbol}}}$"
 
 # Token aliases used when parsing compact PRIMAT names such as ``ddTOHe3n``.
 _ALIAS = {"d": "H2", "t": "H3", "a": "He4"}

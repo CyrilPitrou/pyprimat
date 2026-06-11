@@ -9,16 +9,22 @@ The two result panels of the PyPRIMAT GUI (GUI.md §4-5):
   He3/He4, He3/H, Li7/H) plus a per-nuclide table of final abundances.
 * :func:`render_evolution_panel` -- an interactive ``A_i Y_i(t)`` plot with
   per-nuclide selection, paralleling ``notebooks/AbundanceEvolution.ipynb``.
+* :func:`final_abundances_text` -- the ``output_final.dat``-format text for
+  the download button rendered by ``pyprimat.gui.app`` below the two panels
+  (alongside the time-evolution download).
 
-Both functions take an already-solved ``pyprimat.PyPR`` instance (see
+All three take an already-solved ``pyprimat.PyPR`` instance (see
 ``pyprimat.gui.app``, which calls ``run.solve()`` once and caches the
 result).
 """
+import re
+
 import numpy as np
-import pandas as pd
 import plotly.colors as pcolors
 import plotly.graph_objects as go
 import streamlit as st
+
+from pyprimat.nuclear import nuclide_latex
 
 
 # ---------------------------------------------------------------------------
@@ -38,14 +44,16 @@ _RATIO_FORMAT = {
     "Li7oH":   ".6e",
 }
 
+# LaTeX labels (rendered by st.markdown's KaTeX support) for the "Standard
+# ratios" table below.
 _RATIO_LABELS = {
-    "Neff":    "N_eff",
-    "YPBBN":   "Y_P (BBN)",
-    "YPCMB":   "Y_P (CMB)",
-    "DoH":     "D / H",
-    "He3oH":   "(³He+T) / H",
-    "He3oHe4": "³He / ⁴He",
-    "Li7oH":   "(⁷Li+⁷Be) / H",
+    "Neff":    r"$N_{\text{eff}}$",
+    "YPBBN":   r"$Y_P\ (\text{BBN})$",
+    "YPCMB":   r"$Y_P\ (\text{CMB})$",
+    "DoH":     r"$\text{D}/\text{H}$",
+    "He3oH":   r"$({}^{3}\text{He}+\text{T})/\text{H}$",
+    "He3oHe4": r"${}^{3}\text{He}/{}^{4}\text{He}$",
+    "Li7oH":   r"$({}^{7}\text{Li}+{}^{7}\text{Be})/\text{H}$",
 }
 
 
@@ -60,57 +68,53 @@ def render_results_panel(run):
 
     Layout
     ------
-    1. A row of ``st.metric`` cards for the 7 headline observables from
-       ``run.PyPRresults()`` (the 9-key results dict, ``main.py:751-761``;
-       ``Omeganurel``/``OneOverOmeganunr`` are omitted here as niche
-       neutrino-energy-density quantities), formatted to the precision
-       required by ``CLAUDE.md``.
-    2. A sortable table of every tracked nuclide (``run.abundance_names``)
-       with its mass number ``A``, charge ``Z``, and final mass-fraction
-       abundance ``Y`` (``run.get_quantity(name)``).
-    3. A download button producing the same two-column ``nuclide  Y`` text
-       format as ``PyPR._write_final_result`` (``output_final_result=True``),
-       without requiring that flag or any disk write.
+    1. A vertical, two-column table (Markdown, with LaTeX-rendered labels) of
+       the 7 headline observables from ``run.PyPRresults()`` (the 9-key
+       results dict, ``main.py:751-761``; ``Omeganurel``/``OneOverOmeganunr``
+       are omitted here as niche neutrino-energy-density quantities),
+       formatted to the precision required by ``CLAUDE.md``.
+    2. A table of every tracked nuclide (``run.abundance_names``), with the
+       nuclide name in standard isotope LaTeX notation (``nuclide_latex``),
+       its mass number ``A``, charge ``Z``, and final mass-fraction abundance
+       ``Y`` (``run.get_quantity(name)``).
+
+    The ``output_final.dat``-format download for this table is provided
+    separately by :func:`final_abundances_text`, rendered by
+    ``pyprimat.gui.app`` alongside the time-evolution download.
     """
     results = run.PyPRresults()
 
     st.subheader("Standard ratios")
-    cols = st.columns(len(_RATIO_FORMAT))
-    for col, (key, fmt) in zip(cols, _RATIO_FORMAT.items()):
-        col.metric(_RATIO_LABELS[key], format(results[key], fmt))
+    lines = ["| Quantity | Value |", "|---|---|"]
+    lines += [
+        f"| {_RATIO_LABELS[key]} | {format(results[key], fmt)} |"
+        for key, fmt in _RATIO_FORMAT.items()
+    ]
+    st.markdown("\n".join(lines))
 
     st.subheader("Final abundances")
-    names = run.abundance_names
-    rows = [
-        {
-            "nuclide": name,
-            "A": run.A[name],
-            "Z": run.Z[name],
-            "Y": run.get_quantity(name),
-        }
-        for name in names
+    lines = ["| Nuclide | A | Z | Y |", "|---|---|---|---|"]
+    lines += [
+        f"| {nuclide_latex(name)} | {run.A[name]} | {run.Z[name]} | {run.get_quantity(name):.6e} |"
+        for name in run.abundance_names
     ]
-    df = pd.DataFrame(rows)
-    st.dataframe(
-        df,
-        width="stretch",
-        hide_index=True,
-        column_config={
-            "Y": st.column_config.NumberColumn("Y", format="%.6e"),
-        },
-    )
+    st.markdown("\n".join(lines))
 
-    # Same two-column format as PyPR._write_final_result's output_final_file,
-    # produced from the in-memory results so output_final_result=True is not
-    # needed just to inspect/export this table.
-    text_lines = [f"# {'nuclide':<12}Y"]
-    text_lines += [f"{row['nuclide']:<14}{row['Y']:.6e}" for row in rows]
-    st.download_button(
-        "Download final abundances (output_final.dat format)",
-        data="\n".join(text_lines) + "\n",
-        file_name="output_final.dat",
-        mime="text/plain",
-    )
+
+def final_abundances_text(run):
+    """Return the ``output_final.dat``-format text for every tracked nuclide.
+
+    Same two-column ``nuclide  Y`` format as ``PyPR._write_final_result``
+    (``output_final_result=True``), built from the in-memory results so that
+    flag is not needed just to export this table. ``Y`` is the final
+    mass-fraction abundance of every nuclide in ``run.abundance_names`` (8 /
+    12 / ~59 for the small / medium / large network).
+    """
+    lines = [f"# {'nuclide':<12}Y"]
+    lines += [
+        f"{name:<14}{run.get_quantity(name):.6e}" for name in run.abundance_names
+    ]
+    return "\n".join(lines) + "\n"
 
 
 # ---------------------------------------------------------------------------
@@ -124,6 +128,21 @@ def render_results_panel(run):
 # remain well defined).
 _LIGHT_NUCLIDES = ["n", "p", "H2", "H3", "He3", "He4", "Li6", "Li7", "Be7"]
 _T_GRID = np.logspace(0, 5, 500)  # cosmic time [s]
+
+# Plotly (as embedded by Streamlit) does not load MathJax, so the
+# "$...$" LaTeX from nuclide_latex() is shown as literal text in chart
+# legends/axis titles rather than being typeset. Use Unicode super/subscripts
+# there instead -- e.g. "He3" -> "³He", matching nuclide_latex's "{}^{3}He".
+_SUPERSCRIPT_DIGITS = str.maketrans("0123456789", "⁰¹²³⁴⁵⁶⁷⁸⁹")
+
+
+def _nuclide_unicode(name):
+    """Unicode isotope label for Plotly legends/axes (e.g. 'He3' -> '³He')."""
+    m = re.match(r"^([A-Z][a-z]?)(\d+)$", name)
+    if not m:
+        return name
+    symbol, mass_number = m.groups()
+    return mass_number.translate(_SUPERSCRIPT_DIGITS) + symbol
 
 
 def render_evolution_panel(run):
@@ -143,6 +162,10 @@ def render_evolution_panel(run):
     ``PyPR.__getitem__`` (``main.py:913``), which is built once at solve time
     -- so re-rendering with a different nuclide selection or x-axis choice is
     just a re-evaluation of cached interpolators, not a re-solve.
+
+    The ``output_time_evolution``-format download for this data is provided
+    separately (``pyprimat.gui.app``'s ``_solve``), rendered alongside the
+    final-abundances download.
     """
     names = run.abundance_names
     light_default = [n for n in _LIGHT_NUCLIDES if n in names]
@@ -185,13 +208,13 @@ def render_evolution_panel(run):
                 continue
             fig.add_trace(go.Scatter(
                 x=x_vals[mask], y=y_vals[mask],
-                mode="lines", name=name, line=dict(color=color),
+                mode="lines", name=_nuclide_unicode(name), line=dict(color=color),
             ))
 
     x_title = "Photon temperature T_γ [MeV]" if use_temperature else "Cosmic time t [s]"
     fig.update_layout(
         xaxis_title=x_title,
-        yaxis_title="A_i · Y_i  (per-baryon abundance)",
+        yaxis_title="Aᵢ Yᵢ  (per-baryon abundance)",
         xaxis_type="log",
         yaxis_type="log",
         legend_title="Nuclide",

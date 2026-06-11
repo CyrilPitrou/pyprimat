@@ -13,13 +13,14 @@ Design
 typical user never touches (e.g. ``save_nTOp``, ``recompute_qed_corrections``,
 ``numba_installed``).  We therefore split the form in two:
 
-* A **curated set** of ~20 "headline" flags (``_FORM_METADATA`` below),
-  grouped under ``GROUP_ORDER`` and shown as expanded/visible sidebar
-  sections, each with a short physics-oriented label and tooltip condensed
-  from the comments in ``pyprimat/config.py``.
-* Every *other* key in ``DEFAULT_PARAMS`` is rendered automatically inside an
-  "Advanced" expander, so the form always covers the full configuration
-  surface even as new flags are added to ``DEFAULT_PARAMS``.
+* A **curated set** of "headline" flags (``_FORM_METADATA`` below), grouped
+  under ``GROUP_ORDER`` and shown as expanded/visible sidebar sections, each
+  with a short physics-oriented label and tooltip condensed from the comments
+  in ``pyprimat/config.py``.
+* A **"Constants" expander** (``_CONSTANTS_METADATA`` below) exposing only
+  ``GN`` and ``tau_n`` -- the two fundamental constants users occasionally
+  vary for sensitivity studies. Every other ``DEFAULT_PARAMS`` key (caching,
+  precision, output, debug knobs) is left at its default and not shown.
 
 In both cases the widget type is derived from the *type of the default
 value* (bool -> toggle, int/float -> number_input, str -> selectbox/text
@@ -48,17 +49,17 @@ from pyprimat.config import DEFAULT_PARAMS
 _FORM_METADATA = {
     # ---- Cosmology ---------------------------------------------------------
     "Omegabh2": (
-        "Cosmology", "Ωᵇ h²  (baryon density)",
+        "Cosmology", r"$\Omega_b h^2$  (baryon density)",
         "Baryon density parameter; sets the baryon-to-photon ratio ηᵇ "
         "used throughout the network.",
     ),
     "DeltaNeff": (
-        "Cosmology", "ΔN_eff",
+        "Cosmology", r"$\Delta N_{\text{eff}}$",
         "Extra effective relativistic degrees of freedom on top of the "
         "Standard-Model neutrino sector.",
     ),
     "munuOverTnu": (
-        "Cosmology", "ξν = μν / Tν",
+        "Cosmology", r"$\xi_\nu = \mu_\nu/T_\nu$",
         "Reduced neutrino chemical potential (same for all three flavours). "
         "Non-zero values are physically consistent only with "
         "incomplete_decoupling=False, since the NEVO table assumes it vanishes.",
@@ -77,27 +78,6 @@ _FORM_METADATA = {
         "With network='large', drop reactions involving any nuclide with mass "
         "number A > amax (must be an integer > 7). Leave unchecked to keep all "
         "~59 nuclides.",
-    ),
-
-    # ---- Precision -----------------------------------------------------------
-    "numerical_precision": (
-        "Precision", "Numerical precision (rtol)",
-        "Relative tolerance passed to solve_ivp for the background and all "
-        "three network eras (HT/MT/LT). Smaller = slower but more accurate.",
-    ),
-    "T_start_cosmo_MeV": (
-        "Precision", "T_start [MeV]",
-        "Starting photon temperature of the cosmological background "
-        "integration.",
-    ),
-    "n_temperature_table": (
-        "Precision", "Background table points",
-        "Number of grid points in the precomputed background temperature "
-        "table (a(T), Hubble rate, etc.).",
-    ),
-    "sampling_nTOp": (
-        "Precision", "n↔p rate grid points",
-        "Number of points in the n<->p weak-rate table.",
     ),
 
     # ---- Physics toggles -------------------------------------------------------
@@ -144,23 +124,27 @@ _FORM_METADATA = {
         "Amplitude of the y-type (Sunyaev-Zel'dovich-like) spectral "
         "distortion.",
     ),
-
-    # ---- Output ---------------------------------------------------------------
-    "output_time_evolution": (
-        "Output", "Write time-evolution TSV",
-        "Write the full background + abundance time series to "
-        "output_file (small/medium networks only).",
-    ),
-    "output_final_result": (
-        "Output", "Write final-abundance file",
-        "Write a two-column (nuclide, Y) table of final abundances to "
-        "output_final_file (this duplicates the download button below).",
-    ),
 }
 
 # Order (and default expanded/collapsed state) of the curated sidebar groups.
-GROUP_ORDER = ["Cosmology", "Network", "Precision", "Physics", "Output"]
+GROUP_ORDER = ["Cosmology", "Network", "Physics"]
 _EXPANDED_GROUPS = {"Cosmology", "Network"}
+
+# ---------------------------------------------------------------------------
+# "Constants" section: the only DEFAULT_PARAMS keys outside the curated
+# groups that users commonly want to override (e.g. for sensitivity studies).
+# ---------------------------------------------------------------------------
+_CONSTANTS_METADATA = {
+    "GN": (
+        r"$G_N$  (Newton's constant) [MeV⁻²]",
+        "Gravitational constant entering the Friedmann equation.",
+    ),
+    "tau_n": (
+        r"$\tau_n$  (neutron lifetime) [s]",
+        "Neutron lifetime, used to normalise the n<->p weak rates "
+        "(when tau_n_flag=True, the default).",
+    ),
+}
 
 # Keys whose widget is only shown conditionally on another key's value.
 # Maps key -> (controlling_key, required_value).
@@ -213,18 +197,13 @@ def _widget_for(key, label, help_text):
 
     if isinstance(default, float):
         # "%.6g" keeps both O(1) values (Omegabh2) and very small/large ones
-        # (numerical_precision=1e-7, GN=6.7e-45) readable.
+        # (GN=6.7e-45) readable.
         return st.number_input(
             label, value=default, format="%.6g", help=help_text, key=key,
         )
 
     # Fallback for string-valued parameters (e.g. output_file paths).
     return st.text_input(label, value=str(default), help=help_text, key=key)
-
-
-def _humanize(key):
-    """Turn a DEFAULT_PARAMS key like 'recompute_electron_thermo' into a label."""
-    return key.replace("_", " ")
 
 
 def render_sidebar_form():
@@ -275,16 +254,10 @@ def render_sidebar_form():
                 if value != DEFAULT_PARAMS[key]:
                     params[key] = value
 
-    # ---- Advanced: every remaining DEFAULT_PARAMS key ------------------------
-    curated_keys = set(_FORM_METADATA)
-    remaining = [k for k in DEFAULT_PARAMS if k not in curated_keys]
-    with st.sidebar.expander("Advanced", expanded=False):
-        st.caption(
-            "Caching, debug, and rate-table knobs. Defaults match "
-            "`pyprimat.config.DEFAULT_PARAMS`."
-        )
-        for key in remaining:
-            value = _widget_for(key, _humanize(key), None)
+    # ---- Constants: GN and tau_n only ----------------------------------------
+    with st.sidebar.expander("Constants", expanded=False):
+        for key, (label, help_text) in _CONSTANTS_METADATA.items():
+            value = _widget_for(key, label, help_text)
             if value != DEFAULT_PARAMS[key]:
                 params[key] = value
 

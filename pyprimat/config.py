@@ -38,20 +38,14 @@ DEFAULT_PARAMS: dict = {
     "incomplete_decoupling":      True, # Whether to use non-instantaneous (incomplete) neutrino decoupling.
     # True (default) = full treatment: neutrino temperatures are read from the pre-computed NEVO table and differ slightly from the instantaneous-decoupling prediction due to partial reheating by e+e- annihilations.  
     # False = instantaneous (complete) decoupling approximation: the three neutrino flavour temperatures are all set equal to the instantaneous-decoupling value derived from EM entropy conservation, Tν/Tγ = (4/11)^(1/3), and the neutrino energy density is fixed to the free-gas value with that temperature ratio.  
-    # Note: the NEVO table was itself computed with incomplete decoupling, so the combination incomplete_decoupling=False with QED_corrections=True is physically inconsistent and should be used only for diagnostic purposes.
+    # Note: the NEVO table was itself computed with incomplete decoupling, so the combination incomplete_decoupling=False with spectral_distortions=True is physically inconsistent and should be used only for diagnostic purposes.
     
     # ---- electromagnetic plasma -------------------
     "QED_corrections":            True,  # Whether to include QED interaction corrections to the EM plasma equation of state.
     "tabulate_electron_thermo":   True,  # pre-tabulate rho_e/p_e and derivatives once, then interpolate (faster background solve)
     "n_electron_table":           2000,  # number of log-spaced grid points for the electron-thermo tables
-    "recompute_electron_thermo":  False, # force recomputation of the electron-thermo table even if a cache file exists
-    # save_electron_thermo mirrors save_nTOp (IDEAS.md §1.2/§8.2): a run whose
-    # (n_electron_table, T_start_cosmo_MeV) fingerprint differs from the shipped
-    # cache recomputes the table in memory but, by default, does NOT overwrite
-    # the tracked rates/plasma/electron_thermo_cache.txt.  This keeps e.g. a
-    # T_start_cosmo_MeV=100 reference run from churning the shipped (T_start=40)
-    # file.  Set True only to deliberately refresh the shipped table.
-    "save_electron_thermo":       False,
+    "recompute_electron_thermo":  False, # force recomputation of the electron-thermo table even if a cache file exists. 
+    "save_electron_thermo":       False, # Set True only to deliberately refresh the shipped table.
     "recompute_qed_corrections":  False, # True: always compute analytically and overwrite rates/plasma/QED_*.txt; False: load from files if present, otherwise compute on the fly without saving
 
     # ---- spectral distortions ---------------------
@@ -187,7 +181,7 @@ DEFAULT_PARAMS: dict = {
     "Omegabh2":                   0.022425,
     "DeltaNeff":                  0.,
     "munuOverTnu":                0., #Reduced chemical potential of neutrinos (same for all flavours, ν_e, ν_μ, ν_τ).  The neutrino distribution becomes f_ν(y) → 1/(e^{y-(ξ+δξ)}+1)  (from 1/(e^{y-ξ}+1)). 
-    # Note: the combination munuOverTnu != 0 with incomplete_decoupling=False is physically inconsistent since NEVO tables were obatined assuming it vanishes.
+    # Note: the combination munuOverTnu != 0 with incomplete_decoupling=False is physically inconsistent since NEVO tables were obtained assuming it vanishes.
     # To explore such physics it is preferable to work with full decoupling of neutrinos (incomplete_decoupling=False).
      
     # ---- Early Dark Energy ------------------------------------------------

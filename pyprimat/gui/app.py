@@ -17,11 +17,14 @@ button; the main area shows the two result panels from
 PyPR -> results" contract is identical to ``runfiles/PyPRIMAT_run.py`` and
 the ``pyprimat`` console script (``pyprimat/cli.py``).
 """
+import os
+import tempfile
 import time
 
 import streamlit as st
 
 from pyprimat import PyPR
+from pyprimat.config import DEFAULT_PARAMS
 from pyprimat.gui import panels
 from pyprimat.gui.params_form import render_sidebar_form
 
@@ -47,10 +50,13 @@ def _solve(params_items):
 
     Returns
     -------
-    pyprimat.PyPR
-        A solved instance: ``run.PyPRresults()``, ``run.abundance_names``,
+    (pyprimat.PyPR, str or None)
+        The solved instance -- ``run.PyPRresults()``, ``run.abundance_names``,
         and ``run[name](t)`` are all ready to use without triggering further
-        computation.
+        computation -- together with the contents of the time-evolution TSV
+        (``output_time_evolution`` format, see ``main.py:_write_time_evolution``)
+        as a string, or ``None`` for the large network (unsupported there, see
+        ``main.py``'s ``output_time_evolution`` handling).
 
     Notes
     -----
@@ -63,10 +69,33 @@ def _solve(params_items):
     is instant.  ``cache_resource`` (rather than ``cache_data``) is required
     because ``PyPR`` instances hold live SciPy interpolators that are not
     picklable.
+
+    The time-evolution TSV is produced by setting ``output_time_evolution=True``
+    and pointing ``output_file`` at a temporary file, which is read back into
+    memory and removed immediately -- so the cached result carries the data
+    itself rather than a path that a later, differently-parametrised solve
+    could overwrite.
     """
-    run = PyPR(params=dict(params_items))
-    run.solve()
-    return run
+    params = dict(params_items)
+    network = params.get("network", DEFAULT_PARAMS["network"])
+
+    if network == "large":
+        # _write_time_evolution does not support the large network (main.py);
+        # PyPR just prints a notice and writes nothing in that case.
+        run = PyPR(params=params)
+        run.solve()
+        return run, None
+
+    fd, tmp_path = tempfile.mkstemp(suffix=".tsv", prefix="pyprimat_evolution_")
+    os.close(fd)
+    try:
+        run = PyPR(params=dict(params, output_time_evolution=True, output_file=tmp_path))
+        run.solve()
+        with open(tmp_path) as f:
+            time_evolution_tsv = f.read()
+    finally:
+        os.remove(tmp_path)
+    return run, time_evolution_tsv
 
 
 def main():
@@ -78,6 +107,7 @@ def main():
 
     params = render_sidebar_form()
     run_clicked = st.sidebar.button("Run BBN", type="primary", width="stretch")
+    _render_footer()
 
     if run_clicked:
         # Snapshot the current form state; subsequent reruns (e.g. from
@@ -99,7 +129,7 @@ def main():
     try:
         with st.spinner("Solving the BBN network…"):
             t0 = time.time()
-            run = _solve(params_items)
+            run, time_evolution_tsv = _solve(params_items)
             elapsed = time.time() - t0
     except Exception as exc:
         # PyPRConfig validates e.g. `amax`/`network` and the
@@ -121,6 +151,36 @@ def main():
         panels.render_results_panel(run)
     with tab_evolution:
         panels.render_evolution_panel(run)
+
+    st.subheader("Downloads")
+    dl_cols = st.columns(2)
+    dl_cols[0].download_button(
+        "Final abundances (output_final.dat)",
+        data=panels.final_abundances_text(run),
+        file_name="output_final.dat",
+        mime="text/plain",
+        width="stretch",
+    )
+    if time_evolution_tsv is not None:
+        dl_cols[1].download_button(
+            "Time evolution (output_time_evolution.tsv)",
+            data=time_evolution_tsv,
+            file_name="output_time_evolution.tsv",
+            mime="text/tab-separated-values",
+            width="stretch",
+        )
+    else:
+        dl_cols[1].caption(
+            "Time-evolution download is not available for the large network."
+        )
+
+
+def _render_footer():
+    """Sidebar attribution footer, shown below the parameter form."""
+    st.sidebar.caption(
+        "PyPRIMAT and this GUI are developed by "
+        "[Cyril Pitrou](https://www2.iap.fr/users/pitrou/)."
+    )
 
 
 if __name__ == "__main__":
