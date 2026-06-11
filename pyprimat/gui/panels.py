@@ -52,7 +52,7 @@ _RATIO_LABELS = {
     "YPCMB":   r"$Y_P\ (\text{CMB})$",
     "DoH":     r"$\text{D}/\text{H}$",
     "He3oH":   r"$({}^{3}\text{He}+\text{T})/\text{H}$",
-    "He3oHe4": r"${}^{3}\text{He}/{}^{4}\text{He}$",
+    "He3oHe4": r"$({}^{3}\text{He}+\text{T})/{}^{4}\text{He}$",
     "Li7oH":   r"$({}^{7}\text{Li}+{}^{7}\text{Be})/\text{H}$",
 }
 

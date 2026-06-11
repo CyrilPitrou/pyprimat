@@ -756,7 +756,7 @@ class PyPR:
             "YPBBN":           YPBBN,
             "DoH":             Yd_f / Yp_f,
             "He3oH":           (Yt_f + YHe3_f) / Yp_f,
-            "He3oHe4":         YHe3_f / Ya_f,
+            "He3oHe4":         (Yt_f + YHe3_f) / Ya_f,
             "Li7oH":           (YLi7_f + YBe7_f) / Yp_f,
         }
         return self._results

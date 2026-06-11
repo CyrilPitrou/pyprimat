@@ -40,7 +40,7 @@ _base_opts = {
 # ---------------------------------------------------------------------------
 # Run networks
 # ---------------------------------------------------------------------------
-networks = ["small", "medium", "large"]
+networks = ["small","small_parthenope","medium", "large"]
 results = {}
 
 for net in networks:

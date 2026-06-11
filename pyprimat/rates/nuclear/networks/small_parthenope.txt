@@ -1,12 +1,12 @@
-npTOdg, npTOdg_parthenope.txt
+npTOdg
 dpTOHe3g, dpTOHe3g_parthenope.txt
 ddTOHe3n, ddTOHe3n_parthenope.txt
 ddTOtp, ddTOtp_parthenope.txt
-tpTOag, tpTOag_parthenope.txt
-tdTOan, tdTOan_parthenope.txt
-taTOLi7g, taTOLi7g_parthenope.txt
-He3nTOtp, He3nTOtp_parthenope.txt
-He3dTOap, He3dTOap_parthenope.txt
-He3aTOBe7g, He3aTOBe7g_parthenope.txt
-Be7nTOLi7p, Be7nTOLi7p_parthenope.txt
-Li7pTOaa, Li7pTOaa_parthenope.txt
+tpTOag
+tdTOan
+taTOLi7g
+He3nTOtp
+He3dTOap
+He3aTOBe7g
+Be7nTOLi7p
+Li7pTOaa
