@@ -17,6 +17,7 @@ dependencies = [
     "numpy",
     "scipy",
     "joblib",
+    "plotly",
 ]
 
 [project.scripts]
@@ -41,7 +42,6 @@ notebooks = [
 ]
 gui = [
     "streamlit",
-    "plotly",
     "pandas",
 ]
 
