@@ -17,6 +17,7 @@ Design
 """
 
 import os
+import re
 import time
 import numpy as np
 from scipy.integrate import solve_ivp
@@ -1321,7 +1322,15 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0):
     # and selected network filename correctly.
     tmp_cfg = PyPRConfig(base_params)
     reactions = load_reaction_names(tmp_cfg)
-    rate_keys = [f'p_{rxn}' for rxn in reactions]
+    
+    # Each entry is "bare_name" or "bare_name, filename.txt".
+    # Extract only the bare_name for rate variation.
+    bare_reactions = []
+    for line in reactions:
+        parts = re.split(r'[, ]+', line, maxsplit=1)
+        bare_reactions.append(parts[0])
+        
+    rate_keys = [f'p_{rxn}' for rxn in bare_reactions]
 
     # Central value (all p_* = 0).
     central_inst = PyPR(params=base_params)

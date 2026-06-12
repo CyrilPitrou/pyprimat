@@ -14,6 +14,7 @@ No file I/O happens here.  Nuclear rate data are loaded separately in
 """
 
 import os
+import re
 import numpy as np
 
 from .constants import CONST
@@ -282,8 +283,13 @@ class PyPRConfig:
         # Initialize nuclear rate variation dicts
         object.__setattr__(self, "p_rxn", {})
         object.__setattr__(self, "NP_delta_rxn", {})
-        from .nuclear import _REACTIONS_MEDIUM
-        for rxn in _REACTIONS_MEDIUM:
+        from .nuclear import load_reaction_names
+        
+        # Load the selected network names to initialize variation parameters
+        reactions_with_tables = load_reaction_names(self.data_dir, self.network)
+        for entry in reactions_with_tables:
+            # Extract only the bare_name for initialization
+            rxn = re.split(r'[, ]+', entry, maxsplit=1)[0]
             self.p_rxn[rxn] = 0.0
             self.NP_delta_rxn[rxn] = 0.0
 
