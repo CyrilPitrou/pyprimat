@@ -665,7 +665,7 @@ class PyPR:
         Yi_LT = [mt_final_raw.get(s, 0.0) for s in species_L]
 
         _t_lt0 = time.time()
-        atol = cfg.atol_large_LT if cfg.is_large else 1e-15
+        atol = cfg.atol_large_LT if cfg.is_large else 1e-20
         sol_LT = solve_ivp(Y_prime_LT, [t_nucl, t_end], Yi_LT,
                            method='BDF', jac=Jacobian_LT,
                            rtol=10.*cfg.numerical_precision, atol=atol)

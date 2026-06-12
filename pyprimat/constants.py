@@ -146,7 +146,7 @@ class Constants:
     @property
     def T_nucl(self) -> float:
         return 0.11 * self.MeV_to_Kelvin
-
+        
     @property
     def T_end(self) -> float:
         return 1.e-3 * self.MeV_to_Kelvin
