@@ -103,6 +103,17 @@ def test_app_loads_without_error():
     assert any("Run BBN" in info.value for info in at.info)
 
 
+def _markdown_table_rows(md_value):
+    """Parse a "| col1 | col2 | ... |" Markdown table into a dict keyed by
+    the first column (stripping leading/trailing whitespace from each cell).
+    Skips the header and separator ("|---|---|") lines."""
+    rows = {}
+    for line in md_value.splitlines()[2:]:
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        rows[cells[0]] = cells[1:]
+    return rows
+
+
 def test_default_run_matches_cli_reference():
     """Default (small-network) GUI run reproduces test_cli.py's pinned values.
 
@@ -111,23 +122,32 @@ def test_default_run_matches_cli_reference():
     with the same defaults, so they must agree to full precision -- this is
     the GUI.md verification step 3 ("reference run parity"), pinned to the
     same values as `test_cli.py::test_cli_default_summary` /
-    `test_cli_json_matches_default_summary`.
+    `test_cli_json_matches_default_summary` (spectral_distortions=True,
+    IDEAS2.md item 2).
     """
+    from pyprimat.nuclear import nuclide_latex
+
     at = AppTest.from_file(APP_PATH)
     at.run(timeout=120)
     _run_bbn(at)
     assert not at.exception
 
-    metrics = {m.label: m.value for m in at.metric}
-    assert metrics["N_eff"] == "3.04397730"
-    assert metrics["Y_P (BBN)"] == "0.24691081"
-    assert metrics["D / H"] == "2.4365492e-05"
+    # "Standard ratios" Markdown table (render_results_panel).
+    [ratios_md] = [
+        md for md in at.markdown if "| Quantity | Value |" in md.value
+    ]
+    ratios = _markdown_table_rows(ratios_md.value)
+    assert ratios[r"$N_{\text{eff}}$"] == ["3.04397730"]
+    assert ratios[r"$Y_P\ (\text{BBN})$"] == ["0.24699475"]
+    assert ratios[r"$\text{D}/\text{H}$"] == ["2.4369993e-05"]
 
-    # Per-nuclide final-abundance table (render_results_panel).
-    df = at.dataframe[0].value
-    by_nuclide = df.set_index("nuclide")["Y"]
-    assert by_nuclide["p"] == pytest.approx(7.530290e-01, rel=1e-5)
-    assert by_nuclide["He4"] == pytest.approx(0.24691081 / 4., rel=1e-5)
+    # Per-nuclide final-abundance Markdown table (render_results_panel).
+    [abundances_md] = [
+        md for md in at.markdown if "| Nuclide | A | Z | Y |" in md.value
+    ]
+    by_nuclide = _markdown_table_rows(abundances_md.value)
+    assert float(by_nuclide[nuclide_latex("p")][-1]) == pytest.approx(7.529451e-01, rel=1e-5)
+    assert float(by_nuclide[nuclide_latex("He4")][-1]) == pytest.approx(0.2469947478401321 / 4., rel=1e-5)
 
 
 def test_evolution_panel_renders_with_default_selection():
@@ -167,6 +187,27 @@ def test_amax_widget_only_shown_for_large_network():
     network_select.set_value("large")
     at.run(timeout=60)
     assert has_amax_checkbox()
+
+
+def test_quick_mc_uncertainty_adds_sigma_column():
+    """The "Quick MC uncertainty" toggle (Item 14) adds a "+/- 1 sigma (quick
+    MC)" column to the "Standard ratios" table, with a positive sigma for
+    YPBBN -- mirroring ``tests/test_mc.py::test_std_positive``."""
+    at = AppTest.from_file(APP_PATH)
+    at.run(timeout=60)
+
+    [toggle] = [t for t in at.sidebar.toggle if t.key == "quick_mc_uncertainty"]
+    toggle.set_value(True)
+    at.run(timeout=60)
+    _run_bbn(at)
+    assert not at.exception
+
+    [ratios_md] = [
+        md for md in at.markdown if "Standard ratios" not in md.value
+        and "quick MC" in md.value and "|" in md.value
+    ]
+    assert "± 1σ (quick MC, 30 samples)" in ratios_md.value
+    assert "$Y_P\\ (\\text{BBN})$" in ratios_md.value
 
 
 def test_invalid_flag_combination_surfaces_as_error_not_traceback():

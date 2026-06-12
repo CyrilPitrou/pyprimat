@@ -23,10 +23,11 @@ def test_cli_default_summary(capsys):
     out = capsys.readouterr().out
     # Default small-network run, loading the shipped fingerprinted weak-rate
     # cache (rates/weak/nTOp_*.txt).  Within the CLAUDE.md tolerances
-    # (YP 0.2469156 +/-1e-5, D/H 2.43647e-5 +/-3e-9).
+    # (YP 0.2469977 +/-1e-5, D/H 2.43696e-5 +/-3e-9), with
+    # spectral_distortions=True (IDEAS2.md item 2).
     assert "Neff     = 3.04397730" in out
-    assert "YP (BBN) = 0.24691081" in out
-    assert "D/H      = 2.4365492e-05" in out
+    assert "YP (BBN) = 0.24699475" in out
+    assert "D/H      = 2.4369993e-05" in out
 
 
 def test_cli_json_matches_default_summary(capsys):
@@ -35,8 +36,8 @@ def test_cli_json_matches_default_summary(capsys):
     assert rc == 0
     results = json.loads(capsys.readouterr().out)
     assert results["Neff"]   == pytest.approx(3.043977298557919, rel=1e-12)
-    assert results["YPBBN"]  == pytest.approx(0.24691080737348087, rel=1e-12)
-    assert results["DoH"]    == pytest.approx(2.4365492014999738e-05, rel=1e-12)
+    assert results["YPBBN"]  == pytest.approx(0.2469947478401321, rel=1e-12)
+    assert results["DoH"]    == pytest.approx(2.436999274441713e-05, rel=1e-12)
 
 
 def test_cli_omegabh2_override_changes_doh(capsys):
@@ -46,4 +47,26 @@ def test_cli_omegabh2_override_changes_doh(capsys):
     results = json.loads(capsys.readouterr().out)
     # A higher baryon density measurably increases D/H away from the
     # Omegabh2=0.022425 reference value above.
-    assert results["DoH"] != pytest.approx(2.4365492014999738e-05, rel=1e-6)
+    assert results["DoH"] != pytest.approx(2.436999274441713e-05, rel=1e-6)
+
+
+def test_cli_network_accepts_any_network_file(capsys):
+    """--network accepts any name with a rates/nuclear/networks/<name>.txt
+    file, not just 'small'/'medium'/'large' (IDEAS2.md item 3).
+
+    'small_parthenope' (12-reaction network using Parthenope 3.0 rate
+    tables) uses different reaction rates from 'small', so YPBBN differs
+    from the default-network reference value above while remaining a
+    physically reasonable abundance.
+    """
+    rc = main(["--network", "small_parthenope", "--json"])
+    assert rc == 0
+    results = json.loads(capsys.readouterr().out)
+    assert 0.24 < results["YPBBN"] < 0.25
+    assert results["YPBBN"] != pytest.approx(0.2469947478401321, rel=1e-6)
+
+
+def test_cli_network_rejects_unknown_name():
+    """An unknown --network name surfaces PyPRConfig's ValueError."""
+    with pytest.raises(ValueError, match="network must be"):
+        main(["--network", "no_such_network"])

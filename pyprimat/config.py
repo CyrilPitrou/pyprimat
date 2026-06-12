@@ -45,7 +45,7 @@ DEFAULT_PARAMS: dict = {
     "recompute_qed_corrections":  False, # True: always compute analytically and overwrite rates/plasma/QED_*.txt; False: load from files if present, otherwise compute on the fly without saving
 
     # ---- spectral distortions ---------------------
-    "spectral_distortions":       False, # Corrections to n<->p weak rates from deviations of the neutrino phase-space distribution from a perfect Fermi-Dirac.
+    "spectral_distortions":       True, # Corrections to n<->p weak rates from deviations of the neutrino phase-space distribution from a perfect Fermi-Dirac.
     # Two sub-modes, selected by analytic_distortions (see neutrino_history.py):
     #   False (default): read the distortion from the full NEVO spectrum file
     #     (86-column, not _col_1_7); requires incomplete_decoupling=True.
@@ -54,6 +54,16 @@ DEFAULT_PARAMS: dict = {
     "analytic_distortions":       False,
     "delta_xi_nu":                0., # Amplitude of the mu-type (chemical-potential shift) distortion, same for all three flavours; see neutrino_history.AnalyticDistortion.
     "y_SZ":                       0., # Amplitude of the y-type (Sunyaev-Zel'dovich-like) distortion; see neutrino_history.AnalyticDistortion.
+
+    # ---- custom NEVO tables ------------------------------------------------
+    # Override the shipped rates/NEVO/ tables with custom ones (e.g. a
+    # higher-resolution or non-standard neutrino-decoupling history).  Each is
+    # a filename resolved relative to rates/NEVO/, or an absolute path; None
+    # uses the shipped file selected by QED_corrections (see
+    # neutrino_history.NEVOTable / resolve_nevo_path).
+    "nevo_file":                  None, # 6/7-column thermo table (replaces NEVOPRIMAT[_NoQED]_col_1_7.csv)
+    "nevo_spectral_file":         None, # 86-column spectral-distortion table (replaces NEVOPRIMAT[_NoQED].csv); only read when spectral_distortions=True and analytic_distortions=False
+    "nevo_grid_file":             None, # y-grid for nevo_spectral_file (replaces NEVOGrid.csv); its length must match nevo_spectral_file's column count minus 6
 
     # ---- fundamental constants (overridable for sensitivity studies) --------
     "GN":                         6.70883e-45,   # Newton's constant [MeV^-2]
@@ -88,9 +98,11 @@ DEFAULT_PARAMS: dict = {
     "epsrel_thermal":             1.e-2,   # dblquad fallback: relative tolerance
     
     # ---- Output options ------------------------------------------------------
-    # Outputs time evolution of all quantities.
+    # Writes a TSV (cfg.output_file) with the full time evolution of the
+    # background and of every nuclide in the chosen network (8/12/~59 for
+    # small/medium/large); see main.PyPR._write_time_evolution.
     "output_time_evolution":      False,
-    "output_rates_time_evolution": False, #whether to include or not the nuclear rates evolution in the output time evolution file. This is only useful if you want to inspect the rates evolution, otherwise it is better to set it to False to save disk space and speed up the code.
+    "output_rates_time_evolution": False, #whether to include or not the nuclear rates evolution in the output time evolution file. This is only useful if you want to inspect the rates evolution, otherwise it is better to set it to False to save disk space and speed up the code. Ignored (with a printed note) for network="large", where per-reaction flux columns are omitted.
     "output_n_points":            500,
     "output_file":                "results/output_tables.tsv",
     # Two-column dump (nuclide name, final mass-fraction abundance Y) at the end of BBN. 
@@ -329,6 +341,48 @@ class PyPRConfig:
                     f"amax must be None or an integer > 7 (got {self.amax!r}); "
                     "values ≤ 7 are the domain of the small/medium networks."
                 )
+
+        # Validate any custom NEVO table overrides: check the file exists and
+        # has the column count expected by neutrino_history.NEVOTable, so a
+        # typo or malformed file is caught here with a clear message rather
+        # than as a confusing shape mismatch deep inside an interpolant.
+        from .neutrino_history import resolve_nevo_path
+        if self.nevo_file is not None:
+            path = resolve_nevo_path(self, self.nevo_file, "")
+            if not os.path.exists(path):
+                raise ValueError(f"nevo_file={self.nevo_file!r} not found "
+                                  f"(resolved to {path!r})")
+            ncols = np.loadtxt(path, delimiter=',', max_rows=1).size
+            if ncols not in (6, 7):
+                raise ValueError(f"nevo_file={self.nevo_file!r} ({path!r}) has "
+                                  f"{ncols} columns; expected 6 or 7 (the NEVO "
+                                  f"x,z,Tnue,Tnumu,Tnutau,N[,extra] thermo table)")
+
+        n_grid_nodes = 80  # default NEVOGrid.csv length, used if nevo_spectral_file is not overridden
+        if self.nevo_spectral_file is not None:
+            path = resolve_nevo_path(self, self.nevo_spectral_file, "")
+            if not os.path.exists(path):
+                raise ValueError(f"nevo_spectral_file={self.nevo_spectral_file!r} "
+                                  f"not found (resolved to {path!r})")
+            ncols = np.loadtxt(path, delimiter=',', max_rows=1).size
+            if ncols <= 6:
+                raise ValueError(f"nevo_spectral_file={self.nevo_spectral_file!r} "
+                                  f"({path!r}) has {ncols} columns; expected "
+                                  f"6 thermo columns plus at least one spectral "
+                                  f"column (86 in the shipped tables)")
+            n_grid_nodes = ncols - 6
+
+        if self.nevo_grid_file is not None:
+            path = resolve_nevo_path(self, self.nevo_grid_file, "")
+            if not os.path.exists(path):
+                raise ValueError(f"nevo_grid_file={self.nevo_grid_file!r} not "
+                                  f"found (resolved to {path!r})")
+            n_nodes = np.loadtxt(path, delimiter=',').size
+            if n_nodes != n_grid_nodes:
+                raise ValueError(f"nevo_grid_file={self.nevo_grid_file!r} "
+                                  f"({path!r}) has {n_nodes} nodes; expected "
+                                  f"{n_grid_nodes} to match the spectral "
+                                  f"table's {n_grid_nodes} y-columns")
 
         # Validate spectral-distortion flag combination.
         if self.spectral_distortions:

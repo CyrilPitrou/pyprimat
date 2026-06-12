@@ -27,6 +27,8 @@ from pyprimat import PyPR
 from pyprimat.config import DEFAULT_PARAMS
 from pyprimat.gui import panels
 from pyprimat.gui.params_form import render_sidebar_form
+from pyprimat.main import mc_uncertainty
+from pyprimat.gui.panels import _RATIO_FORMAT
 
 
 st.set_page_config(
@@ -98,6 +100,34 @@ def _solve(params_items):
     return run, time_evolution_tsv
 
 
+@st.cache_resource(show_spinner=False)
+def _quick_mc(params_items):
+    """Run a 30-sample :func:`pyprimat.main.mc_uncertainty` for the standard ratios.
+
+    Parameters
+    ----------
+    params_items : tuple of (str, value) pairs
+        Same hashable encoding of ``params`` as :func:`_solve`, so the MC
+        result is cached/reused alongside the main solve and only recomputed
+        when the parameters actually change.
+
+    Returns
+    -------
+    pyprimat.main.MCResult
+        Indexed by the 7 ``_RATIO_FORMAT`` keys (Neff, YPBBN, YPCMB, DoH,
+        He3oH, He3oHe4, Li7oH); each entry has ``.mean`` and ``.std``.
+
+    Notes
+    -----
+    30 samples is deliberately small (a handful of seconds rather than
+    minutes) and gives only a *quick, noisy* estimate of the uncertainty --
+    see the "Quick MC uncertainty" toggle's help text in
+    ``params_form.render_sidebar_form``.
+    """
+    params = dict(params_items)
+    return mc_uncertainty(30, list(_RATIO_FORMAT), params=params, seed=0)
+
+
 def main():
     st.title("⚛️ PyPRIMAT")
     st.caption(
@@ -105,7 +135,7 @@ def main():
         "`pyprimat.PyPR`"
     )
 
-    params = render_sidebar_form()
+    params, quick_mc = render_sidebar_form()
     run_clicked = st.sidebar.button("Run BBN", type="primary", width="stretch")
     _render_footer()
 
@@ -115,6 +145,7 @@ def main():
         # st.session_state rather than re-triggering a solve with whatever
         # the sidebar currently shows.
         st.session_state["params"] = dict(params)
+        st.session_state["quick_mc"] = quick_mc
 
     stored_params = st.session_state.get("params")
     if stored_params is None:
@@ -146,9 +177,14 @@ def main():
         f"(solved in {elapsed:.2f} s)"
     )
 
+    mc = None
+    if st.session_state.get("quick_mc", False):
+        with st.spinner("Running 30-sample quick MC uncertainty…"):
+            mc = _quick_mc(params_items)
+
     tab_results, tab_evolution = st.tabs(["Final abundances", "Abundance evolution"])
     with tab_results:
-        panels.render_results_panel(run)
+        panels.render_results_panel(run, mc=mc)
     with tab_evolution:
         panels.render_evolution_panel(run)
 

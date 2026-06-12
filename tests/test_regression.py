@@ -24,22 +24,22 @@ pytestmark = pytest.mark.slow
 
 @pytest.mark.solve
 def test_small_network_YPBBN(solved_small):
-    assert solved_small._results["YPBBN"] == pytest.approx(0.2469156, abs=1e-4)
+    assert solved_small._results["YPBBN"] == pytest.approx(0.2469977, abs=1e-4)
 
 
 @pytest.mark.solve
 def test_small_network_DoH(solved_small):
-    assert solved_small._results["DoH"] == pytest.approx(2.43647e-5, rel=2e-3)
+    assert solved_small._results["DoH"] == pytest.approx(2.43696e-5, rel=2e-3)
 
 
 @pytest.mark.solve
 def test_large_network_YPBBN(solved_large):
-    assert solved_large._results["YPBBN"] == pytest.approx(0.2469190, abs=1e-4)
+    assert solved_large._results["YPBBN"] == pytest.approx(0.2470011, abs=1e-4)
 
 
 @pytest.mark.solve
 def test_large_network_DoH(solved_large):
-    assert solved_large._results["DoH"] == pytest.approx(2.43718e-5, rel=2e-3)
+    assert solved_large._results["DoH"] == pytest.approx(2.43767e-5, rel=2e-3)
 
 
 @pytest.mark.solve
@@ -95,22 +95,22 @@ def ref_large():
 
 @pytest.mark.reference
 def test_reference_small_YPBBN(ref_small):
-    assert ref_small["YPBBN"] == pytest.approx(0.2469156, abs=1e-5)
+    assert ref_small["YPBBN"] == pytest.approx(0.2469977, abs=1e-5)
 
 
 @pytest.mark.reference
 def test_reference_small_DoH(ref_small):
-    assert ref_small["DoH"] == pytest.approx(2.43647e-5, abs=3e-9)
+    assert ref_small["DoH"] == pytest.approx(2.43696e-5, abs=3e-9)
 
 
 @pytest.mark.reference
 def test_reference_large_YPBBN(ref_large):
-    assert ref_large["YPBBN"] == pytest.approx(0.2469190, abs=1e-5)
+    assert ref_large["YPBBN"] == pytest.approx(0.2470011, abs=1e-5)
 
 
 @pytest.mark.reference
 def test_reference_large_DoH(ref_large):
-    assert ref_large["DoH"] == pytest.approx(2.43721e-5, abs=3e-9)
+    assert ref_large["DoH"] == pytest.approx(2.43767e-5, abs=3e-9)
 
 
 # ---------------------------------------------------------------------------

@@ -17,7 +17,7 @@ import os
 import numpy as np
 import pytest
 
-_AC2024_DIR = os.path.join(os.path.dirname(__file__), "..",
+_AC2024_DIR = os.path.join(os.path.dirname(__file__), "..", "pyprimat",
                            "rates", "nuclear", "data")
 _needs_ac2024 = pytest.mark.skipif(
     not os.path.isdir(_AC2024_DIR),
@@ -81,3 +81,52 @@ def test_large_solve_conserves_baryon_and_matches_medium():
     # Light-element finals agree with medium (relative, for the non-tiny ones).
     for s in ("p", "H2", "H3", "He4", "Li7", "Be7"):
         assert abs(big._Y_final[s] - med._Y_final[s]) / abs(med._Y_final[s]) < 2e-3
+
+
+@_needs_ac2024
+@pytest.mark.slow
+@pytest.mark.solve
+def test_large_network_time_evolution_tsv(tmp_path):
+    """``output_time_evolution=True`` writes a TSV for network="large" too
+    (Item 5): one ``Y<species>`` column per of the ~59 large-network nuclides,
+    no per-reaction flux columns (those are small/medium only), and the final
+    He4/D/Li7 rows agree with the medium-network time series to the same
+    tolerances as the final-abundance comparison above."""
+    from pyprimat import PyPR
+    import numpy as np
+
+    out_path = tmp_path / "large_evolution.tsv"
+    big = PyPR(params={
+        "network": "large", "verbose": False,
+        "output_time_evolution": True, "output_file": str(out_path),
+    })
+    big.solve()
+
+    with open(out_path) as f:
+        header = f.readline().strip().split("\t")
+        data = np.loadtxt(f)
+
+    # One Y<species> column per large-network nuclide; no reaction-flux
+    # columns (output_rates_time_evolution defaults to False).
+    y_cols = ["Y" + s for s in big._abundance_names]
+    assert all(c in header for c in y_cols)
+    assert len(y_cols) == len(big._abundance_names)
+    assert not any(h.endswith("_frwrd") for h in header)
+
+    # IDEAS2.md item 1: the HT-era NSE (Saha) fill must stay finite even for
+    # the ~59 large-network nuclides (some with large binding energies, where
+    # BindE/(kB T) is largest) -- it is restricted to t < t_weak precisely to
+    # avoid the exp() overflow / inf*0 = nan that a naive Saha evaluation at
+    # the LT era's low T9 would produce for an untracked heavy nuclide.
+    assert np.isfinite(data).all()
+
+    med = PyPR(params={"network": "medium", "verbose": False})
+    med.solve()
+
+    # Compare the final-time row of the large-network TSV against the
+    # medium-network's final abundances (same tolerance as the
+    # final-abundance comparison in test_large_solve_conserves_baryon_and_matches_medium).
+    for s in ("He4", "H2", "Li7"):
+        col = header.index("Y" + s)
+        y_final_tsv = data[-1, col]
+        assert abs(y_final_tsv - med._Y_final[s]) / abs(med._Y_final[s]) < 2e-3

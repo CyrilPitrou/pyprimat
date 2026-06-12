@@ -31,7 +31,8 @@ _base_opts = {
     "Omegabh2":                  omegabh2,
     "DeltaNeff":                 Nrelat,
     "numerical_precision":       1e-7,
-    "spectral_distortions":      False,
+    # spectral_distortions: left at its PyPRConfig default (True), matching
+    # the CLAUDE.md reference values.
     # Standard physics: no radiative-capture QED corrections, so the results
     # are directly comparable to the CLAUDE.md reference values.
     "nuclear_qed_corrections":   False

@@ -56,6 +56,28 @@ def test_T_of_t_and_t_of_T_are_inverses(solved_small):
     assert T_back == pytest.approx(T_test, rel=1e-4)
 
 
+def test_a_of_T_and_T_of_a_are_inverses(solved_small):
+    T_test = 0.5   # MeV
+    a_val = float(solved_small.a_of_T(T_test))
+    T_back = float(solved_small.T_of_a(a_val))
+    assert T_back == pytest.approx(T_test, rel=1e-4)
+
+
+def test_a_of_t_and_t_of_a_are_inverses(solved_small):
+    t_test = float(solved_small.t_of_T(0.5))   # s, at T_gamma = 0.5 MeV
+    a_val = float(solved_small.a_of_t(t_test))
+    t_back = float(solved_small.t_of_a(a_val))
+    assert t_back == pytest.approx(t_test, rel=1e-4)
+
+
+def test_a_of_T_consistent_with_a_of_t_and_T_of_t(solved_small):
+    """a(T) and a(t(T)) must agree, since both trace the same a(T) solution."""
+    T_test = 0.5   # MeV
+    t_val = float(solved_small.t_of_T(T_test))
+    assert float(solved_small.a_of_t(t_val)) == pytest.approx(
+        float(solved_small.a_of_T(T_test)), rel=1e-4)
+
+
 def test_get_quantity_result_key(solved_small):
     assert solved_small.get_quantity("YPBBN") == pytest.approx(
         solved_small._results["YPBBN"], rel=1e-12)

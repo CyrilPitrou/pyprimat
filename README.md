@@ -132,12 +132,17 @@ The app mirrors a single CLI/script run:
 
 - **Sidebar** — a parameter form grouped into *Cosmology*, *Network*,
   *Precision*, *Physics* and *Output* sections (plus an *Advanced* expander
-  covering the full `pyprimat.config.DEFAULT_PARAMS` surface), and a
-  **Run BBN** button.
+  covering the full `pyprimat.config.DEFAULT_PARAMS` surface), an
+  *Uncertainty* expander with a **Quick MC uncertainty (30 samples)** toggle,
+  and a **Run BBN** button.
 - **Final abundances tab** — the standard ratios (`Neff`, `YP` (BBN/CMB),
   `D/H`, `³He/H`, `³He/⁴He`, `⁷Li/H`) as metric cards, a sortable table of
   every tracked nuclide's final abundance, and a download button for an
-  `output_final.dat`-style table.
+  `output_final.dat`-style table. With **Quick MC uncertainty** enabled, an
+  extra "± 1σ (quick MC, 30 samples)" column shows a fast Monte Carlo estimate
+  (varying every nuclear-rate `p_*` and the neutron lifetime `tau_n`, see
+  `mc_uncertainty`) — a quick, noisy estimate, not a publication-quality error
+  bar.
 - **Abundance evolution tab** — an interactive log-log plot of `A_i·Y_i(t)`
   for any selection of nuclides (with "Light elements" / "All" / "Clear"
   presets), with a toggle between cosmic time and photon temperature on the
@@ -201,6 +206,19 @@ PyPR({"save_nTOp": True, "sampling_nTOp": 400}).solve()
 PyPR({"sampling_nTOp": 400}).solve()
 ```
 
+### Custom NEVO tables
+
+The neutrino-decoupling history is read from `rates/NEVO/`. Three optional
+parameters point at alternative tables instead (filenames resolved relative
+to `rates/NEVO/`, or absolute paths): `nevo_file` (6/7-column thermo table),
+`nevo_spectral_file` (spectral-distortion table, used only when
+`spectral_distortions=True` and `analytic_distortions=False`), and
+`nevo_grid_file` (its y-grid, length must match `nevo_spectral_file`'s
+spectral-column count). Each defaults to `None` (the shipped table selected by
+`QED_corrections`); a custom file is validated for existence and shape at
+construction time, and is included in the n↔p weak-rate cache fingerprint so
+a different table correctly triggers a recompute.
+
 Each nuclear reaction rate has a `p_<name>` parameter (e.g. `p_npTOdg`) for uncertainty propagation: setting it to a non-zero float samples the rate at `median × exp(p × σ)`.
 
 ## Output
@@ -219,7 +237,13 @@ Each nuclear reaction rate has a `p_<name>` parameter (e.g. `p_npTOdg`) for unce
 | `OneOverOmeganunr` | 1 / (Ω_ν h² × 10⁻⁶) (non-relativistic) |
 
 When `output_time_evolution=True`, a TSV file is written with columns:
-`a, T, t, H, Tnue, Tnumu, Tnutau, Nheating, [abundances], n_to_p_weak_rate, p_to_n_weak_rate, [nuclear rates]`
+`a, T, t, H, Tnue, Tnumu, Tnutau, [Nheating], [abundances], n_to_p_weak_rate, p_to_n_weak_rate, [nuclear rates]`
+
+`Nheating` is included only for `incomplete_decoupling=True` (a real NEVO
+heating table). `[abundances]` is one `Y<species>` column per nuclide of the
+chosen network (8 / 12 / ~59 for small/medium/large). `[nuclear rates]`
+(`output_rates_time_evolution=True`) is available for small/medium only; it is
+omitted (with a printed note) for `network="large"`.
 
 ## Architecture
 

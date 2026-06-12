@@ -1,7 +1,7 @@
 """Tests for mc_uncertainty, MCResult, and MCQuantityResult."""
 import pytest
 import numpy as np
-from pyprimat.main import mc_uncertainty, MCResult, MCQuantityResult
+from pyprimat.main import mc_uncertainty, MCResult, MCQuantityResult, _mc_run_batch
 
 # Every test in this module runs at least one mc_uncertainty() loop, i.e.
 # several full PyPR().solve() calls -- squarely in the "solve" tier.
@@ -118,3 +118,31 @@ def test_mc_large_network_varies_heavy_elements():
     mc = mc_uncertainty(4, ["DoH", "B10"], params={"network": "large"}, n_jobs=2, seed=0)
     assert mc["DoH"].std > 0
     assert mc["B10"].std > 0
+
+
+# ---------------------------------------------------------------------------
+# tau_n variation (Item 14)
+# ---------------------------------------------------------------------------
+
+def test_tau_n_alone_gives_nonzero_spread_in_YPBBN():
+    """With no nuclear-rate offsets (rate_keys=[]), the only randomness left
+    is tau_n_sample = tau_n_central + std_tau_n * randn() (one extra draw per
+    sample, see _mc_run_batch).  Since YPBBN depends on the n<->p weak-rate
+    normalisation 1/(Fn*tau_n), its spread across samples must be non-zero and
+    of plausible magnitude (a fraction of a percent, comparable to the
+    rate-driven spread in test_std_positive)."""
+    res = np.array(_mc_run_batch({"network": "small", "verbose": False},
+                                  rate_keys=[], quantities=["YPBBN"],
+                                  seeds=list(range(8))))
+    std = res[:, 0].std()
+    assert 0 < std < 1e-3
+
+
+def test_tau_n_flag_false_disables_tau_n_effect():
+    """With cfg.tau_n_flag=False, tau_n does not enter _NormWeakRates (see
+    _setup_weak_rates), so the extra per-sample tau_n draw must be a no-op:
+    with no rate offsets either, every sample reproduces the central value."""
+    res = np.array(_mc_run_batch(
+        {"network": "small", "verbose": False, "tau_n_flag": False},
+        rate_keys=[], quantities=["YPBBN"], seeds=list(range(8))))
+    assert np.all(res[:, 0] == res[0, 0])

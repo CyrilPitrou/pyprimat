@@ -435,9 +435,21 @@ def reaction_stoichiometry(name):
 
     The compact PRIMAT names concatenate nuclide tokens.  For example
     ``ddTOHe3n`` means ``d + d -> He3 + n`` and is returned as
-    ``({"H2": 2}, {"He3": 1, "n": 1})``.  The split between reactants and
-    products is fixed by the detailed-balance exponent beta, following the
-    PRIMAT convention ``beta = 1.5 * (n_reactants - n_products)``.
+    ``({"H2": 2}, {"He3": 1, "n": 1})``.
+
+    Two ways of locating the reactant/product split are supported:
+
+    * **Catalog path** (``name`` present in ``detailed_balance.csv``): the
+      split is fixed by the detailed-balance exponent beta, following the
+      PRIMAT convention ``beta = 1.5 * (n_reactants - n_products)``.
+    * **Fallback path** (``name`` not in the catalog, e.g. a new reaction
+      added directly to a network file): the literal ``"TO"`` token in the
+      name marks the split directly, so no beta lookup is needed.  The
+      derived stoichiometry is validated for baryon-number and charge
+      conservation (mirroring
+      ``generate_rates/nuclide_table.conservation_residual``); a mismatch
+      raises ``ValueError`` naming the reaction and the imbalance, instead of
+      a cryptic ``KeyError``.
 
     Example
     -------
@@ -456,19 +468,7 @@ def reaction_stoichiometry(name):
     # We use the detailed_balance.csv to determine the split between reactants
     # and products, avoiding the need for the hardcoded tokens and aliases for
     # most reactions.
-    _, _, _, _, db, _ = _reaction_catalog(_default_data_dir())
-
-    if name not in db:
-        # Fallback to tokenisation for reactions not in detailed_balance.csv
-        tokens = [t for t in _tokenise(name) if t not in {"g", "TO"}]
-        # For small network reactions we might still need this if they aren't in the CSV
-        # (though they should be).
-        # We need beta to determine the split.
-        raise KeyError(f"Reaction {name!r} not in detailed_balance catalog and cannot be split.")
-
-    beta = db[name][1]
-    tokens = [t for t in _tokenise(name) if t not in {"g", "TO"}]
-    n_react = int(round((len(tokens) + beta / 1.5) / 2))
+    _, _, _, nuc_NZ, db, _ = _reaction_catalog(_default_data_dir())
 
     def count(seq):
         counts = {}
@@ -476,6 +476,46 @@ def reaction_stoichiometry(name):
             key = _ALIAS.get(tok, tok)
             counts[key] = counts.get(key, 0) + 1
         return counts
+
+    if name not in db:
+        # Fallback: the "TO" token already marks the reactant/product split
+        # in the name itself, so tokenise and split there directly -- no beta
+        # lookup needed (that's only available via the catalog path above).
+        tokens = _tokenise(name)
+        if "TO" not in tokens:
+            raise ValueError(
+                f"reaction {name!r} is not in detailed_balance.csv and has "
+                f"no 'TO' separator, so its stoichiometry cannot be derived")
+        split = tokens.index("TO")
+        react = count(t for t in tokens[:split] if t != "g")
+        prod  = count(t for t in tokens[split + 1:] if t != "g")
+
+        # Validate A (=N+Z) and Z conservation across the reaction, using
+        # nuclides.csv for nuclear species and _LEPTON_Z for the Bm/Bp
+        # bookkeeping tokens (A=0, Z=∓1).
+        def totals(counts):
+            A = Z = 0
+            for tok, mult in counts.items():
+                if tok in _LEPTON_Z:
+                    Z += _LEPTON_Z[tok] * mult
+                    continue
+                n, z = nuc_NZ[tok]
+                A += (n + z) * mult
+                Z += z * mult
+            return A, Z
+
+        Ar, Zr = totals(react)
+        Ap, Zp = totals(prod)
+        if (Ar, Zr) != (Ap, Zp):
+            raise ValueError(
+                f"reaction {name!r}: auto-derived stoichiometry does not "
+                f"conserve baryon number / charge "
+                f"(reactants: A={Ar}, Z={Zr}; products: A={Ap}, Z={Zp})")
+        return react, prod
+
+    beta = db[name][1]
+    tokens = [t for t in _tokenise(name) if t not in {"g", "TO"}]
+    n_react = int(round((len(tokens) + beta / 1.5) / 2))
 
     return count(tokens[:n_react]), count(tokens[n_react:])
 
@@ -953,7 +993,18 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None):
     """
     if reaction_names is None:
         reaction_names = load_reaction_names(cfg, subset_file or cfg.network)
-    selected = list(dict.fromkeys(reaction_names))
+    # Reject literal duplicate entries (e.g. the same line twice in a network
+    # file) rather than silently dropping the repeat -- a duplicate is far
+    # more likely to be a copy-paste mistake than an intentional no-op.
+    seen_entries = set()
+    for entry in reaction_names:
+        if entry in seen_entries:
+            raise ValueError(
+                f"reaction entry {entry!r} is already present in network "
+                f"{getattr(cfg, 'network', subset_file)!r} (duplicate line "
+                f"in the network file)")
+        seen_entries.add(entry)
+    selected = list(reaction_names)
 
     # Pre-parse entries before the MT intersection: each entry is either a bare
     # reaction name ("npTOdg") or a "bare_name, filename.txt" pair that points

@@ -48,9 +48,13 @@ def _build_parser():
              "neutrino sector (PyPRConfig default: 0).",
     )
     parser.add_argument(
-        "--network", choices=["small", "medium", "large"], default=None,
+        "--network", default=None, metavar="NAME",
         help="Nuclear reaction network used in the LT era "
-             "(PyPRConfig default: small).",
+             "(PyPRConfig default: small). Built-in choices are 'small', "
+             "'medium' and 'large', but any name for which "
+             "rates/nuclear/networks/<NAME>.txt exists is accepted "
+             "(e.g. 'small_parthenope'); PyPRConfig raises a ValueError "
+             "if no such file is found.",
     )
     parser.add_argument(
         "--amax", type=int, default=None, metavar="A",

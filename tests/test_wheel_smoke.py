@@ -98,5 +98,5 @@ def test_wheel_install_smoke_solve():
     # Same loose tolerances as tests/test_regression.py::test_small_network_*
     yp_str, doh_str = result.stdout.split()
     yp, doh = float(yp_str), float(doh_str)
-    assert yp  == pytest.approx(0.2469156, abs=1e-4)
-    assert doh == pytest.approx(2.43647e-5, rel=2e-3)
+    assert yp  == pytest.approx(0.2469977, abs=1e-4)
+    assert doh == pytest.approx(2.43696e-5, rel=2e-3)

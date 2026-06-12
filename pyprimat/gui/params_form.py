@@ -211,12 +211,16 @@ def render_sidebar_form():
 
     Returns
     -------
-    dict
+    params : dict
         Subset of ``DEFAULT_PARAMS`` keys whose value the user changed from
         the default, suitable for ``PyPR(params=this_dict)``. Keys left at
         their default are omitted entirely so ``PyPRConfig`` continues to be
         the single source of truth for defaults (mirrors ``pyprimat.cli``'s
         "forward only what changed" behaviour).
+    quick_mc : bool
+        Whether the "Quick MC uncertainty" toggle is enabled. This is a
+        GUI-only flag (not a ``PyPRConfig``/``DEFAULT_PARAMS`` key), so it is
+        returned separately rather than folded into ``params``.
     """
     params = {}
 
@@ -261,4 +265,18 @@ def render_sidebar_form():
             if value != DEFAULT_PARAMS[key]:
                 params[key] = value
 
-    return params
+    # ---- Uncertainty: optional quick MC error bars ---------------------------
+    with st.sidebar.expander("Uncertainty", expanded=False):
+        quick_mc = st.toggle(
+            "Quick MC uncertainty (30 samples)",
+            value=False,
+            help="After the main run, also run a 30-sample Monte Carlo "
+                 "(varying every nuclear-rate p_* and the neutron lifetime "
+                 "tau_n) and show mean +/- 1 sigma next to each standard "
+                 "ratio below. With only 30 samples this is a *quick, noisy* "
+                 "estimate -- enough to gauge the order of magnitude of the "
+                 "uncertainty, not a publication-quality error bar.",
+            key="quick_mc_uncertainty",
+        )
+
+    return params, quick_mc

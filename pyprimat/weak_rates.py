@@ -125,6 +125,14 @@ _BACKGROUND_FINGERPRINT_FIELDS = [
     "T_start_cosmo_MeV",
     "n_temperature_table",
     "DeltaNeff",
+    # Custom NEVO table overrides (None = shipped defaults; see
+    # neutrino_history.resolve_nevo_path).  Including the override values
+    # (rather than their resolved/hashed content) is enough to invalidate the
+    # cache whenever a custom table is selected, since the default path
+    # already changes with QED_corrections/incomplete_decoupling above.
+    "nevo_file",
+    "nevo_spectral_file",
+    "nevo_grid_file",
 ]
 
 

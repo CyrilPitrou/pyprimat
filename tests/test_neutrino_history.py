@@ -27,8 +27,14 @@ def _Tg_MeV(cfg):
 
 
 def test_default_is_nevo_table_no_distortion():
-    """Default config (incomplete decoupling, no distortions) -> NEVOTable."""
-    cfg, nh = _history({"network": "small"})
+    """Default config (incomplete decoupling, no distortions) -> NEVOTable.
+
+    ``spectral_distortions=True`` is the ``PyPRConfig`` default (IDEAS2.md
+    item 2), so it is explicitly disabled here to isolate the "no distortion"
+    case checked by this test (the distorted case is covered by
+    ``test_nevo_spectral_distortion_builds_callable`` below).
+    """
+    cfg, nh = _history({"network": "small", "spectral_distortions": False})
     assert isinstance(nh, NEVOTable)
     assert nh.dFDneu_func is None
     assert nh.rho_nu_SD is None
@@ -47,7 +53,10 @@ def test_nevo_heating_nonzero_instantaneous_zero():
     N_nevo = np.array([float(nh_nevo.N_NEVO_of_Tg(T)) for T in Tgs])
     assert np.any(np.abs(N_nevo) > 0.)
 
-    cfg_i, nh_inst = _history({"network": "small", "incomplete_decoupling": False})
+    # spectral_distortions=True (PyPRConfig default) requires
+    # incomplete_decoupling=True; disable it for the instantaneous case.
+    cfg_i, nh_inst = _history({"network": "small", "incomplete_decoupling": False,
+                                "spectral_distortions": False})
     assert isinstance(nh_inst, InstantaneousDecoupling)
     N_inst = nh_inst.N_NEVO_of_Tg(Tgs)
     assert np.allclose(N_inst, 0.)
@@ -55,7 +64,10 @@ def test_nevo_heating_nonzero_instantaneous_zero():
 
 def test_instantaneous_three_flavours_share_temperature():
     """Instantaneous decoupling: all three flavours have the same temperature."""
-    cfg, nh = _history({"network": "small", "incomplete_decoupling": False})
+    # spectral_distortions=True (PyPRConfig default) requires
+    # incomplete_decoupling=True; disable it for the instantaneous case.
+    cfg, nh = _history({"network": "small", "incomplete_decoupling": False,
+                         "spectral_distortions": False})
     Tg = _Tg_MeV(cfg)
     Te = float(nh.Tnue_of_Tg(Tg))
     Tm = float(nh.Tnumu_of_Tg(Tg))

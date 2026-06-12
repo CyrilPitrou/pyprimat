@@ -1,4 +1,6 @@
 """Tests for weak_rates: Fn integral, Fermi-Coulomb, rate functions."""
+import os
+
 import pytest
 import numpy as np
 from pyprimat.config import PyPRConfig
@@ -229,6 +231,72 @@ def test_fingerprint_changes_with_delta_xi_nu():
     fp0 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg0))
     fp1 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg1))
     assert fp0 != fp1
+
+
+# ---------------------------------------------------------------------------
+# Custom NEVO table overrides (Item 1: nevo_file/nevo_spectral_file/nevo_grid_file)
+# ---------------------------------------------------------------------------
+
+def test_fingerprint_changes_with_nevo_file():
+    """Pointing nevo_file at a different (even identical-content) filename
+    must invalidate the weak-rate cache, since the cached rates were
+    integrated against whatever neutrino-temperature history that file
+    encodes -- the cache cannot know two filenames happen to agree."""
+    cfg0 = PyPRConfig({"network": "small"})
+    cfg1 = PyPRConfig({"network": "small", "nevo_file": "NEVOPRIMAT_col_1_7.csv"})
+
+    fp0 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg0))
+    fp1 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg1))
+    assert fp0 != fp1
+
+
+def test_nevo_file_missing_raises_value_error():
+    """A nevo_file override that doesn't exist under rates/NEVO/ raises a
+    clear ValueError at PyPRConfig construction time, not a confusing error
+    deep inside neutrino_history when the table is first read."""
+    with pytest.raises(ValueError, match="nevo_file.*not found"):
+        PyPRConfig({"nevo_file": "does_not_exist.csv"})
+
+
+@pytest.mark.slow
+@pytest.mark.solve
+def test_nevo_file_with_custom_copy_reproduces_default(tmp_path):
+    """A copy of the default NEVO thermo table under a different filename,
+    selected via nevo_file, must give identical results to the default (same
+    content, different path) -- while still registering as a fingerprint
+    cache miss (test_fingerprint_changes_with_nevo_file above)."""
+    import shutil
+    from pyprimat.main import PyPR
+
+    cfg_default = PyPRConfig({"network": "small"})
+    src = os.path.join(cfg_default.data_dir, "rates", "NEVO",
+                        "NEVOPRIMAT_col_1_7.csv")
+    dst = os.path.join(cfg_default.data_dir, "rates", "NEVO",
+                        "NEVOPRIMAT_col_1_7_test_copy.csv")
+    shutil.copy(src, dst)
+    try:
+        # weak_rate_cache=False on *both* runs: the shipped rates/weak/*.txt
+        # cache (which "nevo_file=...test_copy.csv" deliberately misses, see
+        # test_fingerprint_changes_with_nevo_file) stores rates on its own T
+        # grid and re-interpolates them, which differs from a fresh
+        # ComputeWeakRates integration at the ~1e-3 level
+        # (test_recomputed_rates_match_cached) -- comparing a cache hit to a
+        # cache miss would spuriously fail at rel=1e-12 even for identical
+        # physics. Forcing both through ComputeWeakRates with the same
+        # [T_gamma_vec, T_nue_vec] and dFDneu_func (built from the
+        # nevo_spectral_file/nevo_grid_file defaults, untouched by nevo_file)
+        # makes them bit-identical.
+        r_default = PyPR({"network": "small", "verbose": False,
+                           "weak_rate_cache": False}).PyPRresults()
+        r_custom = PyPR({"network": "small", "verbose": False,
+                          "weak_rate_cache": False,
+                          "nevo_file": "NEVOPRIMAT_col_1_7_test_copy.csv"}).PyPRresults()
+    finally:
+        os.remove(dst)
+
+    assert r_custom["Neff"] == pytest.approx(r_default["Neff"], rel=1e-12)
+    assert r_custom["YPBBN"] == pytest.approx(r_default["YPBBN"], rel=1e-12)
+    assert r_custom["DoH"] == pytest.approx(r_default["DoH"], rel=1e-12)
 
 
 # ---------------------------------------------------------------------------

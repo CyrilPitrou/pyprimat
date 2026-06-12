@@ -40,8 +40,36 @@ Reference: Pitrou, Coc, Uzan & Vangioni, Phys. Rep. 2018 (arXiv:1806.11095);
 PRIMAT-Main.m (MuDistortionNeutrinos / YDistortionNeutrinos / NEVO spectra).
 """
 
+import os
+
 import numpy as np
 from scipy.interpolate import interp1d, RegularGridInterpolator
+
+
+def resolve_nevo_path(cfg, override, default_filename):
+    """Resolve a ``rates/NEVO/`` data file, honouring a config override.
+
+    ``override`` is one of ``cfg.nevo_file``, ``cfg.nevo_spectral_file`` or
+    ``cfg.nevo_grid_file`` (each ``None`` by default).  When set, it names the
+    file to use instead of ``default_filename`` -- either an absolute path, or
+    a filename resolved relative to ``rates/NEVO/`` (so a custom table can sit
+    alongside the shipped ones without copying the whole directory).  When
+    ``None``, ``default_filename`` (itself already chosen based on
+    ``cfg.QED_corrections``, see :class:`NEVOTable`) is used unchanged.
+
+    Args:
+        cfg: PyPRConfig instance (used for ``cfg.data_dir``).
+        override: ``cfg.nevo_*`` value, or ``None``.
+        default_filename: filename (relative to ``rates/NEVO/``) to use when
+            ``override`` is ``None``.
+
+    Returns:
+        Absolute path to the resolved file.
+    """
+    fname = override if override is not None else default_filename
+    if os.path.isabs(fname):
+        return fname
+    return os.path.join(cfg.data_dir, "rates", "NEVO", fname)
 
 __all__ = ["NeutrinoHistory", "NEVOTable", "InstantaneousDecoupling",
            "AnalyticDistortion", "make_neutrino_history"]
@@ -115,9 +143,9 @@ class NEVOTable(NeutrinoHistory):
         # that the neutrino temperatures entering the background are derived
         # from the same plasma equation of state that is used in the rest of
         # the computation.
-        nevo_file = ("NEVOPRIMAT_col_1_7.csv" if cfg.QED_corrections
-                     else "NEVOPRIMAT_NoQED_col_1_7.csv")
-        nevo_path = cfg.data_dir + "/rates/NEVO/" + nevo_file
+        default_file = ("NEVOPRIMAT_col_1_7.csv" if cfg.QED_corrections
+                        else "NEVOPRIMAT_NoQED_col_1_7.csv")
+        nevo_path = resolve_nevo_path(cfg, cfg.nevo_file, default_file)
         table = np.loadtxt(nevo_path, delimiter=',', usecols=range(6))
         # Column layout (0-indexed):
         #   0: x = me / (kB T_com)   [dimensionless]
@@ -184,10 +212,10 @@ class NEVOTable(NeutrinoHistory):
         #   1–5: same thermo columns as _col_1_7
         #   6–85: fractional spectral perturbation δf at each y node,
         #         defined so that f_actual(y) = (1+δf(y))/(e^y+1).
-        nevo_full_file = ("NEVOPRIMAT.csv" if cfg.QED_corrections
-                          else "NEVOPRIMAT_NoQED.csv")
-        nevo_full_path = cfg.data_dir + "/rates/NEVO/" + nevo_full_file
-        grid_path      = cfg.data_dir + "/rates/NEVO/NEVOGrid.csv"
+        default_full_file = ("NEVOPRIMAT.csv" if cfg.QED_corrections
+                             else "NEVOPRIMAT_NoQED.csv")
+        nevo_full_path = resolve_nevo_path(cfg, cfg.nevo_spectral_file, default_full_file)
+        grid_path      = resolve_nevo_path(cfg, cfg.nevo_grid_file, "NEVOGrid.csv")
 
         table_full = np.loadtxt(nevo_full_path, delimiter=',')   # (600, 86)
         y_nodes    = np.loadtxt(grid_path,      delimiter=',')   # (80,)

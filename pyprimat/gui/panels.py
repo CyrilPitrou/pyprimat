@@ -57,7 +57,7 @@ _RATIO_LABELS = {
 }
 
 
-def render_results_panel(run):
+def render_results_panel(run, mc=None):
     """Render the final-abundances + standard-ratios panel.
 
     Parameters
@@ -65,14 +65,22 @@ def render_results_panel(run):
     run : pyprimat.PyPR
         An already-solved ``PyPR`` instance (``run.solve()`` must have been
         called, e.g. by ``pyprimat.gui.app._solve``).
+    mc : pyprimat.main.MCResult or None, optional
+        Result of a 30-sample :func:`pyprimat.main.mc_uncertainty` call over
+        the same parameters (``pyprimat.gui.app._quick_mc``), or ``None`` if
+        the "Quick MC uncertainty" toggle is off. When given, an extra
+        "+/- 1 sigma (quick MC)" column is added to the "Standard ratios"
+        table below, using ``mc[key].std`` formatted to the same precision as
+        the central value.
 
     Layout
     ------
-    1. A vertical, two-column table (Markdown, with LaTeX-rendered labels) of
-       the 7 headline observables from ``run.PyPRresults()`` (the 9-key
-       results dict, ``main.py:751-761``; ``Omeganurel``/``OneOverOmeganunr``
-       are omitted here as niche neutrino-energy-density quantities),
-       formatted to the precision required by ``CLAUDE.md``.
+    1. A vertical table (Markdown, with LaTeX-rendered labels) of the 7
+       headline observables from ``run.PyPRresults()`` (the 9-key results
+       dict, ``main.py:751-761``; ``Omeganurel``/``OneOverOmeganunr`` are
+       omitted here as niche neutrino-energy-density quantities), formatted to
+       the precision required by ``CLAUDE.md``, plus an optional MC-uncertainty
+       column (see ``mc`` above).
     2. A table of every tracked nuclide (``run.abundance_names``), with the
        nuclide name in standard isotope LaTeX notation (``nuclide_latex``),
        its mass number ``A``, charge ``Z``, and final mass-fraction abundance
@@ -85,12 +93,26 @@ def render_results_panel(run):
     results = run.PyPRresults()
 
     st.subheader("Standard ratios")
-    lines = ["| Quantity | Value |", "|---|---|"]
-    lines += [
-        f"| {_RATIO_LABELS[key]} | {format(results[key], fmt)} |"
-        for key, fmt in _RATIO_FORMAT.items()
-    ]
+    if mc is None:
+        lines = ["| Quantity | Value |", "|---|---|"]
+        lines += [
+            f"| {_RATIO_LABELS[key]} | {format(results[key], fmt)} |"
+            for key, fmt in _RATIO_FORMAT.items()
+        ]
+    else:
+        lines = ["| Quantity | Value | ± 1σ (quick MC, 30 samples) |", "|---|---|---|"]
+        lines += [
+            f"| {_RATIO_LABELS[key]} | {format(results[key], fmt)} "
+            f"| {format(mc[key].std, fmt)} |"
+            for key, fmt in _RATIO_FORMAT.items()
+        ]
     st.markdown("\n".join(lines))
+    if mc is not None:
+        st.caption(
+            "30-sample Monte Carlo over nuclear-rate and neutron-lifetime "
+            "uncertainties -- a quick, noisy estimate, not a "
+            "publication-quality error bar."
+        )
 
     st.subheader("Final abundances")
     lines = ["| Nuclide | A | Z | Y |", "|---|---|---|---|"]

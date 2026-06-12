@@ -48,6 +48,13 @@ def _solve(incomplete_decoupling, QED_corrections):
     return PyPR({
         "incomplete_decoupling": incomplete_decoupling,
         "QED_corrections":       QED_corrections,
+        # spectral_distortions=True (the PyPRConfig default, IDEAS2.md item 2)
+        # requires incomplete_decoupling=True (NEVO spectrum); this module's
+        # 2x2 matrix exercises incomplete_decoupling=False too, and spectral
+        # distortions are an independent axis covered by
+        # test_spectral_distortions.py, so disable them here for all four
+        # combinations.
+        "spectral_distortions":  False,
     }).solve()
 
 
@@ -125,8 +132,12 @@ class TestInstantaneousDecouplingRatio:
 
     def _sbar_ref_from_config(self, QED_corrections):
         """Reproduce the sbar_ref logic from main._setup_background_and_cosmo."""
+        # spectral_distortions=True (PyPRConfig default) requires
+        # incomplete_decoupling=True; disable it here since this helper always
+        # uses incomplete_decoupling=False (instantaneous-decoupling limit).
         cfg = PyPRConfig({"QED_corrections": QED_corrections,
-                          "incomplete_decoupling": False})
+                          "incomplete_decoupling": False,
+                          "spectral_distortions": False})
         if QED_corrections:
             alpha = cfg.alphaem
             ratio3 = (11.0/4.0
@@ -284,3 +295,101 @@ def test_nevo_file_selection():
         "T_νe/T_γ is identical for QED and NoQED NEVO tables — "
         "likely the same file was loaded for both cases."
     )
+
+
+# ---------------------------------------------------------------------------
+# "Nheating" time-evolution column: present only for a real NEVO heating
+# table (incomplete_decoupling=True), absent for the N=0 stub used by
+# InstantaneousDecoupling (see PyPR._has_heating_table /
+# PyPR._write_time_evolution).
+# ---------------------------------------------------------------------------
+
+@pytest.mark.slow
+@pytest.mark.solve
+def test_has_heating_table_flag_tracks_incomplete_decoupling():
+    """``self._has_heating_table`` mirrors ``cfg.incomplete_decoupling``:
+    True selects NEVOTable (a real N(T_gamma) heating table), False selects
+    InstantaneousDecoupling (the N=0 stub)."""
+    from pyprimat.main import PyPR
+    p_nevo = PyPR({"network": "small", "incomplete_decoupling": True})
+    # spectral_distortions=True (PyPRConfig default) requires
+    # incomplete_decoupling=True; disable it for the instantaneous case.
+    p_inst = PyPR({"network": "small", "incomplete_decoupling": False,
+                    "spectral_distortions": False})
+    assert p_nevo._has_heating_table is True
+    assert p_inst._has_heating_table is False
+
+
+@pytest.mark.slow
+@pytest.mark.solve
+def test_nheating_column_present_only_with_heating_table(tmp_path):
+    """The TSV written by output_time_evolution=True includes an "Nheating"
+    column when incomplete_decoupling=True (a real NEVO heating table is
+    available), and omits it entirely when incomplete_decoupling=False (where
+    it would just be a column of zeros from the InstantaneousDecoupling
+    stub)."""
+    from pyprimat.main import PyPR
+
+    out_nevo = tmp_path / "nevo.tsv"
+    PyPR({
+        "network": "small",
+        "incomplete_decoupling": True,
+        "output_time_evolution": True,
+        "output_file": str(out_nevo),
+    }).solve()
+    header_nevo = out_nevo.read_text().splitlines()[0].split("\t")
+    assert "Nheating" in header_nevo
+
+    out_inst = tmp_path / "inst.tsv"
+    PyPR({
+        "network": "small",
+        "incomplete_decoupling": False,
+        # spectral_distortions=True (PyPRConfig default) requires
+        # incomplete_decoupling=True; disable it for the instantaneous case.
+        "spectral_distortions": False,
+        "output_time_evolution": True,
+        "output_file": str(out_inst),
+    }).solve()
+    header_inst = out_inst.read_text().splitlines()[0].split("\t")
+    assert "Nheating" not in header_inst
+
+
+@pytest.mark.slow
+@pytest.mark.solve
+def test_time_evolution_HT_era_filled_with_NSE_value(tmp_path):
+    """IDEAS2.md item 1: in the HT era (t < t_weak, where ``_embed`` zero-fills
+    every nuclide but n/p), the ``Y<species>`` columns of the
+    ``output_time_evolution`` TSV hold the Nuclear Statistical Equilibrium
+    (Saha) prediction ``YA(name, Yn, Yp, T)`` instead of a hard 0 -- a smooth
+    curve down to ``T_start_cosmo`` rather than a gap (the NEXT line, the first
+    MT-era row, may legitimately still be 0/tiny for a heavy nuclide and is not
+    checked here)."""
+    from pyprimat.main import PyPR
+    import numpy as np
+
+    out_path = tmp_path / "evolution.tsv"
+    pr = PyPR({
+        "network": "small", "verbose": False,
+        "output_time_evolution": True, "output_file": str(out_path),
+    })
+    pr.solve()
+
+    with open(out_path) as f:
+        header = f.readline().strip().split("\t")
+        data = np.loadtxt(f)
+
+    t = data[:, header.index("t")]
+    # All output rows are >= T_start_cosmo (t_out starts at t_cosmo), and the
+    # first row is deep in the HT era (t_weak ~ a few seconds, well after
+    # T_start_cosmo at 10 MeV).
+    assert t[0] < 1e-2
+
+    for name in pr._abundance_names:
+        if name in ("n", "p"):
+            continue
+        y = data[0, header.index("Y" + name)]
+        # Saha-suppressed (eta_b^(A-1)) but strictly positive -- not the hard
+        # 0 that _embed alone would produce.
+        assert y > 0., f"Y{name} is not positive at the first HT-era row"
+        assert np.isfinite(y), f"Y{name} is not finite at the first HT-era row"
+        assert y < 1., f"Y{name} exceeds a physical mass fraction"
