@@ -132,6 +132,7 @@ Be12tTOB15g
 Be7He3TOC10g
 Be7He3TOaapp
 Be7He3TOppaa
+Be7TOLi7Bp
 Be7aTOC11g
 Be7dTOaap
 Be7nTOLi7p
@@ -417,6 +418,7 @@ dnTOtg
 dpTOHe3g
 npTOdg
 ppnTOdp
+tTOHe3Bm
 taTOLi7g
 tdTOan
 tpTOag

@@ -1,4 +1,4 @@
-# Li9 > Be9 + Bm   [Li9TOBe9Bm]   ref=  (analytic, PRIMAT-main.m)
+# Li9 > Be9 + Bm   [Li9TOBe9Bm]   ref=Aud03  (analytic, PRIMAT-main.m)
 # forward[T9] = Log[2]/1.7830*^-1 * 0.492   uncertainty factor f = 1
 # T9                 rate                error
 1.000000e-03 1.912666e+00 1.000000e+00

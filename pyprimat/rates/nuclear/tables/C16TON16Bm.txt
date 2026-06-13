@@ -1,4 +1,4 @@
-# C16 > N16 + Bm   [C16TON16Bm]   ref=  (analytic, PRIMAT-main.m)
+# C16 > N16 + Bm   [C16TON16Bm]   ref=Aud03  (analytic, PRIMAT-main.m)
 # forward[T9] = Log[2]/7.4700*^-1   uncertainty factor f = 1
 # T9                 rate                error
 1.000000e-03 9.279079e-01 1.000000e+00

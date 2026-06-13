@@ -1,4 +1,4 @@
-# N13 > C13 + Bp   [N13TOC13Bp]   ref=  (analytic, PRIMAT-main.m)
+# N13 > C13 + Bp   [N13TOC13Bp]   ref=Aud03  (analytic, PRIMAT-main.m)
 # forward[T9] = Log[2]/5.979*^2   uncertainty factor f = 1
 # T9                 rate                error
 1.000000e-03 1.159303e-03 1.000000e+00

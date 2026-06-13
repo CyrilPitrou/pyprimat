@@ -1,4 +1,4 @@
-# Be11 > B11 + Bm   [Be11TOB11Bm]   ref=  (analytic, PRIMAT-main.m)
+# Be11 > B11 + Bm   [Be11TOB11Bm]   ref=Aud03  (analytic, PRIMAT-main.m)
 # forward[T9] = Log[2]/(1.3810*^1)   uncertainty factor f = 1
 # T9                 rate                error
 1.000000e-03 5.019169e-02 1.000000e+00

@@ -1,4 +1,4 @@
-# Ne23 > Na23 + Bm   [Ne23TONa23Bm]   ref=  (analytic, PRIMAT-main.m)
+# Ne23 > Na23 + Bm   [Ne23TONa23Bm]   ref=Aud03  (analytic, PRIMAT-main.m)
 # forward[T9] = Log[2]/37.240   uncertainty factor f = 1
 # T9                 rate                error
 1.000000e-03 1.861297e-02 1.000000e+00
