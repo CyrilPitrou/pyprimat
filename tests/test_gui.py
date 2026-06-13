@@ -22,6 +22,8 @@ solve (~1.2 s, like ``test_cli.py``), so this module is marked
 ``slow``/``solve``. All tests are skipped if the optional ``gui`` extra
 (``pip install ".[gui]"``) is not installed.
 """
+import os
+
 import pytest
 
 st = pytest.importorskip("streamlit")
@@ -34,6 +36,33 @@ from pyprimat.gui import params_form
 pytestmark = [pytest.mark.slow, pytest.mark.solve, pytest.mark.gui]
 
 APP_PATH = "pyprimat/gui/app.py"
+
+# network="large" needs the generated AC2024 rate/data CSVs (tests/test_large_network.py).
+_AC2024_DIR = os.path.join(os.path.dirname(__file__), "..", "pyprimat",
+                           "rates", "nuclear", "data")
+_needs_ac2024 = pytest.mark.skipif(
+    not os.path.isdir(_AC2024_DIR),
+    reason="rates/nuclear/data not generated",
+)
+
+
+def _download_button(at, label):
+    """Find the ``st.download_button`` with the given ``label`` in ``at``.
+
+    ``AppTest`` exposes download buttons as ``UnknownElement`` nodes (no
+    dedicated accessor), so walk the element tree looking for one whose
+    ``label`` matches. Returns ``None`` if not found.
+    """
+    def walk(node):
+        for child in getattr(node, "children", {}).values():
+            if type(child).__name__ == "UnknownElement" and getattr(child, "label", None) == label:
+                return child
+            found = walk(child)
+            if found is not None:
+                return found
+        return None
+
+    return walk(at.main)
 
 
 # ---------------------------------------------------------------------------
@@ -138,16 +167,16 @@ def test_default_run_matches_cli_reference():
     ]
     ratios = _markdown_table_rows(ratios_md.value)
     assert ratios[r"$N_{\text{eff}}$"] == ["3.04397730"]
-    assert ratios[r"$Y_P\ (\text{BBN})$"] == ["0.24699475"]
-    assert ratios[r"$\text{D}/\text{H}$"] == ["2.4369993e-05"]
+    assert ratios[r"$Y_P\ (\text{BBN})$"] == ["0.24699534"]
+    assert ratios[r"$\text{D}/\text{H}$"] == ["2.4349347e-05"]
 
     # Per-nuclide final-abundance Markdown table (render_results_panel).
     [abundances_md] = [
         md for md in at.markdown if "| Nuclide | A | Z | Y |" in md.value
     ]
     by_nuclide = _markdown_table_rows(abundances_md.value)
-    assert float(by_nuclide[nuclide_latex("p")][-1]) == pytest.approx(7.529451e-01, rel=1e-5)
-    assert float(by_nuclide[nuclide_latex("He4")][-1]) == pytest.approx(0.2469947478401321 / 4., rel=1e-5)
+    assert float(by_nuclide[nuclide_latex("p")][-1]) == pytest.approx(7.529445e-01, rel=1e-5)
+    assert float(by_nuclide[nuclide_latex("He4")][-1]) == pytest.approx(0.24699534223598402 / 4., rel=1e-5)
 
 
 def test_evolution_panel_renders_with_default_selection():
@@ -187,6 +216,35 @@ def test_amax_widget_only_shown_for_large_network():
     network_select.set_value("large")
     at.run(timeout=60)
     assert has_amax_checkbox()
+
+
+@_needs_ac2024
+def test_time_evolution_download_available_for_large_network():
+    """The "Time evolution (output_time_evolution.tsv)" download button is
+    offered for ``network="large"`` too, not just small/medium.
+
+    ``_write_time_evolution`` (main.py) derives its ``Y<species>`` columns
+    from ``self._abundance_names``, which already covers all three networks
+    (8/12/~59 nuclides, see ``test_large_network.py::
+    test_large_network_time_evolution_tsv``) -- the GUI's ``_solve`` must not
+    special-case "large" out of generating that TSV.
+    """
+    at = AppTest.from_file(APP_PATH)
+    at.run(timeout=60)
+
+    [network_select] = [s for s in at.sidebar.selectbox if s.key == "network"]
+    network_select.set_value("large")
+    at.run(timeout=60)
+
+    _run_bbn(at)
+    assert not at.exception
+
+    button = _download_button(at, "Time evolution (output_time_evolution.tsv)")
+    assert button is not None
+    assert button.proto.url.endswith(".tsv")
+
+    # The old "not available for the large network" fallback caption is gone.
+    assert not any("not available" in c.value for c in at.caption)
 
 
 def test_quick_mc_uncertainty_adds_sigma_column():

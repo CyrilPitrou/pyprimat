@@ -95,8 +95,9 @@ _FORM_METADATA = {
     ),
     "nuclear_qed_corrections": (
         "Physics", "Nuclear QED rate corrections",
-        "Apply a T9-dependent QED rescaling (Pitrou & Pospelov 2020) to the "
-        "forward rates of npTOdg, dpTOHe3g, tpTOag, taTOLi7g, He3aTOBe7g.",
+        "True (default): apply a T9-dependent QED rescaling (Pitrou & "
+        "Pospelov 2020) to the forward rates of npTOdg, dpTOHe3g, tpTOag, "
+        "taTOLi7g, He3aTOBe7g.",
     ),
     "nTOp_Born_approximation": (
         "Physics", "Born approximation for n↔p",

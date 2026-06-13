@@ -134,8 +134,8 @@ class TestQEDCorrectionInNetwork:
 
     @pytest.fixture(scope="class")
     def nets(self):
-        """Base and QED-corrected small networks."""
-        cfg_base = PyPRConfig({"network": "small"})
+        """Base (uncorrected) and QED-corrected small networks."""
+        cfg_base = PyPRConfig({"network": "small", "nuclear_qed_corrections": False})
         cfg_qed  = PyPRConfig({"network": "small", "nuclear_qed_corrections": True})
         return (load_network(cfg_base, era="LT"),
                 load_network(cfg_qed,  era="LT"))
@@ -200,7 +200,8 @@ def test_solve_qed_corrections_shift_DoH():
     """
     from pyprimat import PyPR
 
-    res_base = PyPR({"network": "small", "verbose": False}).solve()
+    res_base = PyPR({"network": "small", "nuclear_qed_corrections": False,
+                          "verbose": False}).solve()
     res_qed  = PyPR({"network": "small", "nuclear_qed_corrections": True,
                           "verbose": False}).solve()
 

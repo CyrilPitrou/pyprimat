@@ -147,7 +147,7 @@ DEFAULT_PARAMS: dict = {
     # npTOdg, dpTOHe3g, tpTOag, taTOLi7g, He3aTOBe7g at load time.  When True the
     # corrected values become the new medians, so p_* and NP_delta_* variations
     # work relative to the QED-corrected central value.
-    "nuclear_qed_corrections":    False,
+    "nuclear_qed_corrections":    True,
 
     # ---- cosmological inputs ----------------------------------------------
     "Omegabh2":                   0.022425,

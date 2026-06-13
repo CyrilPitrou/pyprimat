@@ -129,6 +129,7 @@ def main(argv=None):
         print(f"YP (CMB) = {results['YPCMB']:.8f}")
         print(f"D/H      = {results['DoH']:.7e}")
         print(f"He3/H    = {results['He3oH']:.7e}")
+        print(f"He3/He4  = {results['He3oHe4']:.7e}")
         print(f"Li7/H    = {results['Li7oH']:.6e}")
         print(f"--- running time: {elapsed:.2f} seconds ---")
 

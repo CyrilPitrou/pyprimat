@@ -24,7 +24,6 @@ import time
 import streamlit as st
 
 from pyprimat import PyPR
-from pyprimat.config import DEFAULT_PARAMS
 from pyprimat.gui import panels
 from pyprimat.gui.params_form import render_sidebar_form
 from pyprimat.main import mc_uncertainty
@@ -52,13 +51,14 @@ def _solve(params_items):
 
     Returns
     -------
-    (pyprimat.PyPR, str or None)
+    (pyprimat.PyPR, str)
         The solved instance -- ``run.PyPRresults()``, ``run.abundance_names``,
         and ``run[name](t)`` are all ready to use without triggering further
         computation -- together with the contents of the time-evolution TSV
         (``output_time_evolution`` format, see ``main.py:_write_time_evolution``)
-        as a string, or ``None`` for the large network (unsupported there, see
-        ``main.py``'s ``output_time_evolution`` handling).
+        as a string.  ``_write_time_evolution`` derives its ``Y<species>``
+        columns from ``self._abundance_names``, so this works the same way
+        for all three networks (8 / 12 / ~59 nuclide columns).
 
     Notes
     -----
@@ -79,14 +79,6 @@ def _solve(params_items):
     could overwrite.
     """
     params = dict(params_items)
-    network = params.get("network", DEFAULT_PARAMS["network"])
-
-    if network == "large":
-        # _write_time_evolution does not support the large network (main.py);
-        # PyPR just prints a notice and writes nothing in that case.
-        run = PyPR(params=params)
-        run.solve()
-        return run, None
 
     fd, tmp_path = tempfile.mkstemp(suffix=".tsv", prefix="pyprimat_evolution_")
     os.close(fd)
@@ -197,18 +189,13 @@ def main():
         mime="text/plain",
         width="stretch",
     )
-    if time_evolution_tsv is not None:
-        dl_cols[1].download_button(
-            "Time evolution (output_time_evolution.tsv)",
-            data=time_evolution_tsv,
-            file_name="output_time_evolution.tsv",
-            mime="text/tab-separated-values",
-            width="stretch",
-        )
-    else:
-        dl_cols[1].caption(
-            "Time-evolution download is not available for the large network."
-        )
+    dl_cols[1].download_button(
+        "Time evolution (output_time_evolution.tsv)",
+        data=time_evolution_tsv,
+        file_name="output_time_evolution.tsv",
+        mime="text/tab-separated-values",
+        width="stretch",
+    )
 
 
 def _render_footer():

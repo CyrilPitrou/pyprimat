@@ -55,12 +55,9 @@ MyOptions = {
     # spectral_distortions: left at its PyPRConfig default (True) -- the
     # CLAUDE.md reference values include the NEVO spectral-distortion
     # correction to the n<->p weak rates.
-    # Keep nuclear_qed_corrections False for the standard validation run: the
-    # CLAUDE.md reference values (YP, D/H) were produced without the
-    # radiative-capture QED corrections, so enabling them shifts D/H outside
-    # the validation tolerance (set True only for dedicated QED-correction
-    # studies).
-    "nuclear_qed_corrections":   False
+    # nuclear_qed_corrections: left at its PyPRConfig default (True) -- the
+    # CLAUDE.md reference values include the radiative-capture QED
+    # corrections (Pitrou & Pospelov 2020).
 }
 
 # ---------------------------------------------------------------------------

@@ -67,9 +67,9 @@ MyOptions = {
     # Omegabh2
     "Omegabh2":                   omegabh2,
 
-    # Standard physics: the reference values are defined without the
-    # radiative-capture QED corrections.
-    "nuclear_qed_corrections":    False,
+    # nuclear_qed_corrections: left at its PyPRConfig default (True) -- the
+    # reference values include the radiative-capture QED corrections
+    # (Pitrou & Pospelov 2020).
 
     # Output
     "output_time_evolution":      False,
