@@ -222,6 +222,12 @@ def render_sidebar_form():
         Whether the "Quick MC uncertainty" toggle is enabled. This is a
         GUI-only flag (not a ``PyPRConfig``/``DEFAULT_PARAMS`` key), so it is
         returned separately rather than folded into ``params``.
+    mc_samples : int
+        Number of Monte Carlo samples to draw for the quick uncertainty
+        estimate (only meaningful when ``quick_mc`` is True).  Capped at 100 in
+        the widget because each sample is a full nuclear-network solve and more
+        than that is too slow for an interactive "quick" estimate.  Also a
+        GUI-only value, returned separately.
     """
     params = {}
 
@@ -269,15 +275,31 @@ def render_sidebar_form():
     # ---- Uncertainty: optional quick MC error bars ---------------------------
     with st.sidebar.expander("Uncertainty", expanded=False):
         quick_mc = st.toggle(
-            "Quick MC uncertainty (30 samples)",
+            "Quick MC uncertainty",
             value=False,
-            help="After the main run, also run a 30-sample Monte Carlo "
+            help="After the main run, also run a small Monte Carlo "
                  "(varying every nuclear-rate p_* and the neutron lifetime "
                  "tau_n) and show mean +/- 1 sigma next to each standard "
-                 "ratio below. With only 30 samples this is a *quick, noisy* "
-                 "estimate -- enough to gauge the order of magnitude of the "
-                 "uncertainty, not a publication-quality error bar.",
+                 "ratio below. With only a few dozen samples this is a "
+                 "*quick, noisy* estimate -- enough to gauge the order of "
+                 "magnitude of the uncertainty, not a publication-quality "
+                 "error bar.",
             key="quick_mc_uncertainty",
         )
+        # Number of MC samples. Capped at 100: each sample is a full network
+        # solve, so more than that stops being "quick". Because the samples are
+        # seed-deterministic (sample i uses seed+i), raising this value only
+        # solves the *additional* samples -- the GUI reuses any already-computed
+        # ones via the ``prev`` argument of mc_uncertainty (see app._quick_mc).
+        mc_samples = int(st.number_input(
+            "MC samples",
+            min_value=2, max_value=100, value=30, step=10,
+            help="How many Monte Carlo samples to draw (max 100). Increasing "
+                 "this reuses the samples already computed and only solves the "
+                 "extra ones, so refining from e.g. 30 to 50 runs just 20 new "
+                 "solves.",
+            key="quick_mc_samples",
+            disabled=not quick_mc,
+        ))
 
-    return params, quick_mc
+    return params, quick_mc, mc_samples

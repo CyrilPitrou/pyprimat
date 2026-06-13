@@ -45,7 +45,7 @@ MyOptions = {
     "Omegabh2":                  omegabh2,
     # "eta0b": computed automatically from Omegabh2
     "DeltaNeff":                 Nrelat,  # Note: not exactly the PRIMAT definition
-    "network":                   'small',
+    "network":                   'medium',
     "output_time_evolution":     True,
     "numerical_precision":       1e-7,
     "output_final_result":       True,

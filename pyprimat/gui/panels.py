@@ -68,12 +68,14 @@ def render_results_panel(run, mc=None):
         An already-solved ``PyPR`` instance (``run.solve()`` must have been
         called, e.g. by ``pyprimat.gui.app._solve``).
     mc : pyprimat.main.MCResult or None, optional
-        Result of a 30-sample :func:`pyprimat.main.mc_uncertainty` call over
+        Result of a quick :func:`pyprimat.main.mc_uncertainty` call over
         the same parameters (``pyprimat.gui.app._quick_mc``), or ``None`` if
         the "Quick MC uncertainty" toggle is off. When given, an extra
         "+/- 1 sigma (quick MC)" column is added to the "Standard ratios"
         table below, using ``mc[key].std`` formatted to the same precision as
-        the central value.
+        the central value.  The sample count shown in the header/caption is read
+        back from the result (``len(mc[key].values)``) so it always matches the
+        "MC samples" value the user chose.
 
     Layout
     ------
@@ -102,7 +104,11 @@ def render_results_panel(run, mc=None):
             for key, fmt in _RATIO_FORMAT.items()
         ]
     else:
-        lines = ["| Quantity | Value | ± 1σ (quick MC, 30 samples) |", "|---|---|---|"]
+        # Sample count is read back from the result so the header matches the
+        # "MC samples" value the user picked (the GUI lets it vary up to 100).
+        n_mc = len(next(iter(mc._data.values())).values)
+        lines = [f"| Quantity | Value | ± 1σ (quick MC, {n_mc} samples) |",
+                 "|---|---|---|"]
         lines += [
             f"| {_RATIO_LABELS[key]} | {format(results[key], fmt)} "
             f"| {format(mc[key].std, fmt)} |"
@@ -111,7 +117,7 @@ def render_results_panel(run, mc=None):
     st.markdown("\n".join(lines))
     if mc is not None:
         st.caption(
-            "30-sample Monte Carlo over nuclear-rate and neutron-lifetime "
+            f"{n_mc}-sample Monte Carlo over nuclear-rate and neutron-lifetime "
             "uncertainties -- a quick, noisy estimate, not a "
             "publication-quality error bar."
         )

@@ -317,7 +317,6 @@ class PyPR:
         a_ini = a_of_T(Tstartcosmo)
         a_fin = a_of_T(Tend)
 
-
         # ------------------------------------------------------------------
         # Step 4 – Integrate dt/d(ln a) = 1/H(a)
         # ------------------------------------------------------------------
@@ -1197,9 +1196,19 @@ class MCResult:
         mc['YPBBN'].std
         mc['YPBBN'].values
         mc['DoH'].central
+
+    Attributes
+    ----------
+    seed : int or None
+        The base random seed used to generate the samples (sample ``i`` used
+        ``seed + i``).  Stored so that :func:`mc_uncertainty` can *extend* an
+        existing result with more samples without recomputing the ones it
+        already has: a previous result is only reused when its ``seed`` and its
+        set/order of quantities match the new request (see ``prev`` there).
     """
-    def __init__(self, data):
+    def __init__(self, data, seed=None):
         self._data = data   # dict: str -> MCQuantityResult
+        self.seed = seed
 
     def __getitem__(self, quantity):
         return self._data[quantity]
@@ -1267,7 +1276,37 @@ def _mc_run_batch(base_params, rate_keys, quantities, seeds):
     return results
 
 
-def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0):
+def _mc_collect_samples(base_params, rate_keys, quantities, seeds, n_jobs):
+    """Run :func:`_mc_run_batch` for a list of seeds and stack the results.
+
+    Splits ``seeds`` into one chunk per worker so the expensive cosmological
+    background + n<->p weak-rate setup (which does *not* depend on the sampled
+    nuclear rates) is paid once per worker instead of once per sample, then
+    returns the ``(len(seeds), len(quantities))`` array of sampled quantity
+    values.  Because every sample draws its rate vector from
+    ``default_rng(seed)`` (see ``_mc_run_batch``), the row for a given seed is
+    independent of how the seeds are chunked -- so callers can safely build the
+    full sample set incrementally by collecting disjoint seed ranges and
+    stacking them (this is what the ``prev`` reuse in :func:`mc_uncertainty`
+    relies on).
+
+    An empty ``seeds`` list returns an empty ``(0, len(quantities))`` array so
+    the result can always be ``np.vstack``-ed with an existing sample block.
+    """
+    from joblib import Parallel, delayed, effective_n_jobs
+
+    if not seeds:
+        return np.empty((0, len(quantities)))
+    n_chunks = max(1, min(len(seeds), effective_n_jobs(n_jobs)))
+    chunks   = [list(c) for c in np.array_split(seeds, n_chunks)]
+    raw = Parallel(n_jobs=n_jobs)(
+        delayed(_mc_run_batch)(base_params, rate_keys, quantities, chunk)
+        for chunk in chunks
+    )
+    return np.array([row for chunk in raw for row in chunk])
+
+
+def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None):
     """Estimate nuclear-rate and neutron-lifetime uncertainties on BBN
     observables via Monte Carlo.
 
@@ -1296,6 +1335,17 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0):
         vector p_* everywhere.  This correlates the MC noise across the grid,
         making any finite-sample bias cancel when comparing predictions at
         different parameter values.
+    prev : MCResult, optional
+        A previously computed result to *extend* rather than recompute from
+        scratch.  Because sample ``i`` is fully determined by ``seed + i``, the
+        first ``min(len(prev), num_mc)`` samples are identical to ``prev`` as
+        long as the seed and the set/order of quantities match, so only the
+        missing samples (``seed + n_prev .. seed + num_mc - 1``) are actually
+        solved.  This makes it cheap to refine an estimate -- e.g. going from 30
+        to 50 samples only runs the 20 new ones.  ``prev`` is silently ignored
+        (full recompute) if its ``seed`` or its quantities differ from this
+        call; if ``num_mc`` is *smaller* than ``len(prev)``, the result is just
+        ``prev`` truncated to ``num_mc`` samples (nothing is solved).
 
     Returns
     -------
@@ -1311,7 +1361,6 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0):
     >>> mc['YPBBN'].std
     >>> mc['DoH'].values   # full sample array
     """
-    from joblib import Parallel, delayed, effective_n_jobs
     from .nuclear import load_reaction_names
 
     quantities = [quantity] if isinstance(quantity, str) else list(quantity)
@@ -1335,24 +1384,39 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0):
         
     rate_keys = [f'p_{rxn}' for rxn in bare_reactions]
 
-    # Central value (all p_* = 0).
-    central_inst = PyPR(params=base_params)
-    central_inst.solve()
-    centrals = [central_inst.get_quantity(q) for q in quantities]
+    # Reuse a previous result only when it is sample-for-sample compatible with
+    # this call: same base seed and same quantities (in the same order, so the
+    # stacked sample columns line up).  ``list(prev)`` iterates the quantity
+    # names in their stored order (MCResult wraps an insertion-ordered dict).
+    reuse = (prev is not None
+             and getattr(prev, 'seed', None) == seed
+             and list(prev) == quantities)
 
-    # Split the seeds into one chunk per worker so the expensive background +
-    # weak-rate setup is paid once per worker instead of once per sample.
-    seeds    = [seed + i for i in range(num_mc)]
-    n_chunks = max(1, min(len(seeds), effective_n_jobs(n_jobs)))
-    chunks   = [list(c) for c in np.array_split(seeds, n_chunks)]
+    if reuse:
+        # The central value (all p_* = 0) does not depend on num_mc, so take it
+        # straight from prev instead of re-solving it.
+        centrals = [prev[q].central for q in quantities]
+        # prev's per-quantity value arrays are the columns of the sample
+        # matrix; transpose back to (n_prev, n_q) and keep at most num_mc rows
+        # (a smaller num_mc simply truncates, solving nothing new).
+        prev_samples = np.column_stack([prev[q].values for q in quantities])
+        n_prev = min(prev_samples.shape[0], num_mc)
+        prev_samples = prev_samples[:n_prev]
+    else:
+        # Central value (all p_* = 0).
+        central_inst = PyPR(params=base_params)
+        central_inst.solve()
+        centrals = [central_inst.get_quantity(q) for q in quantities]
+        prev_samples = np.empty((0, len(quantities)))
+        n_prev = 0
 
-    raw = Parallel(n_jobs=n_jobs)(
-        delayed(_mc_run_batch)(base_params, rate_keys, quantities, chunk)
-        for chunk in chunks
-    )
-    samples = np.array([row for chunk in raw for row in chunk])   # (num_mc, n_q)
+    # Only the samples beyond the reused prefix need solving.
+    new_seeds   = [seed + i for i in range(n_prev, num_mc)]
+    new_samples = _mc_collect_samples(base_params, rate_keys, quantities,
+                                      new_seeds, n_jobs)
+    samples = np.vstack([prev_samples, new_samples])   # (num_mc, n_q)
 
     return MCResult({
         q: MCQuantityResult(centrals[j], samples[:, j])
         for j, q in enumerate(quantities)
-    })
+    }, seed=seed)

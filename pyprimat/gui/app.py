@@ -92,16 +92,15 @@ def _solve(params_items):
     return run, time_evolution_tsv
 
 
-@st.cache_resource(show_spinner=False)
-def _quick_mc(params_items):
-    """Run a 30-sample :func:`pyprimat.main.mc_uncertainty` for the standard ratios.
+def _quick_mc(params_items, num_mc):
+    """Run a quick :func:`pyprimat.main.mc_uncertainty` for the standard ratios.
 
     Parameters
     ----------
     params_items : tuple of (str, value) pairs
-        Same hashable encoding of ``params`` as :func:`_solve`, so the MC
-        result is cached/reused alongside the main solve and only recomputed
-        when the parameters actually change.
+        Same hashable encoding of ``params`` as :func:`_solve`.
+    num_mc : int
+        Number of Monte Carlo samples requested (the GUI caps this at 100).
 
     Returns
     -------
@@ -111,13 +110,29 @@ def _quick_mc(params_items):
 
     Notes
     -----
-    30 samples is deliberately small (a handful of seconds rather than
+    A few dozen samples is deliberately small (a handful of seconds rather than
     minutes) and gives only a *quick, noisy* estimate of the uncertainty --
     see the "Quick MC uncertainty" toggle's help text in
     ``params_form.render_sidebar_form``.
+
+    **Incremental reuse.** The previous result (for the *same* parameters) is
+    kept in ``st.session_state`` and passed to :func:`mc_uncertainty` as
+    ``prev``.  Because sample ``i`` is fully determined by ``seed + i``, raising
+    the sample count only solves the additional samples (e.g. 30 -> 50 runs 20
+    new ones); lowering it just truncates the stored samples without solving
+    anything.  We deliberately do *not* use ``st.cache_resource`` here so that a
+    larger request can extend the smaller cached one instead of being a plain
+    cache miss that recomputes everything.
     """
-    params = dict(params_items)
-    return mc_uncertainty(30, list(_RATIO_FORMAT), params=params, seed=0)
+    cache = st.session_state.get("_quick_mc_cache")
+    # Reuse the cached MCResult as a starting point only when it was computed
+    # for exactly these parameters; mc_uncertainty itself re-checks seed and
+    # quantities before trusting ``prev``.
+    prev = cache[1] if (cache is not None and cache[0] == params_items) else None
+    mc = mc_uncertainty(num_mc, list(_RATIO_FORMAT),
+                        params=dict(params_items), seed=0, prev=prev)
+    st.session_state["_quick_mc_cache"] = (params_items, mc)
+    return mc
 
 
 def main():
@@ -127,7 +142,7 @@ def main():
         "`pyprimat.PyPR`"
     )
 
-    params, quick_mc = render_sidebar_form()
+    params, quick_mc, mc_samples = render_sidebar_form()
     run_clicked = st.sidebar.button("Run BBN", type="primary", width="stretch")
     _render_footer()
 
@@ -138,6 +153,7 @@ def main():
         # the sidebar currently shows.
         st.session_state["params"] = dict(params)
         st.session_state["quick_mc"] = quick_mc
+        st.session_state["mc_samples"] = mc_samples
 
     stored_params = st.session_state.get("params")
     if stored_params is None:
@@ -171,8 +187,9 @@ def main():
 
     mc = None
     if st.session_state.get("quick_mc", False):
-        with st.spinner("Running 30-sample quick MC uncertainty…"):
-            mc = _quick_mc(params_items)
+        num_mc = st.session_state.get("mc_samples", 30)
+        with st.spinner(f"Running {num_mc}-sample quick MC uncertainty…"):
+            mc = _quick_mc(params_items, num_mc)
 
     tab_results, tab_evolution, tab_reactions, tab_downloads = st.tabs(
         ["Final abundances", "Abundance evolution", "Reactions", "Downloads"])

@@ -99,6 +99,44 @@ def test_different_seed_different_result():
     assert not np.allclose(mc_a["YPBBN"].values, mc_b["YPBBN"].values)
 
 
+# --- Incremental reuse (prev=) ---
+
+def test_extend_matches_full_run():
+    """Extending an N-sample result to M>N must give *exactly* the same M
+    samples as computing M from scratch -- the whole point of the ``prev``
+    reuse is that the first N samples are seed-deterministic and untouched."""
+    full = mc_uncertainty(6, ["YPBBN", "DoH"], params=_BASE, n_jobs=1, seed=0)
+    part = mc_uncertainty(3, ["YPBBN", "DoH"], params=_BASE, n_jobs=1, seed=0)
+    ext  = mc_uncertainty(6, ["YPBBN", "DoH"], params=_BASE, n_jobs=1, seed=0,
+                          prev=part)
+    for q in ("YPBBN", "DoH"):
+        np.testing.assert_array_equal(full[q].values, ext[q].values)
+        assert full[q].central == ext[q].central
+
+
+def test_extend_truncates_when_fewer_requested():
+    """Requesting fewer samples than ``prev`` truncates without solving."""
+    big   = mc_uncertainty(6, "YPBBN", params=_BASE, n_jobs=1, seed=0)
+    small = mc_uncertainty(4, "YPBBN", params=_BASE, n_jobs=1, seed=0, prev=big)
+    np.testing.assert_array_equal(big["YPBBN"].values[:4], small["YPBBN"].values)
+
+
+def test_prev_ignored_when_seed_differs():
+    """An incompatible ``prev`` (different seed) is silently ignored, giving a
+    full recompute at the requested seed rather than reusing stale samples."""
+    prev = mc_uncertainty(3, "YPBBN", params=_BASE, n_jobs=1, seed=0)
+    ref  = mc_uncertainty(3, "YPBBN", params=_BASE, n_jobs=1, seed=5)
+    got  = mc_uncertainty(3, "YPBBN", params=_BASE, n_jobs=1, seed=5, prev=prev)
+    np.testing.assert_array_equal(ref["YPBBN"].values, got["YPBBN"].values)
+
+
+def test_result_records_seed():
+    """MCResult.seed is stored so callers (e.g. the GUI) can decide whether a
+    cached result is reusable as ``prev``."""
+    mc = mc_uncertainty(2, "YPBBN", params=_BASE, n_jobs=1, seed=7)
+    assert mc.seed == 7
+
+
 # --- nuclide name as quantity ---
 
 def test_nuclide_quantity_works():
