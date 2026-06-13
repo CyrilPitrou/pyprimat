@@ -170,8 +170,7 @@ def render_reactions_panel(run):
     selected set; the MT era uses only a fixed 18-reaction subset), as produced
     by :meth:`pyprimat.nuclear.UpdateNuclearRates.describe_reactions`. Columns:
 
-    * **Reaction** -- the compact PRIMAT name (e.g. ``npTOdg``);
-    * **Equation** -- the readable ``a + b <-> c + d`` form with isotope LaTeX;
+    * **Reaction** -- the readable ``a + b <-> c + d`` form with isotope LaTeX;
     * **Source** -- the ``ref=`` provenance from the rate table's header line
       (e.g. ``And06``), or ``weak n<->p`` for the tabulated ``nTOp`` weak rate.
 
@@ -188,9 +187,9 @@ def render_reactions_panel(run):
         "fixed 18-reaction subset of these. Sources are the `ref=` labels from "
         "each rate table header."
     )
-    lines = ["| Reaction | Equation | Source |", "|---|---|---|"]
+    lines = ["| Reaction | Source |", "|---|---|"]
     lines += [
-        f"| `{name}` | {_equation_latex(equation)} | {source} |"
+        f"| {_equation_latex(equation)} | {source} |"
         for name, equation, source in reactions
     ]
     st.markdown("\n".join(lines))
