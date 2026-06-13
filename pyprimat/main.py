@@ -682,13 +682,16 @@ class PyPR:
             finL.setdefault(s, 0.0)
 
         if cfg.verbose:
+            # Full list of every nuclide that was integrated numerically in the
+            # LT era (species_L is exactly the LT solver's state vector).  The
+            # list grows with the chosen network (8 / 12 / ~59 nuclides for
+            # small / medium / large).
             print("-" * 50)
-            print("Predicted primordial abundances at the end of BBN")
+            print(f"Predicted primordial abundances at the end of BBN "
+                  f"({len(species_L)} numerically solved nuclides)")
             print("-" * 50)
-            for label, key in [("Yp", "p"), ("Yd", "H2"), ("Yt", "H3"),
-                                ("YHe3", "He3"), ("Ya", "He4"),
-                                ("YLi7", "Li7"), ("YBe7", "Be7")]:
-                print(f"{label:<6}= {finL[key]}")
+            for s in species_L:
+                print(f"  Y{s:<5}= {finL[s]:.6e}")
 
         # ------------------------------------------------------------------
         # Store final Y values for direct access (used by get_quantity)

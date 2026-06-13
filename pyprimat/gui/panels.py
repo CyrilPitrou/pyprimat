@@ -140,6 +140,63 @@ def final_abundances_text(run):
 
 
 # ---------------------------------------------------------------------------
+# Reactions panel
+# ---------------------------------------------------------------------------
+
+def _equation_latex(equation):
+    """Render a plain ``a + b <-> c + d`` equation with LaTeX nuclide symbols.
+
+    Each whitespace-separated token that is a nuclide name (everything except
+    the ``+`` and ``<->`` separators) is passed through
+    :func:`pyprimat.nuclear.nuclide_latex`, so ``"H2 + H2 <-> He3 + n"`` becomes
+    a string mixing ``${}^{2}\\mathrm{H}$`` etc. with ``+`` / ``\\leftrightarrow``
+    that Streamlit's KaTeX support typesets inside a Markdown table cell.
+    """
+    out = []
+    for tok in equation.split():
+        if tok == "+":
+            out.append("+")
+        elif tok == "<->":
+            out.append(r"$\leftrightarrow$")
+        else:
+            out.append(nuclide_latex(tok))
+    return " ".join(out)
+
+
+def render_reactions_panel(run):
+    """Render the table of loaded reactions and their data sources.
+
+    Lists every reaction integrated by the chosen network's LT solver (the full
+    selected set; the MT era uses only a fixed 18-reaction subset), as produced
+    by :meth:`pyprimat.nuclear.UpdateNuclearRates.describe_reactions`. Columns:
+
+    * **Reaction** -- the compact PRIMAT name (e.g. ``npTOdg``);
+    * **Equation** -- the readable ``a + b <-> c + d`` form with isotope LaTeX;
+    * **Source** -- the ``ref=`` provenance from the rate table's header line
+      (e.g. ``And06``), or ``weak n<->p`` for the tabulated ``nTOp`` weak rate.
+
+    Parameters
+    ----------
+    run : pyprimat.PyPR
+        An already-solved ``PyPR`` instance; ``run.nucl`` carries the compiled
+        networks.
+    """
+    reactions = run.nucl.describe_reactions()
+    st.subheader(f"Reactions ({len(reactions)} in the {run.cfg.network} network)")
+    st.caption(
+        "Full reaction set of the low-temperature solver. The MT era uses a "
+        "fixed 18-reaction subset of these. Sources are the `ref=` labels from "
+        "each rate table header."
+    )
+    lines = ["| Reaction | Equation | Source |", "|---|---|---|"]
+    lines += [
+        f"| `{name}` | {_equation_latex(equation)} | {source} |"
+        for name, equation, source in reactions
+    ]
+    st.markdown("\n".join(lines))
+
+
+# ---------------------------------------------------------------------------
 # Abundance time-evolution panel
 # ---------------------------------------------------------------------------
 

@@ -174,11 +174,14 @@ def main():
         with st.spinner("Running 30-sample quick MC uncertainty…"):
             mc = _quick_mc(params_items)
 
-    tab_results, tab_evolution = st.tabs(["Final abundances", "Abundance evolution"])
+    tab_results, tab_evolution, tab_reactions = st.tabs(
+        ["Final abundances", "Abundance evolution", "Reactions"])
     with tab_results:
         panels.render_results_panel(run, mc=mc)
     with tab_evolution:
         panels.render_evolution_panel(run)
+    with tab_reactions:
+        panels.render_reactions_panel(run)
 
     st.subheader("Downloads")
     dl_cols = st.columns(2)

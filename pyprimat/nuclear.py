@@ -721,11 +721,66 @@ class NetworkDefinition:
     _abg: np.ndarray
     _bwd_cap: np.ndarray
     lepton_dZ: list[int]   # net lepton charge per reaction: e.g. -1 for nTOp (Bm emitted)
+    # Per-reaction provenance string (aligned with ``names``), read from the
+    # first ``#`` header line of each rate table at load time (e.g. "And06" for
+    # npTOdg).  ``None`` when the network was built without source bookkeeping
+    # (e.g. directly from ``reaction_names`` in a test).
+    sources: list[str] | None = None
 
     def __post_init__(self):
         self.index = {s: i for i, s in enumerate(self.species)}
         self.n_reac = len(self.network)
         self._buf = np.empty(2 * self.n_reac)
+
+    def reaction_equation(self, i):
+        """Human-readable equation for reaction ``i`` as ``a + b <-> c + d``.
+
+        Built from the index-based stoichiometry ``self.network[i]`` and the
+        ``self.species`` name list, so a reaction such as ``ddTOHe3n`` (stored
+        as ``({H2: 2}, {He3: 1, n: 1})``) is rendered ``H2 + H2 <-> He3 + n``.
+        Stoichiometric multiplicities are expanded into repeated tokens to
+        mirror the compact PRIMAT reaction name.  The weak entry ``nTOp`` is
+        rendered ``n <-> p``.
+
+        Parameters
+        ----------
+        i : int
+            Reaction index into ``self.names`` / ``self.network``.
+
+        Returns
+        -------
+        str
+            The ``reactants <-> products`` equation.
+        """
+        def side(counts):
+            # Expand {species_index: multiplicity} into a flat "a + a + b" list.
+            toks = []
+            for idx, mult in counts.items():
+                toks.extend([self.species[idx]] * mult)
+            return " + ".join(toks)
+
+        react, prod = self.network[i]
+        return f"{side(react)} <-> {side(prod)}"
+
+    def describe_reactions(self):
+        """List every reaction as ``(name, equation, source)`` triples.
+
+        Combines :meth:`reaction_equation` with the per-reaction provenance in
+        :attr:`sources` (the ``ref=`` field of each rate table's header line).
+        Used by the verbose console output (see
+        :meth:`UpdateNuclearRates.__init__`) and by the GUI reactions table to
+        show, e.g., ``('npTOdg', 'n + p <-> H2', 'And06')``.
+
+        Returns
+        -------
+        list[tuple[str, str, str]]
+            One triple per reaction, in solver/buffer order (``nTOp`` first).
+        """
+        src = self.sources if self.sources is not None else [""] * len(self.names)
+        return [
+            (name, self.reaction_equation(i), src[i])
+            for i, name in enumerate(self.names)
+        ]
 
     def apply_variations(self, cfg):
         """Update the active forward rate tables ``self._fwd`` by applying any
@@ -963,6 +1018,44 @@ def _qed_nuclear_rescale(name, T9_grid):
     return f
 
 
+def _read_reaction_source(table_path):
+    """Extract the data source label from a rate table's first ``#`` line.
+
+    Every rate table under ``rates/nuclear/tables/`` starts with a header such
+    as ``# n + p > d + g   [npTOdg]   ref=And06``.  The ``ref=`` field names the
+    experimental/theoretical compilation the rate was taken from (here the
+    ``And06`` = Ando et al. 2006 evaluation).  This helper returns that label so
+    the verbose log and the GUI can show each reaction's provenance.
+
+    Parameters
+    ----------
+    table_path : str
+        Path to the rate table ``.txt`` file.
+
+    Returns
+    -------
+    str
+        The text after ``ref=`` on the first ``#`` line (e.g. ``"And06"``).  If
+        the header has no ``ref=`` field, the whole comment line (minus the
+        leading ``#``) is returned; if the file cannot be read, ``"?"``.
+    """
+    try:
+        with open(table_path) as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                if line.startswith("#"):
+                    if "ref=" in line:
+                        return line.split("ref=", 1)[1].strip()
+                    # No explicit ref= field: fall back to the bare comment.
+                    return line.lstrip("#").strip()
+                break  # first non-comment line reached without a header
+    except OSError:
+        pass
+    return "?"
+
+
 def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None):
     """Build the selected network from its text reaction list.
 
@@ -1103,12 +1196,17 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None):
     names = ["nTOp"]
     network = [({idx["n"]: 1}, {idx["p"]: 1})]
     lepton_dZ_list = [-1]   # index 0 = nTOp (electron emitted: dZ = -1)
+    # Provenance label per reaction, read from each table's header (ref= field).
+    # nTOp has no rate table here (its weak rates are supplied at solve time), so
+    # we label it as the tabulated weak n<->p conversion.
+    sources = ["weak n<->p"]
     fwd_median, fwd_expsigma, abg = [], [], []
     for name, filename, react_names, prod_names, is_weak, net_lepton_dZ in parsed:
         names.append(name)
         if is_weak:
             weak_indices.add(len(names) - 1)
         lepton_dZ_list.append(net_lepton_dZ)
+        sources.append(_read_reaction_source(os.path.join(tables_dir, filename)))
 
         network.append((
             {idx[s]: c for s, c in react_names.items()},
@@ -1155,7 +1253,7 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None):
 
     return NetworkDefinition(species, N, Z, network, weak_indices, names, grid,
                              fwd, fwd_median, fwd_expsigma, abg, bwd_cap,
-                             lepton_dZ=lepton_dZ_list)
+                             lepton_dZ=lepton_dZ_list, sources=sources)
 
 
 class UpdateNuclearRates:
@@ -1200,6 +1298,33 @@ class UpdateNuclearRates:
                   f"{len(self._mt_net.species)} nuclides.")
             print(f"[rates] LT network: {len(self._lt_net.names)-1} reactions over "
                   f"{len(self._lt_net.species)} nuclides.")
+            self.print_reactions()
+
+    def describe_reactions(self):
+        """Return the LT (full) network's reactions as ``(name, equation, source)``.
+
+        Thin delegate to :meth:`NetworkDefinition.describe_reactions` for the LT
+        network (the complete selected reaction set; the MT era only uses a fixed
+        18-reaction subset).  Used by the verbose console listing and by the GUI
+        reactions table.
+        """
+        return self._lt_net.describe_reactions()
+
+    def print_reactions(self):
+        """Print the loaded LT reactions as ``a + b <-> c + d   [source]``.
+
+        Each line shows the reaction in readable form together with the data
+        source taken from the rate table's header (the ``ref=`` field).  Called
+        automatically from :meth:`__init__` when ``cfg.verbose`` is set.
+        """
+        reactions = self.describe_reactions()
+        print("-" * 60)
+        print(f"Loaded {len(reactions)} reactions (LT network):")
+        print("-" * 60)
+        # Pad the equation column so the source labels line up in the terminal.
+        width = max(len(eq) for _, eq, _ in reactions)
+        for name, equation, source in reactions:
+            print(f"  {equation:<{width}}   [{source}]")
 
     def apply_variations(self, cfg):
         """Update active forward rate tables in both era networks."""
