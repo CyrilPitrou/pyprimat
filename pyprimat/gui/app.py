@@ -174,31 +174,16 @@ def main():
         with st.spinner("Running 30-sample quick MC uncertainty…"):
             mc = _quick_mc(params_items)
 
-    tab_results, tab_evolution, tab_reactions = st.tabs(
-        ["Final abundances", "Abundance evolution", "Reactions"])
+    tab_results, tab_evolution, tab_reactions, tab_downloads = st.tabs(
+        ["Final abundances", "Abundance evolution", "Reactions", "Downloads"])
     with tab_results:
         panels.render_results_panel(run, mc=mc)
     with tab_evolution:
         panels.render_evolution_panel(run)
     with tab_reactions:
         panels.render_reactions_panel(run)
-
-    st.subheader("Downloads")
-    dl_cols = st.columns(2)
-    dl_cols[0].download_button(
-        "Final abundances (output_final.dat)",
-        data=panels.final_abundances_text(run),
-        file_name="output_final.dat",
-        mime="text/plain",
-        width="stretch",
-    )
-    dl_cols[1].download_button(
-        "Time evolution (output_time_evolution.tsv)",
-        data=time_evolution_tsv,
-        file_name="output_time_evolution.tsv",
-        mime="text/tab-separated-values",
-        width="stretch",
-    )
+    with tab_downloads:
+        panels.render_downloads_panel(run, time_evolution_tsv)
 
 
 def _render_footer():

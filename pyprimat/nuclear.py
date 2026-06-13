@@ -726,6 +726,13 @@ class NetworkDefinition:
     # npTOdg).  ``None`` when the network was built without source bookkeeping
     # (e.g. directly from ``reaction_names`` in a test).
     sources: list[str] | None = None
+    # Per-reaction rate-table path (aligned with ``names``): the on-disk
+    # ``rates/nuclear/tables/<name>.txt`` each forward rate was loaded from.
+    # ``None`` for entries with no rate table (``nTOp``, whose weak rates are
+    # supplied at solve time) and ``None`` for the whole list when the network
+    # was built without source bookkeeping. Used by the GUI reactions table to
+    # offer a download button per reaction.
+    files: list[str] | None = None
 
     def __post_init__(self):
         self.index = {s: i for i, s in enumerate(self.species)}
@@ -763,22 +770,26 @@ class NetworkDefinition:
         return f"{side(react)} <-> {side(prod)}"
 
     def describe_reactions(self):
-        """List every reaction as ``(name, equation, source)`` triples.
+        """List every reaction as ``(name, equation, source, file)`` tuples.
 
         Combines :meth:`reaction_equation` with the per-reaction provenance in
-        :attr:`sources` (the ``ref=`` field of each rate table's header line).
-        Used by the verbose console output (see
-        :meth:`UpdateNuclearRates.__init__`) and by the GUI reactions table to
-        show, e.g., ``('npTOdg', 'n + p <-> H2', 'And06')``.
+        :attr:`sources` (the ``ref=`` field of each rate table's header line)
+        and the rate-table path in :attr:`files`.  Used by the verbose console
+        output (see :meth:`UpdateNuclearRates.__init__`) and by the GUI
+        reactions table to show, e.g.,
+        ``('npTOdg', 'n + p <-> H2', 'And06', '.../tables/npTOdg.txt')``.
 
         Returns
         -------
-        list[tuple[str, str, str]]
-            One triple per reaction, in solver/buffer order (``nTOp`` first).
+        list[tuple[str, str, str, str | None]]
+            One tuple per reaction, in solver/buffer order (``nTOp`` first).
+            The last element is the rate-table path, or ``None`` for entries
+            with no table (e.g. the weak ``nTOp`` conversion).
         """
         src = self.sources if self.sources is not None else [""] * len(self.names)
+        files = self.files if self.files is not None else [None] * len(self.names)
         return [
-            (name, self.reaction_equation(i), src[i])
+            (name, self.reaction_equation(i), src[i], files[i])
             for i, name in enumerate(self.names)
         ]
 
@@ -1200,13 +1211,18 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None):
     # nTOp has no rate table here (its weak rates are supplied at solve time), so
     # we label it as the tabulated weak n<->p conversion.
     sources = ["weak n<->p"]
+    # Rate-table path per reaction (aligned with ``names``).  nTOp has no rate
+    # table (its weak rates are supplied at solve time), hence ``None``.
+    files = [None]
     fwd_median, fwd_expsigma, abg = [], [], []
     for name, filename, react_names, prod_names, is_weak, net_lepton_dZ in parsed:
         names.append(name)
         if is_weak:
             weak_indices.add(len(names) - 1)
         lepton_dZ_list.append(net_lepton_dZ)
-        sources.append(_read_reaction_source(os.path.join(tables_dir, filename)))
+        table_path = os.path.join(tables_dir, filename)
+        sources.append(_read_reaction_source(table_path))
+        files.append(table_path)
 
         network.append((
             {idx[s]: c for s, c in react_names.items()},
@@ -1253,7 +1269,8 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None):
 
     return NetworkDefinition(species, N, Z, network, weak_indices, names, grid,
                              fwd, fwd_median, fwd_expsigma, abg, bwd_cap,
-                             lepton_dZ=lepton_dZ_list, sources=sources)
+                             lepton_dZ=lepton_dZ_list, sources=sources,
+                             files=files)
 
 
 class UpdateNuclearRates:
@@ -1301,12 +1318,14 @@ class UpdateNuclearRates:
             self.print_reactions()
 
     def describe_reactions(self):
-        """Return the LT (full) network's reactions as ``(name, equation, source)``.
+        """Return the LT (full) network's reactions as
+        ``(name, equation, source, file)`` tuples.
 
         Thin delegate to :meth:`NetworkDefinition.describe_reactions` for the LT
         network (the complete selected reaction set; the MT era only uses a fixed
-        18-reaction subset).  Used by the verbose console listing and by the GUI
-        reactions table.
+        18-reaction subset).  The fourth element is the rate-table path (``None``
+        for the weak ``nTOp`` entry).  Used by the verbose console listing and by
+        the GUI reactions table.
         """
         return self._lt_net.describe_reactions()
 
@@ -1322,8 +1341,8 @@ class UpdateNuclearRates:
         print(f"Loaded {len(reactions)} reactions (LT network):")
         print("-" * 60)
         # Pad the equation column so the source labels line up in the terminal.
-        width = max(len(eq) for _, eq, _ in reactions)
-        for name, equation, source in reactions:
+        width = max(len(eq) for _, eq, _, _ in reactions)
+        for name, equation, source, _file in reactions:
             print(f"  {equation:<{width}}   [{source}]")
 
     def apply_variations(self, cfg):

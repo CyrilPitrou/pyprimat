@@ -17,6 +17,8 @@ All three take an already-solved ``pyprimat.PyPR`` instance (see
 ``pyprimat.gui.app``, which calls ``run.solve()`` once and caches the
 result).
 """
+import html
+import os
 import re
 
 import numpy as np
@@ -143,23 +145,27 @@ def final_abundances_text(run):
 # Reactions panel
 # ---------------------------------------------------------------------------
 
-def _equation_latex(equation):
-    """Render a plain ``a + b <-> c + d`` equation with LaTeX nuclide symbols.
+def _equation_unicode(equation):
+    """Render a plain ``a + b <-> c + d`` equation with Unicode nuclide symbols.
 
     Each whitespace-separated token that is a nuclide name (everything except
-    the ``+`` and ``<->`` separators) is passed through
-    :func:`pyprimat.nuclear.nuclide_latex`, so ``"H2 + H2 <-> He3 + n"`` becomes
-    a string mixing ``${}^{2}\\mathrm{H}$`` etc. with ``+`` / ``\\leftrightarrow``
-    that Streamlit's KaTeX support typesets inside a Markdown table cell.
+    the ``+`` and ``<->`` separators) is passed through :func:`_nuclide_unicode`,
+    so ``"H2 + H2 <-> He3 + n"`` becomes ``"²H + ²H ↔ ³He + n"``.
+
+    Unlike the LaTeX form used elsewhere, this produces plain text suitable for
+    a raw HTML ``<table>`` cell: Streamlit's KaTeX support only typesets
+    ``$...$`` inside Markdown, *not* inside HTML injected via
+    ``unsafe_allow_html``, so the reactions table uses Unicode super/subscripts
+    instead (matching the Plotly legends in :func:`render_evolution_panel`).
     """
     out = []
     for tok in equation.split():
         if tok == "+":
             out.append("+")
         elif tok == "<->":
-            out.append(r"$\leftrightarrow$")
+            out.append("↔")
         else:
-            out.append(nuclide_latex(tok))
+            out.append(_nuclide_unicode(tok))
     return " ".join(out)
 
 
@@ -170,9 +176,21 @@ def render_reactions_panel(run):
     selected set; the MT era uses only a fixed 18-reaction subset), as produced
     by :meth:`pyprimat.nuclear.UpdateNuclearRates.describe_reactions`. Columns:
 
-    * **Reaction** -- the readable ``a + b <-> c + d`` form with isotope LaTeX;
+    * **Reaction** -- the readable ``a + b <-> c + d`` form with Unicode isotope
+      symbols (e.g. ``²H + ²H ↔ ³He + n``);
     * **Source** -- the ``ref=`` provenance from the rate table's header line
       (e.g. ``And06``), or ``weak n<->p`` for the tabulated ``nTOp`` weak rate.
+    * **File** -- the rate table's filename (``rates/nuclear/tables/<name>.txt``),
+      or ``--`` for the weak ``nTOp`` entry (its rates are supplied at solve time
+      and have no on-disk table).
+
+    Rendering uses a plain HTML ``<table>`` (via ``unsafe_allow_html``) rather
+    than ``st.columns`` so the columns size to their content -- giving clean
+    vertical/horizontal grid lines with no large trailing whitespace.  Because
+    Streamlit only typesets ``$...$`` KaTeX inside *Markdown* (not inside
+    injected HTML), the equations use Unicode super/subscripts
+    (:func:`_equation_unicode`).  The rate tables themselves are downloadable
+    from the **Downloads** tab (:func:`render_downloads_panel`).
 
     Parameters
     ----------
@@ -185,14 +203,114 @@ def render_reactions_panel(run):
     st.caption(
         "Full reaction set of the low-temperature solver. The MT era uses a "
         "fixed 18-reaction subset of these. Sources are the `ref=` labels from "
-        "each rate table header."
+        "each rate table header; download the rate tables from the Downloads tab."
     )
-    lines = ["| Reaction | Source |", "|---|---|"]
-    lines += [
-        f"| {_equation_latex(equation)} | {source} |"
-        for name, equation, source in reactions
+
+    # Content-sized HTML table with collapsed borders -> crisp grid lines and no
+    # proportional-column whitespace.  ``html.escape`` guards the few sources
+    # that contain "&" (e.g. "CF88&MF89  (analytic, PRIMAT-main.m)").
+    css = (
+        "<style>"
+        "table.pyprimat-rxn{border-collapse:collapse;margin:0.25rem 0 0.75rem;}"
+        "table.pyprimat-rxn th,table.pyprimat-rxn td"
+        "{border:1px solid rgba(128,128,128,0.5);padding:4px 12px;text-align:left;}"
+        "table.pyprimat-rxn th{font-weight:600;}"
+        "table.pyprimat-rxn td.rxn-eq{white-space:nowrap;}"
+        "</style>"
+    )
+    rows = [
+        "<tr>"
+        f"<td class='rxn-eq'>{html.escape(_equation_unicode(equation))}</td>"
+        f"<td>{html.escape(source)}</td>"
+        f"<td>{html.escape(os.path.basename(file)) if file else '--'}</td>"
+        "</tr>"
+        for name, equation, source, file in reactions
     ]
-    st.markdown("\n".join(lines))
+    table = (
+        "<table class='pyprimat-rxn'>"
+        "<thead><tr><th>Reaction</th><th>Source</th><th>File</th></tr></thead>"
+        f"<tbody>{''.join(rows)}</tbody></table>"
+    )
+    st.markdown(css + table, unsafe_allow_html=True)
+
+
+def render_downloads_panel(run, time_evolution_tsv):
+    """Render the Downloads tab: standard output files + per-reaction rate tables.
+
+    Collects every file a user might want to export from a completed run in one
+    place (rather than scattering download buttons under the result panels):
+
+    * **output_final.dat** -- the final abundances in the ``output_final.dat``
+      text format (:func:`final_abundances_text`).
+    * **output_time_evolution.tsv** -- the full ``A_i Y_i(t)`` time series in the
+      ``output_time_evolution`` format, produced once at solve time by
+      ``pyprimat.gui.app._solve`` and passed in as ``time_evolution_tsv``.
+    * **Reaction rate tables** -- the ``rates/nuclear/tables/<name>.txt`` rate
+      table for any reaction in the loaded network.  An in-table download link is
+      not possible (Streamlit's HTML sanitiser strips ``data:`` hrefs and
+      browsers block ``file://`` ones), and the large network has ~433
+      reactions, so a single "pick a reaction → download" selectbox is used
+      rather than one button per reaction.
+
+    Parameters
+    ----------
+    run : pyprimat.PyPR
+        An already-solved ``PyPR`` instance.
+    time_evolution_tsv : str
+        Contents of the time-evolution TSV (see ``app._solve``).
+    """
+    st.subheader("Downloads")
+
+    # 1. Standard BBN output files, side by side.
+    st.markdown("**Output files**")
+    out_cols = st.columns(2)
+    out_cols[0].download_button(
+        "Final abundances (output_final.dat)",
+        data=final_abundances_text(run),
+        file_name="output_final.dat",
+        mime="text/plain",
+        width="stretch",
+        key="dl_final",
+    )
+    out_cols[1].download_button(
+        "Time evolution (output_time_evolution.tsv)",
+        data=time_evolution_tsv,
+        file_name="output_time_evolution.tsv",
+        mime="text/tab-separated-values",
+        width="stretch",
+        key="dl_evolution",
+    )
+
+    # 2. Per-reaction rate tables.  Only reactions with a rate table on disk are
+    # offered (everything but the weak nTOp pseudo-reaction, whose rates are
+    # supplied at solve time).
+    st.markdown("**Reaction rate tables**")
+    downloadable = {
+        f"{name}  ({os.path.basename(file)})": file
+        for name, equation, source, file in run.nucl.describe_reactions()
+        if file is not None
+    }
+    if not downloadable:
+        st.caption("This network has no downloadable rate tables.")
+        return
+    choice = st.selectbox(
+        "Rate table", list(downloadable), key="ratefile_choice"
+    )
+    path = downloadable[choice]
+    basename = os.path.basename(path)
+    try:
+        with open(path, "rb") as fh:
+            data = fh.read()
+    except OSError:
+        st.warning(f"Rate table `{basename}` is unavailable.")
+        return
+    st.download_button(
+        label=f"Download {basename}",
+        data=data,
+        file_name=basename,
+        mime="text/plain",
+        key="ratefile_download",
+    )
 
 
 # ---------------------------------------------------------------------------
