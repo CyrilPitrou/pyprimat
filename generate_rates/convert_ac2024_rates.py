@@ -30,13 +30,15 @@ Source format (one block per reaction)::
          ...                                   (60 rows, grid 0.001..10)
 
 Output:
-  * ``<outdir>/<reactants>TO<products>.txt`` for every reaction: a header line
-    (``#`` comment, ignored by ``numpy.loadtxt``) recording the reaction, its
-    reference and its detailed-balance coefficients, then three columns
-    ``T9  rate  error`` on the 500-point grid.
-  * ``<outdir>/detailed_balance.csv``: reaction, Q, alpha, beta, gamma for all
+  * ``pyprimat/rates/nuclear/tables/<reactants>TO<products>.txt`` for every
+    reaction: a header line (``#`` comment, ignored by ``numpy.loadtxt``)
+    recording the reaction, its reference and its detailed-balance
+    coefficients, then three columns ``T9  rate  error`` on the 500-point grid.
+  * ``<datadir>/detailed_balance.csv``: reaction, Q, alpha, beta, gamma for all
     reactions (the backward rate is ``alpha * T9**beta * exp(gamma/T9)`` times
     the forward rate).
+  * ``pyprimat/rates/nuclear/networks/large.txt``: the reaction names from
+    ``<datadir>/reactions_large.csv``, one per line.
 
 The naming convention ``<reactants>TO<products>`` (e.g. ``n + p > d + g`` ->
 ``npTOdg``) cleanly separates the initial and final state, removing the
@@ -47,9 +49,7 @@ Usage::
     python generate_rates/convert_ac2024_rates.py \
         --input generate_rates/BBNRatesAC2024.dat \
         --primat generate_rates/PRIMAT-Main.m \
-        --outdir Rates/nuclear/tables \
-        --suffix "_parthenope" \
-        --produce-csv
+        --suffix "" 
 """
 import argparse
 import os
@@ -77,6 +77,16 @@ from pyprimat.config import DEFAULT_PARAMS
 GRID_NPTS = DEFAULT_PARAMS["rate_grid_npts"]
 GRID_T9_MIN = DEFAULT_PARAMS["rate_grid_T9_min"]
 GRID_T9_MAX = DEFAULT_PARAMS["rate_grid_T9_max"]
+
+# Output directory for per-reaction rate tables (.txt). Hardcoded -- this is
+# the only location PyPRIMAT's load_network reads rate tables from, so there
+# is no use case for writing them elsewhere.
+TABDIR = "pyprimat/rates/nuclear/tables"
+
+# Output file listing the large-network reactions, one name per line: the
+# first column of reactions_large.csv, kept in sync with it by
+# write_network_files.
+LARGE_NETWORK_FILE = "pyprimat/rates/nuclear/networks/large.txt"
 
 # Numbers may use Fortran 'D'/'d' double-precision exponents (e.g. 1.1133D+10).
 _NUM = r"[-+]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eEdD][-+]?[0-9]+)?"
@@ -790,8 +800,9 @@ def unified_reactions(tab_blocks, ana_blocks):
 
 
 def write_network_files(reactions, tab_blocks, nubase_path, outdir):
-    """Write nuclides.csv, reactions_large.csv and detailed_balance.csv, after
-    the formal conservation check and a detailed-balance cross-check.
+    """Write nuclides.csv, reactions_large.csv, detailed_balance.csv and
+    large.txt, after the formal conservation check and a detailed-balance
+    cross-check.
 
     Steps:
       1. Deduce the nuclide set and resolve N,Z,A,Q,mass,spin from NUBASE.
@@ -799,7 +810,9 @@ def write_network_files(reactions, tab_blocks, nubase_path, outdir):
          A and charge Q; abort on any violation.
       3. Compute (alpha, beta, gamma) for every reversible (non-decay) reaction
          from nuclide data, and cross-check against the AC2024 tabulated values.
-      4. Emit the three CSVs PyPRIMAT reads at run time.
+      4. Emit the three CSVs PyPRIMAT reads at run time, plus
+         ``LARGE_NETWORK_FILE`` (the large-network reaction list, i.e. the
+         ``name`` column of ``reactions_large.csv``).
     """
     from nuclide_table import (build_nuclide_table, conservation_residual,
                                make_detailed_balance, is_decay)
@@ -853,6 +866,8 @@ def write_network_files(reactions, tab_blocks, nubase_path, outdir):
             f.write(f"{r['name']},{r['N']},{r['Z']},{r['A']},{r['Q']},"
                     f"{r['excess_keV']:.6f},{r['spin']:g}\n")
 
+    sorted_reactions = sorted(reactions, key=lambda r: r["name"])
+
     with open(os.path.join(outdir, "reactions_large.csv"), "w") as f:
         # reactants/products are '+'-joined canonical token lists (a->He4 etc.);
         # multiplicity is explicit by repetition (e.g. He4+He4+n).
@@ -861,9 +876,17 @@ def write_network_files(reactions, tab_blocks, nubase_path, outdir):
         def canon(side):
             return "+".join(resolve_token(t).name or t for t in side)
         f.write("name,reactants,products,source,ref\n")
-        for rxn in sorted(reactions, key=lambda r: r["name"]):
+        for rxn in sorted_reactions:
             f.write(f"{rxn['name']},{canon(rxn['reactants'])},"
                     f"{canon(rxn['products'])},{rxn['source']},{rxn['ref']}\n")
+
+    # large.txt is the network-definition file load_network reads for
+    # network="large": one reaction name per line, identical to (and kept in
+    # sync with) reactions_large.csv's first column.
+    os.makedirs(os.path.dirname(LARGE_NETWORK_FILE), exist_ok=True)
+    with open(LARGE_NETWORK_FILE, "w") as f:
+        for rxn in sorted_reactions:
+            f.write(f"{rxn['name']}\n")
 
     with open(os.path.join(outdir, "detailed_balance.csv"), "w") as f:
         f.write("reaction,Q_keV,alpha,beta,gamma\n")
@@ -896,10 +919,6 @@ def _parse_args(argv):
                    help="the tabulated AC2024 reaction-rate compilation")
     p.add_argument("--nubase", default="generate_rates/nubase_4.mas20.txt",
                    help="the NUBASE2020 evaluation (nuclide masses and spins)")
-    p.add_argument("--tabdir", default="pyprimat/rates/nuclear/tables",
-                   help="the directory for reaction rate tables (.txt)")
-    p.add_argument("--outdir", dest="tabdir",
-                   help="alias for --tabdir")
     p.add_argument("--datadir", default="pyprimat/rates/nuclear/data",
                    help="the directory for network structure files (.csv)")
     p.add_argument("--suffix", default="",
@@ -910,8 +929,6 @@ def _parse_args(argv):
     p.add_argument("--dump-analytic", metavar="PRIMAT_PATH", default=None,
                    help="print the _ANALYTIC_REACTIONS literal extracted from the "
                         "given PRIMAT-main.m and exit (to regenerate the table)")
-    p.add_argument("--produce-csv", action="store_true",
-                   help="if set, regenerate the CSV data files (nuclides, reactions_large, detailed_balance)")
     p.add_argument("--keep-source-grid", action="store_true",
                    help="write each tabulated reaction on its own native T9 grid "
                         "(~60 points from the AC2024 file) instead of reinterpolating "
@@ -933,7 +950,7 @@ def _generate_tabulated(args, grid):
     tab_blocks = parse_blocks(args.input)
     for blk in tab_blocks:
         blk_grid = blk["T9"] if args.keep_source_grid else grid
-        write_reaction_file(blk, blk_grid, args.tabdir, args.suffix)
+        write_reaction_file(blk, blk_grid, TABDIR, args.suffix)
     print(f"parsed {len(tab_blocks)} tabulated reactions from {args.input}")
     return tab_blocks
 
@@ -956,7 +973,7 @@ def _generate_analytic(args, grid):
         source = "the embedded _ANALYTIC_REACTIONS table"
     ana_blocks, skipped = build_analytic_blocks(entries)
     for blk in ana_blocks:
-        write_analytic_file(blk, grid, args.tabdir, args.suffix)
+        write_analytic_file(blk, grid, TABDIR, args.suffix)
     print(f"built {len(ana_blocks)} analytic reactions from {source}")
     if skipped:
         print(f"  ({len(skipped)} analytic blocks skipped: "
@@ -971,7 +988,7 @@ def main(argv=None):
         _dump_analytic_literal(args.dump_analytic)
         return
 
-    os.makedirs(args.tabdir, exist_ok=True)
+    os.makedirs(TABDIR, exist_ok=True)
     os.makedirs(args.datadir, exist_ok=True)
     grid = standard_grid()
 
@@ -984,16 +1001,14 @@ def main(argv=None):
     #    same-reaction overrides are reported, distinct-reaction collisions abort.
     check_name_collisions(tab_blocks, ana_blocks)
     n_files = len({blk["name"] for blk in tab_blocks + ana_blocks})
-    print(f"wrote {n_files} rate files to {args.tabdir}/")
+    print(f"wrote {n_files} rate files to {TABDIR}/")
 
     # 4. Network structure: deduce nuclides + reactions + detailed balance,
-    #    run the formal A/Q conservation check, and emit the three CSVs that
-    #    PyPRIMAT reads at run time to assemble the large network.
-    if args.produce_csv:
-        reactions = unified_reactions(tab_blocks, ana_blocks)
-        write_network_files(reactions, tab_blocks, args.nubase, args.datadir)
-    else:
-        print("Skipping CSV network structure file generation (--produce-csv not set)")
+    #    run the formal A/Q conservation check, and emit the three CSVs (plus
+    #    large.txt) that PyPRIMAT reads at run time to assemble the large
+    #    network.
+    reactions = unified_reactions(tab_blocks, ana_blocks)
+    write_network_files(reactions, tab_blocks, args.nubase, args.datadir)
 
 
 if __name__ == "__main__":
