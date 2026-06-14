@@ -300,6 +300,79 @@ def test_nevo_file_with_custom_copy_reproduces_default(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# nevo_file_prefix (NEUTRINOS.md Part 1)
+# ---------------------------------------------------------------------------
+
+def test_nevo_file_prefix_missing_raises_value_error():
+    """A nevo_file_prefix whose derived default files don't exist under
+    rates/NEVO/ raises a clear ValueError at PyPRConfig construction time."""
+    with pytest.raises(ValueError, match="nevo_file_prefix.*not found"):
+        PyPRConfig({"nevo_file_prefix": "DOES_NOT_EXIST"})
+
+
+@pytest.mark.slow
+@pytest.mark.solve
+def test_nevo_file_prefix_reproduces_default(tmp_path):
+    """A renamed copy of the shipped NEVO thermo + spectral tables under a
+    custom nevo_file_prefix reproduces the default results exactly (same
+    content, different path), while changing the fingerprint (cache miss)."""
+    import shutil
+    from pyprimat.main import PyPR
+
+    cfg_default = PyPRConfig({"network": "small"})
+    nevo_dir = os.path.join(cfg_default.data_dir, "rates", "NEVO")
+    pairs = [
+        ("NEVOPRIMAT_col_1_7.csv", "MYPREFIX_col_1_7.csv"),
+        ("NEVOPRIMAT.csv",         "MYPREFIX.csv"),
+    ]
+    for src_name, dst_name in pairs:
+        shutil.copy(os.path.join(nevo_dir, src_name),
+                     os.path.join(nevo_dir, dst_name))
+    try:
+        cfg0 = PyPRConfig({"network": "small"})
+        cfg1 = PyPRConfig({"network": "small", "nevo_file_prefix": "MYPREFIX"})
+        fp0 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg0))
+        fp1 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg1))
+        assert fp0 != fp1
+
+        r_default = PyPR({"network": "small", "verbose": False,
+                           "weak_rate_cache": False}).PyPRresults()
+        r_custom  = PyPR({"network": "small", "verbose": False,
+                           "weak_rate_cache": False,
+                           "nevo_file_prefix": "MYPREFIX"}).PyPRresults()
+    finally:
+        for _, dst_name in pairs:
+            os.remove(os.path.join(nevo_dir, dst_name))
+
+    assert r_custom["Neff"] == pytest.approx(r_default["Neff"], rel=1e-12)
+    assert r_custom["YPBBN"] == pytest.approx(r_default["YPBBN"], rel=1e-12)
+    assert r_custom["DoH"] == pytest.approx(r_default["DoH"], rel=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# external_background (NEUTRINOS.md Part 2)
+# ---------------------------------------------------------------------------
+
+def test_fingerprint_changes_with_external_background():
+    """external_background changes how a(T_gamma) is obtained, hence the
+    T_gamma(a)/Hubble history fed into the weak-rate integration -- the
+    fingerprint must change."""
+    cfg0 = PyPRConfig({"network": "small"})
+    cfg1 = PyPRConfig({"network": "small", "external_background": True})
+    fp0 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg0))
+    fp1 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg1))
+    assert fp0 != fp1
+
+
+def test_external_background_requires_incomplete_decoupling():
+    """external_background reads a(T) from NEVOTable.x_of_Tg, which is only
+    built when incomplete_decoupling=True."""
+    with pytest.raises(ValueError, match="external_background.*incomplete_decoupling"):
+        PyPRConfig({"external_background": True, "incomplete_decoupling": False,
+                     "spectral_distortions": False})
+
+
+# ---------------------------------------------------------------------------
 # RecomputeWeakRates — recompute path vs the fingerprinted cache (IDEAS 7.1)
 # ---------------------------------------------------------------------------
 

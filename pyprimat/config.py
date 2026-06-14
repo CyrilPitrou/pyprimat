@@ -63,6 +63,19 @@ DEFAULT_PARAMS: dict = {
     "nevo_file":                  None, # 6/7-column thermo table (replaces NEVOPRIMAT[_NoQED]_col_1_7.csv)
     "nevo_spectral_file":         None, # 86-column spectral-distortion table (replaces NEVOPRIMAT[_NoQED].csv); only read when spectral_distortions=True and analytic_distortions=False
     "nevo_grid_file":             None, # y-grid for nevo_spectral_file (replaces NEVOGrid.csv); its length must match nevo_spectral_file's column count minus 6
+    "nevo_file_prefix":           "NEVOPRIMAT", # base name for the *default* NEVO thermo/spectral
+    # files: "<prefix>[_NoQED]_col_1_7.csv" (thermo) and "<prefix>[_NoQED].csv" (86-col
+    # spectral). NEVOGrid.csv is NOT prefixed (shared y-grid). Ignored for any file
+    # selected explicitly via nevo_file/nevo_spectral_file (those still win), and has no
+    # effect when incomplete_decoupling=False (no NEVO file is read at all).
+
+    # ---- background mode ---------------------------------------------------
+    "external_background":       False, # If True, read the scale factor a(T_gamma) directly
+    # from the NEVO table's x column (a is proportional to x by the NEVO convention; see
+    # NEUTRINOS.md) instead of solving the entropy-conservation ODE from the heating
+    # function N_NEVO. t(a) is still obtained by Hubble integration (unchanged). Outside
+    # the table's T range, both modes extrapolate assuming radiation domination
+    # (a ~ 1/T, t ~ 1/T^2). Requires incomplete_decoupling=True.
 
     # ---- fundamental constants (overridable for sensitivity studies) --------
     "GN":                         6.70883e-45,   # Newton's constant [MeV^-2]
@@ -379,6 +392,51 @@ class PyPRConfig:
                                   f"({path!r}) has {n_nodes} nodes; expected "
                                   f"{n_grid_nodes} to match the spectral "
                                   f"table's {n_grid_nodes} y-columns")
+
+        # Validate nevo_file_prefix: when not the shipped default, check that
+        # the *derived* default filenames it implies exist and have the right
+        # shape -- mirrors the nevo_file/nevo_spectral_file checks above, but
+        # only for the files that aren't already overridden individually.
+        if self.nevo_file_prefix != "NEVOPRIMAT" and self.incomplete_decoupling:
+            prefix = self.nevo_file_prefix
+            suffix = "" if self.QED_corrections else "_NoQED"
+
+            if self.nevo_file is None:
+                fname = f"{prefix}{suffix}_col_1_7.csv"
+                path = resolve_nevo_path(self, None, fname)
+                if not os.path.exists(path):
+                    raise ValueError(f"nevo_file_prefix={prefix!r}: derived "
+                                      f"thermo file {fname!r} not found "
+                                      f"(resolved to {path!r})")
+                ncols = np.loadtxt(path, delimiter=',', max_rows=1).size
+                if ncols not in (6, 7):
+                    raise ValueError(f"nevo_file_prefix={prefix!r}: "
+                                      f"{fname!r} has {ncols} columns; "
+                                      f"expected 6 or 7")
+
+            if (self.spectral_distortions and not self.analytic_distortions
+                    and self.nevo_spectral_file is None):
+                fname = f"{prefix}{suffix}.csv"
+                path = resolve_nevo_path(self, None, fname)
+                if not os.path.exists(path):
+                    raise ValueError(f"nevo_file_prefix={prefix!r}: derived "
+                                      f"spectral file {fname!r} not found "
+                                      f"(resolved to {path!r})")
+                ncols = np.loadtxt(path, delimiter=',', max_rows=1).size
+                if ncols <= 6:
+                    raise ValueError(f"nevo_file_prefix={prefix!r}: "
+                                      f"{fname!r} has {ncols} columns; "
+                                      f"expected > 6")
+
+        # external_background reads a(T) directly from the NEVO table's x
+        # column (NEVOTable.x_of_Tg), so it requires the NEVO table to be
+        # loaded in the first place.
+        if self.external_background and not self.incomplete_decoupling:
+            raise ValueError(
+                "external_background=True requires incomplete_decoupling=True "
+                "(a(T) is read from the NEVO table, which is only loaded by "
+                "NEVOTable)."
+            )
 
         # Validate spectral-distortion flag combination.
         if self.spectral_distortions:

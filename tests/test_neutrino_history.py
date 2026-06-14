@@ -115,3 +115,63 @@ def test_nevo_spectral_distortion_builds_callable():
     assert nh.dFDneu_func is not None
     # The callable returns a finite float for an in-range argument.
     assert np.isfinite(nh.dFDneu_func(1.0, 1.0, 1.0, +1))
+
+
+# ---------------------------------------------------------------------------
+# external_background / x_of_Tg (NEUTRINOS.md Part 2)
+# ---------------------------------------------------------------------------
+
+def test_x_of_Tg_present_for_nevo_table_only():
+    """x_of_Tg -- the NEVO table's x(T_gamma) interpolant used by
+    external_background=True -- is built for NEVOTable and left at the
+    NeutrinoHistory default (None) for InstantaneousDecoupling, which has no
+    table to read x from."""
+    cfg, nh = _history({"network": "small", "spectral_distortions": False})
+    assert isinstance(nh, NEVOTable)
+    assert nh.x_of_Tg is not None
+    Tg = _Tg_MeV(cfg)
+    assert float(nh.x_of_Tg(Tg)) > 0.
+
+    cfg_i, nh_i = _history({"network": "small", "incomplete_decoupling": False,
+                             "spectral_distortions": False})
+    assert isinstance(nh_i, InstantaneousDecoupling)
+    assert nh_i.x_of_Tg is None
+
+
+@pytest.mark.slow  # external_background changes the cache fingerprint -> recompute (~3 s)
+def test_external_background_a_of_T_matches_minimal_on_table_grid():
+    """a(T_gamma) and t(T_gamma) built from external_background=True (direct
+    NEVO-table x(T) lookup) must agree with the default entropy-conservation
+    ODE solve to within the precision quoted in NEUTRINOS.md (~1e-5),
+    confirming a ~ x is a valid alternative background construction."""
+    from pyprimat.main import PyPR
+
+    p_min = PyPR({"network": "small"})
+    p_ext = PyPR({"network": "small", "external_background": True})
+
+    # Probe over the table's covered T_gamma range (avoid the extrapolated
+    # tails, which are exact by construction in both modes -- a ~ 1/T).
+    Tg_min, Tg_max = p_min.cfg.T_end / p_min.cfg.MeV_to_Kelvin, 3.0  # MeV
+    Tgs = np.logspace(np.log10(Tg_min), np.log10(Tg_max), 50)
+
+    a_min, a_ext = p_min._a_of_T(Tgs), p_ext._a_of_T(Tgs)
+    t_min, t_ext = p_min._t_of_T(Tgs), p_ext._t_of_T(Tgs)
+
+    assert np.allclose(a_ext, a_min, rtol=1e-5)
+    assert np.allclose(t_ext, t_min, rtol=1e-5)
+
+
+@pytest.mark.slow
+@pytest.mark.solve
+def test_external_background_matches_minimal():
+    """A full BBN solve with external_background=True reproduces the default
+    (minimal-mode) Neff, YPBBN and D/H to the precision expected from the
+    a(T)/t(T) agreement above (NEUTRINOS.md)."""
+    from pyprimat.main import PyPR
+
+    r_min = PyPR({"network": "small"}).PyPRresults()
+    r_ext = PyPR({"network": "small", "external_background": True}).PyPRresults()
+
+    assert r_ext["Neff"]  == pytest.approx(r_min["Neff"],  rel=1e-10)
+    assert r_ext["YPBBN"] == pytest.approx(r_min["YPBBN"], rel=1e-5)
+    assert r_ext["DoH"]   == pytest.approx(r_min["DoH"],   rel=3e-5)

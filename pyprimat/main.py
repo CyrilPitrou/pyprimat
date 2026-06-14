@@ -215,6 +215,23 @@ class PyPR:
 
         In both modes the method builds all interpolants used by
         ``_setup_derived_cosmo``, ``_setup_weak_rates``, and ``solve()``.
+
+        Independently of the above, ``cfg.external_background`` selects how
+        ``a(T_γ)`` itself is obtained (requires ``incomplete_decoupling=True``):
+
+        *Minimal* (``False``, default):
+            ``a(T_γ)`` is reconstructed by solving the entropy-conservation
+            ODE ``d(ln a)/d(ln T) = -(3 s̄ + T ds̄/dT)/(N_NEVO + 3 s̄)`` driven
+            by the NEVO heating function ``N_NEVO(T_γ)``.
+
+        *External* (``True``):
+            ``a(T_γ)`` is read directly from the NEVO table's ``x`` column
+            (``x ∝ a`` by the NEVO convention), with radiation-domination
+            extrapolation (``a ∝ 1/T_γ``) outside the table. No ODE is
+            solved for ``a(T)``. ``t(a)`` is obtained the same way in both
+            modes (Hubble integration below), since no NEVO file carries a
+            cosmic-time column. See NEUTRINOS.md for the derivation and the
+            empirical check that the two modes agree to ~1e-6.
         """
         cfg    = self.cfg
         thermo = self.plasma
@@ -248,28 +265,19 @@ class PyPR:
         self._rho_nu_SD   = nh.rho_nu_SD     # None means "no extra energy density"
 
         # ------------------------------------------------------------------
-        # Step 2 – Solve a(T) ODE / invert to T(a)
+        # Step 2 – Build a(T) / invert to T(a)
         # ------------------------------------------------------------------
         def _sbar(T):
             return thermo.spl(T) / T**3   # dimensionless
 
-        # RHS of the entropy-conservation ODE d(ln a)/d(ln T) for the EM
-        # plasma.  The reduced entropy sbar = s/T^3 and its T-derivative are
-        # both obtained analytically from the electron-thermo spline via
-        # thermo.spl_and_dspl_dT (a single evaluation returning s and ds/dT):
-        # this is exact and fast, so no numerical-derivative fallback
-        # (numdifftools / finite differences) is needed.
-        def _dlnadlnT_NEVO(lnT, y):
-            T = np.exp(lnT)
-            s, ds_dT = thermo.spl_and_dspl_dT(T)
-            sb     = s / T**3
-            dsbdT  = ds_dT / T**3 - 3. * s / T**4   # d(s/T^3)/dT, chain rule
-            N = float(N_NEVO_of_Tg(T))
-            return [-(3. * sb + T * dsbdT) / (N + 3. * sb)]
-
         z0   = cfg.T0CMB / cfg.MeV_to_Kelvin   # [MeV]
+        # Algebraic entropy-conservation boundary value a(Tend) = zend/Tend,
+        # used as the ODE initial condition (minimal mode) and as the
+        # table-normalisation anchor (external_background mode) -- see
+        # NEUTRINOS.md.  Requires no ODE: _sbar is the analytic
+        # electron-thermo spline.
         zend = z0 / (_sbar(Tend) / cfg.s0bar) ** (1. / 3.)
-        lna_end = np.log(zend / Tend)
+        a_end = zend / Tend
 
         # Build the log-temperature grid directly with linspace and feed it
         # straight to t_eval.  Do NOT reconstruct it as log(logspace(...)):
@@ -281,21 +289,53 @@ class PyPR:
         # the span bounds exactly, so the check always passes.
         lnT_sol = np.linspace(np.log(Tend), np.log(Tstartcosmo), cfg.n_temperature_table)
         T_sol   = np.exp(lnT_sol)
-        _t_nevo_a0 = time.time()
-        sol_lna = solve_ivp(_dlnadlnT_NEVO,
-                            [np.log(Tend), np.log(Tstartcosmo)],
-                            [lna_end],
-                            t_eval=lnT_sol,
-                            method='LSODA', rtol=0.1*cfg.numerical_precision, atol=1e-10)
-        if cfg.debug:
-            print((f"[bckg]  Finished a(T) solve in {time.time()- _t_nevo_a0:.2f} s "
-                   f"(status={sol_lna.status}, nfev={sol_lna.nfev})"), flush=True)
-        _lnalnT = interp1d(sol_lna.t, sol_lna.y[0].flatten(),
-                           bounds_error=False, fill_value="extrapolate")
-        
-        def a_of_T(T):
-            return np.exp(_lnalnT(np.log(T)))
-        
+
+        if cfg.external_background:
+            # --------------------------------------------------------------
+            # external_background=True: a(T) read directly from the NEVO
+            # table's x column (a ∝ x by the NEVO convention; see
+            # NEUTRINOS.md), normalised so a(Tend) matches the algebraic
+            # a_end above -- the same boundary value the minimal-mode ODE
+            # converges to.  No ODE solve.
+            # --------------------------------------------------------------
+            K = a_end / float(nh.x_of_Tg(Tend))
+
+            def a_of_T(T):
+                return K * nh.x_of_Tg(T)
+        else:
+            # --------------------------------------------------------------
+            # minimal mode (default): solve the entropy-conservation ODE
+            # d(ln a)/d(ln T) for the EM plasma.  The reduced entropy
+            # sbar = s/T^3 and its T-derivative are both obtained
+            # analytically from the electron-thermo spline via
+            # thermo.spl_and_dspl_dT (a single evaluation returning s and
+            # ds/dT): this is exact and fast, so no numerical-derivative
+            # fallback (numdifftools / finite differences) is needed.
+            # --------------------------------------------------------------
+            def _dlnadlnT_NEVO(lnT, y):
+                T = np.exp(lnT)
+                s, ds_dT = thermo.spl_and_dspl_dT(T)
+                sb     = s / T**3
+                dsbdT  = ds_dT / T**3 - 3. * s / T**4   # d(s/T^3)/dT, chain rule
+                N = float(N_NEVO_of_Tg(T))
+                return [-(3. * sb + T * dsbdT) / (N + 3. * sb)]
+
+            lna_end = np.log(a_end)
+            _t_nevo_a0 = time.time()
+            sol_lna = solve_ivp(_dlnadlnT_NEVO,
+                                [np.log(Tend), np.log(Tstartcosmo)],
+                                [lna_end],
+                                t_eval=lnT_sol,
+                                method='LSODA', rtol=0.1*cfg.numerical_precision, atol=1e-10)
+            if cfg.debug:
+                print((f"[bckg]  Finished a(T) solve in {time.time()- _t_nevo_a0:.2f} s "
+                       f"(status={sol_lna.status}, nfev={sol_lna.nfev})"), flush=True)
+            _lnalnT = interp1d(sol_lna.t, sol_lna.y[0].flatten(),
+                               bounds_error=False, fill_value="extrapolate")
+
+            def a_of_T(T):
+                return np.exp(_lnalnT(np.log(T)))
+
         # ------------------------------------------------------------------
         # Step 3 – Invert a(T) → T(a), then integrate dt/d(ln a) = 1/H(a)
         # ------------------------------------------------------------------

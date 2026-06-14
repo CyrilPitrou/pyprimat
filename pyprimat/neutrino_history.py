@@ -88,7 +88,13 @@ class NeutrinoHistory:
       T_gamma [MeV] to the flavour neutrino temperature [MeV] (array-safe),
     * ``N_NEVO_of_Tg`` : callable T_gamma [MeV] -> dimensionless heating N,
     * ``dFDneu_func`` : callable ``(en, x, znu, sgnq) -> float`` or ``None``,
-    * ``rho_nu_SD`` : callable ``T_nu -> MeV^4`` or ``None``.
+    * ``rho_nu_SD`` : callable ``T_nu -> MeV^4`` or ``None``,
+    * ``x_of_Tg`` : callable T_gamma [MeV] -> dimensionless ``x`` (the NEVO
+      table's ``x = m_e/(kB T_com)`` column, proportional to the scale
+      factor ``a``), array-safe, with radiation-domination extrapolation
+      (``x*T_gamma = const``) outside the table; or ``None`` when no NEVO
+      table is loaded. Used by ``external_background`` mode (see
+      NEUTRINOS.md) -- only :class:`NEVOTable` sets this.
 
     ``cfg`` and ``plasma`` are stored for the subclasses' use.
     """
@@ -96,10 +102,12 @@ class NeutrinoHistory:
     def __init__(self, cfg, plasma):
         self.cfg = cfg
         self.plasma = plasma
-        # Defaults: no spectral distortion / no extra energy density.  Set here
-        # so every implementation has them even if it never overrides them.
+        # Defaults: no spectral distortion / no extra energy density / no
+        # table-based scale factor.  Set here so every implementation has
+        # them even if it never overrides them.
         self.dFDneu_func = None
         self.rho_nu_SD = None
+        self.x_of_Tg = None
         self._build_temperatures()
         self._build_distortion()
 
@@ -137,14 +145,17 @@ class NEVOTable(NeutrinoHistory):
     def _build_temperatures(self):
         cfg = self.cfg
         # Two versions of the table exist:
-        #   NEVOPRIMAT_col_1_7.csv        — computed with QED corrections
-        #   NEVOPRIMAT_NoQED_col_1_7.csv  — computed without QED corrections
+        #   <prefix>_col_1_7.csv        — computed with QED corrections
+        #   <prefix>_NoQED_col_1_7.csv  — computed without QED corrections
+        # where <prefix> defaults to "NEVOPRIMAT" (cfg.nevo_file_prefix lets a
+        # user point at a complete alternative set of NEVO-format tables).
         # We select the one that is consistent with cfg.QED_corrections so
         # that the neutrino temperatures entering the background are derived
         # from the same plasma equation of state that is used in the rest of
         # the computation.
-        default_file = ("NEVOPRIMAT_col_1_7.csv" if cfg.QED_corrections
-                        else "NEVOPRIMAT_NoQED_col_1_7.csv")
+        prefix = cfg.nevo_file_prefix
+        default_file = (f"{prefix}_col_1_7.csv" if cfg.QED_corrections
+                        else f"{prefix}_NoQED_col_1_7.csv")
         nevo_path = resolve_nevo_path(cfg, cfg.nevo_file, default_file)
         table = np.loadtxt(nevo_path, delimiter=',', usecols=range(6))
         # Column layout (0-indexed):
@@ -166,8 +177,8 @@ class NEVOTable(NeutrinoHistory):
 
         # Ensure the table is ordered by decreasing T_γ (high→low)
         if Tg_tab[0] < Tg_tab[-1]:
-            Tg_tab, Tnue_tab, Tnumu_tab, Tnutau_tab, N_NEVO_tab = (
-                arr[::-1] for arr in (Tg_tab, Tnue_tab, Tnumu_tab, Tnutau_tab, N_NEVO_tab))
+            x, Tg_tab, Tnue_tab, Tnumu_tab, Tnutau_tab, N_NEVO_tab = (
+                arr[::-1] for arr in (x, Tg_tab, Tnue_tab, Tnumu_tab, Tnutau_tab, N_NEVO_tab))
 
         # Interpolants for neutrino temperatures as functions of T_γ.
         # We interpolate the dimensionless ratio T_να/T_γ rather than T_να
@@ -198,6 +209,39 @@ class NEVOTable(NeutrinoHistory):
         self.N_NEVO_of_Tg = interp1d(Tg_tab, N_NEVO_tab, bounds_error=False,
                                      fill_value=(0., 0.), kind='linear')
 
+        # ------------------------------------------------------------------
+        # x_of_Tg: table-based scale factor a(T_γ) ∝ x(T_γ), for
+        # external_background mode (see NEUTRINOS.md). By the NEVO
+        # Mathematica convention x = m_e/(kB T_com) with T_com ∝ 1/a, so
+        # x ∝ a exactly.
+        #
+        # Outside the table, extrapolate assuming radiation domination,
+        # a ∝ 1/T_γ, i.e. x(T)·T = const, equal to its value at the nearest
+        # table edge (this matches the existing N_NEVO -> 0 extrapolation of
+        # the minimal-mode ODE in this regime, see NEUTRINOS.md).
+        # ------------------------------------------------------------------
+        _Tg_asc = Tg_tab[::-1]   # ascending T_γ (Tg_tab is stored high→low)
+        _x_asc  = x[::-1]
+        _Tg_min, _Tg_max = float(_Tg_asc[0]), float(_Tg_asc[-1])
+        _x_min,  _x_max  = float(_x_asc[0]),  float(_x_asc[-1])
+
+        _logx_of_logTg = interp1d(np.log(_Tg_asc), np.log(_x_asc),
+                                  kind='linear', bounds_error=False)
+
+        def x_of_Tg(Tg):
+            Tg = np.asarray(Tg, dtype=float)
+            # Clip into the table range for the interior interpolation; the
+            # out-of-range branches below override these values with the
+            # radiation-domination extrapolation, so the clipped value here
+            # is never used out of range -- it only avoids interp1d NaNs.
+            log_Tg_clipped = np.clip(np.log(Tg), np.log(_Tg_min), np.log(_Tg_max))
+            x_interior = np.exp(_logx_of_logTg(log_Tg_clipped))
+            return np.where(Tg < _Tg_min, _x_min * _Tg_min / Tg,
+                   np.where(Tg > _Tg_max, _x_max * _Tg_max / Tg, x_interior))
+
+        self.x_of_Tg = x_of_Tg
+        self._Tg_table_range = (_Tg_min, _Tg_max)  # diagnostics/tests only
+
     def _build_distortion(self):
         cfg = self.cfg
         if not (cfg.spectral_distortions and not cfg.analytic_distortions):
@@ -212,8 +256,9 @@ class NEVOTable(NeutrinoHistory):
         #   1–5: same thermo columns as _col_1_7
         #   6–85: fractional spectral perturbation δf at each y node,
         #         defined so that f_actual(y) = (1+δf(y))/(e^y+1).
-        default_full_file = ("NEVOPRIMAT.csv" if cfg.QED_corrections
-                             else "NEVOPRIMAT_NoQED.csv")
+        prefix = cfg.nevo_file_prefix
+        default_full_file = (f"{prefix}.csv" if cfg.QED_corrections
+                             else f"{prefix}_NoQED.csv")
         nevo_full_path = resolve_nevo_path(cfg, cfg.nevo_spectral_file, default_full_file)
         grid_path      = resolve_nevo_path(cfg, cfg.nevo_grid_file, "NEVOGrid.csv")
 
