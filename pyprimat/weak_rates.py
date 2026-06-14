@@ -110,10 +110,17 @@ WEAK_RATE_FORMAT_VERSION = 2
 #       equation that feeds back into Tg(t)).
 #   T_start_cosmo_MeV, n_temperature_table -- the (Tg_vec, Tnu_vec) grid
 #       passed in as Tvec.
-#   DeltaNeff -- extra radiation density alters the background Tg(t)
-#       history (PRIMAT-Main.m / Phys. Rep. background ODEs); explicitly
-#       called out here even though it is not a "neutrino distribution"
-#       parameter per se.
+#
+# DeltaNeff is deliberately NOT listed here.  Extra decoupled relativistic
+# species add radiation density to the Friedmann equation and therefore
+# change only the *time-temperature* relation Tg(t)/a(Tg) -- not the weak-rate
+# integrand, which at each photon temperature Tg depends solely on the e+/-
+# distributions at Tg and the neutrino distributions at Tnu(Tg) (the latter
+# being the SM NEVO Tnu/Tg relation, itself independent of the extra species).
+# Because the cached rates are tabulated *against Tg* (ComputeWeakRates returns
+# Gamma(Tg)), a different DeltaNeff merely resamples the identical Gamma(Tg)
+# curve at slightly shifted Tg grid points, which are interpolated anyway.
+# Listing it here would only force spurious cache recomputations.
 _BACKGROUND_FINGERPRINT_FIELDS = [
     "incomplete_decoupling",
     "QED_corrections",
@@ -124,7 +131,6 @@ _BACKGROUND_FINGERPRINT_FIELDS = [
     "y_SZ",
     "T_start_cosmo_MeV",
     "n_temperature_table",
-    "DeltaNeff",
     # Custom NEVO table overrides (None = shipped defaults; see
     # neutrino_history.resolve_nevo_path).  Including the override values
     # (rather than their resolved/hashed content) is enough to invalidate the
