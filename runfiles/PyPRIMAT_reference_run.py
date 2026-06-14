@@ -49,7 +49,6 @@ omegabh2 = 0.022425
 MyOptions = {
     "verbose":               True,
     "debug":                 True,
-    "numdiff_installed":               True,
 
     # Background thermodynamics
     "T_start_cosmo_MeV":          100.0,   # [MeV]  wider integration range

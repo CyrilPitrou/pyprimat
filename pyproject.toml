@@ -27,12 +27,10 @@ pyprimat-gui = "pyprimat.gui.launcher:main"
 [project.optional-dependencies]
 recommended = [
     "numba",
-    "numdifftools",
     "vegas",
 ]
 all = [
     "numba",
-    "numdifftools",
     "vegas",
 ]
 notebooks = [

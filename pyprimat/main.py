@@ -253,29 +253,19 @@ class PyPR:
         def _sbar(T):
             return thermo.spl(T) / T**3   # dimensionless
 
-        if not cfg.analytic_entropy_derivative:
-            if cfg.numdiff_installed:
-                from numdifftools import Derivative
-                _dsbardT = Derivative(_sbar, n=1)
-            else:
-                def _dsbardT(T):
-                    dToT = 1.e-3
-                    return (_sbar((1. + dToT) * T) - _sbar((1. - dToT) * T)) / (2. * dToT * T)
-
-        if cfg.analytic_entropy_derivative:
-            def _dlnadlnT_NEVO(lnT, y):
-                T = np.exp(lnT)
-                s, ds_dT = thermo.spl_and_dspl_dT(T)
-                sb     = s / T**3
-                dsbdT  = ds_dT / T**3 - 3. * s / T**4
-                N = float(N_NEVO_of_Tg(T))
-                return [-(3. * sb + T * dsbdT) / (N + 3. * sb)]
-        else:
-            def _dlnadlnT_NEVO(lnT, y):
-                T   = np.exp(lnT)
-                sb  = _sbar(T)
-                N   = float(N_NEVO_of_Tg(T))
-                return [-(3. * sb + T * _dsbardT(T)) / (N + 3. * sb)]       
+        # RHS of the entropy-conservation ODE d(ln a)/d(ln T) for the EM
+        # plasma.  The reduced entropy sbar = s/T^3 and its T-derivative are
+        # both obtained analytically from the electron-thermo spline via
+        # thermo.spl_and_dspl_dT (a single evaluation returning s and ds/dT):
+        # this is exact and fast, so no numerical-derivative fallback
+        # (numdifftools / finite differences) is needed.
+        def _dlnadlnT_NEVO(lnT, y):
+            T = np.exp(lnT)
+            s, ds_dT = thermo.spl_and_dspl_dT(T)
+            sb     = s / T**3
+            dsbdT  = ds_dT / T**3 - 3. * s / T**4   # d(s/T^3)/dT, chain rule
+            N = float(N_NEVO_of_Tg(T))
+            return [-(3. * sb + T * dsbdT) / (N + 3. * sb)]
 
         z0   = cfg.T0CMB / cfg.MeV_to_Kelvin   # [MeV]
         zend = z0 / (_sbar(Tend) / cfg.s0bar) ** (1. / 3.)

@@ -94,7 +94,7 @@ physics flags — which is exactly when it must.
 
 ### 1.3 [BUG] `mc_uncertainty` requires `joblib`, which is not declared anywhere
 `main.py:1396` does `from joblib import Parallel, ...` but `pyproject.toml`
-lists only `numpy`/`scipy` (+ optional `numba`, `numdifftools`, `vegas`).  A
+lists only `numpy`/`scipy` (+ optional `numba`, `vegas`).  A
 fresh `pip install PyPRIMAT` user following `MonteCarloRates.ipynb` gets an
 `ImportError`.  Add `joblib` to the dependencies (it is light) or to
 `[recommended]` with a graceful serial fallback.
@@ -210,8 +210,8 @@ trust.
    incomplete_decoupling", but the constructor *raises* for
    `analytic_distortions=True` + `incomplete_decoupling=True`.  One of the two
    is wrong — decide and align.
-5. **Naming hygiene**: `numba_installed`/`numdiff_installed` are inputs that
-   get mutated into detection results; rename to `use_numba=auto|True|False`.
+5. **Naming hygiene**: `numba_installed` is an input that
+   gets mutated into a detection result; rename to `use_numba=auto|True|False`.
    `nTOp_Born_approximation`, `compute_nTOp_thermal`, `include_nTOp_thermal`,
    `save_nTOp_thermal`, `sampling_nTOp_thermal` → a single
    `weak.thermal_corrections="precomputed"|"recompute"|"off"` plus accuracy knobs.

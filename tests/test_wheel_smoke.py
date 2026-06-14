@@ -17,7 +17,7 @@ succeed but ``PyPR(...).solve()`` would fail with a ``FileNotFoundError``
 deep inside ``pyprimat.nuclear``/``pyprimat.weak_rates``.
 
 The venv is created with ``--system-site-packages`` so the already-installed
-numpy/scipy/joblib (and any optional numba/vegas/numdifftools) are reused --
+numpy/scipy/joblib (and any optional numba/vegas) are reused --
 this test checks the *PyPRIMAT* packaging, not whether its dependencies can
 be downloaded.
 """

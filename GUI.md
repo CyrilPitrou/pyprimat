@@ -100,8 +100,8 @@ nothing from `pyprimat.gui`).
   Practically, read the source comments once and bundle a small
   `{name: (group, label, help)}` metadata table in `params_form.py` for the
   ~15–20 user-facing flags, since `DEFAULT_PARAMS` itself has no machine-readable
-  grouping. Hide internal/legacy flags (`numba_installed`, `numdiff_installed`,
-  `analytic_entropy_derivative`, the various `save_*`/`recompute_*` caches)
+  grouping. Hide internal/legacy flags (`numba_installed`,
+  the various `save_*`/`recompute_*` caches)
   behind an "Advanced" expander.
 - Group into Streamlit `st.expander`/`st.tabs` sections:
   - **Cosmology:** `Omegabh2`, `DeltaNeff`, `munuOverTnu`.

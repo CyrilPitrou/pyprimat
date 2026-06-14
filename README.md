@@ -38,7 +38,6 @@ pip install -e ".[recommended]"
 |---------|------|
 | `numpy`, `scipy` | **Mandatory** |
 | `numba` | Recommended — JIT compilation gives ~5× speedup on rate kernels |
-| `numdifftools` | Recommended — numerical entropy derivatives (only if `analytic_entropy_derivative=False`) |
 | `vegas` | Recommended — Monte Carlo integration for thermal weak-rate corrections |
 
 For the graphical interface (`pyprimat-gui`), install the `gui` extra:

@@ -30,8 +30,6 @@ DEFAULT_PARAMS: dict = {
     "debug":                 False, #If you want the debug messages to be printed, set this to True.  This is separate from the verbose, which controls the printing of general messages from the code.
     "numerical_precision":        1.e-7, # for finite differences (solve_ivp). 1e-6 should be enough.
     "numba_installed":                 True,  # will be re-checked at runtime. Allows just-in-time compilation for faster execution.
-    "analytic_entropy_derivative": True, # Use analytic derivative of entropy for plasma thermodynamics. If False, the code will compute the derivative numerically at runtime (using numdifftools if available, or finite differences as a fallback).  This is much slower, but allows testing the impact of numerical vs. analytic derivatives on the final BBN results.
-    "numdiff_installed":               True,  # will be re-checked at runtime and used only if analytic_entropy_derivative is False.
 
     # ---- physics settings ------------------------------------------------
     # ---- neutrino decoupling ----------------------
@@ -331,14 +329,6 @@ class PyPRConfig:
             except ImportError:
                 self.numba_installed = False
                 self._init_messages.append('[init]  numba not detected: running without JIT compilation.')
-
-        if self.numdiff_installed and (not self.analytic_entropy_derivative):
-            try:
-                import numdifftools  # noqa: F401
-                self._init_messages.append('[init]  numdifftools detected: using it for numerical derivative of entropy.')
-            except ImportError:
-                self.numdiff_installed = False
-                self._init_messages.append('[init]  numdiff not detected: using finite differences for numerical derivatives of entropy.')
 
         # Validate amax: must be None or an integer > 7.
         if self.amax is not None:
