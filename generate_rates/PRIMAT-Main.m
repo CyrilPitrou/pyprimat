@@ -219,7 +219,7 @@ ddTOtpFactor=1;
 
 
 (* ::Input::Initialization:: *)
-$NuclearRatesQEDCorrections=False;(* recommended value is True *)
+$NuclearRatesQEDCorrections=True;(* recommended value is True *)
 
 
 (* ::Input::Initialization:: *)
@@ -292,13 +292,13 @@ FileNEVOantineutrinos := FileNEVOneutrinos;
 
 (* ::Input::Initialization:: *)
 $DegenerateNeutrinos=False;(*Recommended False if using the default runs of NEVO.*)
-\[Mu]OverT\[Nu]=0.;
+\[Mu]OverT\[Nu]=0.0;
 
 \[Xi]\[Nu]:=If[$DegenerateNeutrinos,\[Mu]OverT\[Nu],0];
 
 
 (* ::Input::Initialization:: *)
-$SpectralDistortions = False;(* Recommended True *) 
+$SpectralDistortions = True;(* Recommended True *) 
 
 
 (* ::Input::Initialization:: *)
@@ -308,7 +308,7 @@ YSZ=0.;
 
 
 (* ::Input::Initialization:: *)
-$EDEBool = True;
+$EDEBool = False;
 wnEDE=1.;
 zcEDE=10^(8);
 fEDE=0.;
@@ -351,7 +351,7 @@ AccuracyNDSolve:=15+PrecisionNDSolve;
 
 
 (* ::Input::Initialization:: *)
-NTemperaturePoints=3000; (*1000 is enough*)
+NTemperaturePoints=1000; (*1000 is enough*)
 
 
 (* ::Input::Initialization:: *)
@@ -1089,9 +1089,9 @@ DST2NoQED[Tv_]:=(2*2\[Pi]^2)/45 DSTNoQED[Tv]
 
 
 (* ::Input::Initialization:: *)
-SolveaOFTwhenID:=(laTCQED=NDSolveValue[{laTCN'[lTv]==(\[ScriptCapitalN]lT[lTv]-DS2lTQED'[lTv])/(\[ScriptCapitalN]lT[lTv]+3*DS2lTQED[lTv]),laTCN[Log@Tf]==Log[TCMB0/DSTQED[Tf]^(1/3)]},{laTCN},{lTv,Log@Ti,Log@Tf},PrecisionGoal->30(*40s*),AccuracyGoal->9(*9*)][[1]];
+SolveaOFTwhenID:=(laTCQED=NDSolveValue[{laTCN'[lTv]==(\[ScriptCapitalN]lT[lTv]-DS2lTQED'[lTv])/(\[ScriptCapitalN]lT[lTv]+3*DS2lTQED[lTv]),laTCN[Log@Tf]==Log[TCMB0/DSTQED[Tf]^(1/3)]},{laTCN},{lTv,Log@Ti,Log@Tf},PrecisionGoal->30(*40s*),AccuracyGoal->7(*9*)][[1]];
 
-laTCNoQED=NDSolveValue[{laTCNNoQED'[lTv]==(\[ScriptCapitalN]lT[lTv]-DS2lTNoQED'[lTv])/(\[ScriptCapitalN]lT[lTv]+3*DS2lTNoQED[lTv]),laTCNNoQED[Log@Tf]==Log[TCMB0/DSTNoQED[Tf]^(1/3)]},{laTCNNoQED},{lTv,Log@Ti,Log@Tf},PrecisionGoal->30(*40*),AccuracyGoal->8(*9*)][[1]];
+laTCNoQED=NDSolveValue[{laTCNNoQED'[lTv]==(\[ScriptCapitalN]lT[lTv]-DS2lTNoQED'[lTv])/(\[ScriptCapitalN]lT[lTv]+3*DS2lTNoQED[lTv]),laTCNNoQED[Log@Tf]==Log[TCMB0/DSTNoQED[Tf]^(1/3)]},{laTCNNoQED},{lTv,Log@Ti,Log@Tf},PrecisionGoal->30(*40*),AccuracyGoal->7(*9*)][[1]];
 );
 
 
@@ -1261,7 +1261,7 @@ H[a_]:=HofT[Tofa[a]];(*((8\[Pi] GN)/3\[Rho]tot[Tofa[a]])^(1/2);*)
 
 
 (* ::Input::Initialization:: *)
-Computetofa:=(tofa=(NDSolveValue[{tv'[av]==1/(av H[av]),tv[a[Ti]]==1/(2H[a[Ti]])},tv,{av,a[Ti],a[Tf]},PrecisionGoal->7,AccuracyGoal->12]);)
+Computetofa:=(tofa=(NDSolveValue[{tv'[av]==1/(av H[av]),tv[a[Ti]]==1/(2H[a[Ti]])},tv,{av,a[Ti],a[Tf]},PrecisionGoal->8,AccuracyGoal->10]);)
 
 
 (* ::Input::Initialization:: *)
@@ -2536,153 +2536,194 @@ reac="He6>Li6+Bm;";
 forward[T9_]:=Log[2]/8.0670*^-1 ;
 AddReaction[reac,source,1,forward,False];(* The 1 is because we do not put uncertainty on decays, and the False because we do not put reverse reactions on decays *)
 
+source="Aud03";
 reac="Li8>2a+Bm;";
 forward[T9_]:=Log[2]/8.4030*^-1 ;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
 reac="Li9>Be9+Bm;";
 forward[T9_]:=Log[2]/1.7830*^-1 * 0.492 ;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
 reac="Li9>a+a+n+Bm;";
 forward[T9_]:=Log[2]/1.7830*^-1 * 0.508 ;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
 reac="Be11>B11+Bm;";
 forward[T9_]:= Log[2]/(1.3810*^1) ;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
 reac="Be12>B12+Bm;";
 forward[T9_]:=Log[2]/(2.15*^-2) ;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
 reac="B8>a+a+Bp;";
 forward[T9_]:= Log[2]/(7.70*^-1) ;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
 reac="B12>C12+Bm;";
 forward[T9_]:= Log[2]/(2.02*^-2) ;
 AddReaction[reac,source,1,forward,False];
-
+source="Aud03";
 reac="B13>C13+Bm;";
 (* !04/11/2010 *)
 forward[T9_]:=Log[2]/(1.733*^-2) ;
 AddReaction[reac,source,1,forward,False];
-
+source="Aud03";
 reac="B14>C14+Bm;";
 (* !04/11/2010 *)
 forward[T9_]:=Log[2]/(1.25*^-2) ;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
              reac="B15>C15+Bm;";
 (* !04/11/2010 *)
 forward[T9_]:= Log[2]/(9.87*^-3) ;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
 reac="C9>a+a+p+Bp;";
 forward[T9_]:= Log[2]/(1.26*^-1) ;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
 reac="C10>B10+Bp;";
 forward[T9_]:=Log[2]/(19.29) ;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
 reac="C11>B11+Bp;";
 forward[T9_]:= Log[2]/1.2234*^3 ;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
 	    reac="C15>N15+Bm;";
 (*28/10/2010*)
 forward[T9_]:=Log[2]/2.449 ;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
 reac="C16>N16+Bm;";
 (*14/01/2011*)
 forward[T9_]:= Log[2]/7.4700*^-1 ;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
 reac="N12>C12+Bp;";
 forward[T9_]:= Log[2]/1.100*^-2 ;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
 reac="N13>C13+Bp;";
 (*14/01/2011*)
 forward[T9_]:=Log[2]/5.979*^2 ;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
 reac="N16>O16+Bm;";
 (*14/01/2011*)
 forward[T9_]:=Log[2]/7.13 ;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
 reac="N17>O16+n+Bm;";
 (*14/01/2011*)
 forward[T9_]:= Log[2]/4.1730 ;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
 reac="O13>N13+Bp;";
 (*14/01/2011*)
 forward[T9_]:= Log[2]/8.58*^-3 ;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
 reac="O14>N14+Bp;";
 (*14/01/2011*)
 forward[T9_]:=Log[2]/70.598 ;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
 reac="O15>N15+Bp;";
 (*14/01/2011*)
 forward[T9_]:=Log[2]/122.24;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
 reac="O19>F19+Bm;";
 (*14/01/2011*)
 forward[T9_]:=Log[2]/26.464;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
  reac="O20>F20+Bm;";
 (*14/01/2011*)
 forward[T9_]:=Log[2]/13.51;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
 reac="F17>O17+Bp;";
 (*04/11/2010*)
 forward[T9_]:=Log[2]/64.49;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
 reac="F18>O18+Bp;";
 (*04/11/2010*)
 forward[T9_]:= Log[2]/6.5863*^3;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
 reac="F20>Ne20+Bm;";
 (*04/11/2010*)
 forward[T9_]:= Log[2]/11.1630;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
 reac="Ne18>F18+Bp;";
 (*04/11/2010*)
 forward[T9_]:=Log[2]/1.6720;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
 reac="Ne19>F19+Bp;";
 (*04/11/2010*)
 forward[T9_]:=Log[2]/17.296;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
 reac="Ne23>Na23+Bm;";
 (*04/11/2010*)
 forward[T9_]:=Log[2]/37.240;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
 reac="Na20>Ne20+Bp;";
 (*14/01/2011*)
 forward[T9_]:=Log[2]/4.4790*^-1;
 AddReaction[reac,source,1,forward,False];
 
+source="Aud03";
 reac="Na21>Ne21+Bp;";
 (*04/11/2010*)
 forward[T9_]:=Log[2]/22.49;
+AddReaction[reac,source,1,forward,False];
+(* Add Be7 -> Li7*)
+source="Aud03";
+reac="Be7>Li7+Bp;";
+forward[T9_]:=Log[2]/(53.29*86400);
+AddReaction[reac,source,1,forward,False];
+
+(* Add T -> He3*)
+source="Aud03";
+reac="t>He3+Bm;";
+forward[T9_]:=Log[2]/(12.32*86400*365.25);
 AddReaction[reac,source,1,forward,False];
 
 (* *=======================================================================
@@ -3393,7 +3434,7 @@ TMC=Transpose[MC];
 ElementColumn[el_]:=MC[[All,KeyVal[[el]]]];
 ReactionColumn[el_]:=RV[[All,KeyNuclearReaction[el]]];
 h2\[CapitalOmega]b0List:=Cosmo[[All,1]];
-\[Tau]neutronList:=Cosmo[[All,2]];
+\[Tau]neutronList:=Cosmo[[All,2]];\[AliasDelimiter]
 
 
 (* ::Input::Initialization:: *)
