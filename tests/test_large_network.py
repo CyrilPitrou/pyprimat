@@ -119,11 +119,9 @@ def test_large_network_time_evolution_tsv(tmp_path):
     assert len(y_cols) == len(big.nuclear.abundance_names)
     assert not any(h.endswith("_frwrd") for h in header)
 
-    # IDEAS2.md item 1: the HT-era NSE (Saha) fill must stay finite even for
-    # the ~59 large-network nuclides (some with large binding energies, where
-    # BindE/(kB T) is largest) -- it is restricted to t < t_weak precisely to
-    # avoid the exp() overflow / inf*0 = nan that a naive Saha evaluation at
-    # the LT era's low T9 would produce for an untracked heavy nuclide.
+    # Every column must stay finite, including the exact-0 HT-era
+    # Y<species> entries for the ~59 large-network nuclides (no NSE/Saha
+    # fill is applied any more, see NuclearNetwork._write_time_evolution).
     assert np.isfinite(data).all()
 
     med = PyPR(params={"network": "medium", "verbose": False})

@@ -80,7 +80,7 @@ def test_a_of_T_consistent_with_a_of_t_and_T_of_t(solved_small):
 
 def test_get_quantity_result_key(solved_small):
     assert solved_small.get_quantity("YPBBN") == pytest.approx(
-        solved_small.nuclear.results["YPBBN"], rel=1e-12)
+        solved_small.results["YPBBN"], rel=1e-12)
 
 
 def test_get_quantity_nuclide_name(solved_small):
@@ -97,9 +97,9 @@ def test_get_quantity_unknown_raises(solved_small):
 def test_lazy_solve_triggers_on_accessor():
     """Accessing a result without calling solve() should auto-trigger it."""
     r = PyPR({"network": "small"})
-    assert r.nuclear.results is None
+    assert r.results is None
     yp = r.YPBBN()
-    assert r.nuclear.results is not None
+    assert r.results is not None
     assert yp > 0
 
 
@@ -119,7 +119,7 @@ def test_PyPRresults_returns_dict(solved_small):
 
 
 def test_result_values_physical(solved_small):
-    res = solved_small.nuclear.results
+    res = solved_small.results
     assert 0.20 < res["YPBBN"] < 0.30
     assert 1e-5 < res["DoH"]   < 5e-5
     assert 1e-6 < res["He3oH"] < 1e-4

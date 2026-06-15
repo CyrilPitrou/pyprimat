@@ -8,16 +8,23 @@ temperature eras.
 
 Design
 ------
-``NuclearNetwork`` is driven purely through the public interface of a
-``pyprimat.background.Background`` instance: ``T_of_t``/``t_of_T``/``a_of_t``,
-``rhoB_BBN``/``etab_of_T`` (baryon sector), the normalised n<->p weak rates
-(``weak_nTOp_frwrd_raw``/``weak_nTOp_bkwrd_raw`` plus ``NormWeakRates``), and a
-handful of background quantities needed only for *output*
-(``Hubble``, ``Tnue_vec``/``Tnumu_vec``/``Tnutau_vec``, ``t_vec``,
-``N_NEVO_of_Tg``/``has_heating_table``).  It knows nothing about *how* the
-background was constructed (NEVO table, instantaneous decoupling, external
-background, ...) -- this is exactly the seam that makes the background
-pluggable (``pyprimat.background.Background``).
+``NuclearNetwork`` is driven purely through the *minimal* public interface of
+a ``pyprimat.background.Background`` instance:
+
+* ``T_of_t(t)`` / ``t_of_T(T)``  -- time <-> temperature
+* ``rhoB_BBN(t)``                -- baryon mass density [g/cm^3] as a
+  function of cosmic time (the prefactor for nuclear reaction rates)
+* ``weak_nTOp_frwrd(T_K)`` / ``weak_nTOp_bkwrd(T_K)`` -- already-normalised
+  n<->p weak rates [s^-1] at photon temperature ``T_K`` [Kelvin]
+
+It knows nothing about *how* the background was constructed (NEVO table,
+instantaneous decoupling, external background, scale factor, neutrino
+sector, ...) -- this is exactly the seam that makes the background pluggable
+(``pyprimat.background.Background``).  In particular it does **not** use
+``a_of_t``, ``Hubble``, the individual neutrino temperatures, or the NEVO
+heating function: those are output-only quantities written directly by
+``Background.write_time_evolution`` (see ``pyprimat.background``), not
+consumed by the nuclear solve.
 
 ``solve()`` integrates:
 
@@ -27,11 +34,12 @@ pluggable (``pyprimat.background.Background``).
 * **LT** (low temperature, T_nucl -> T_end ~ 0.001 MeV): the chosen network
   (small/medium/large).
 
-and returns the BBN observables dict (``Neff``, ``YPBBN``, ``YPCMB``, ``DoH``,
-``He3oH``, ``He3oHe4``, ``Li7oH``, ``Omeganurel``, ``OneOverOmeganunr``), while
-also populating the public ``results``, ``Y_final``, ``abundance_names`` and
-``Y_of_t`` attributes consumed by ``PyPR``'s observable accessors
-(``get_quantity``, ``__getitem__``, ...).
+and populates the public ``Y_final``, ``abundance_names`` and ``Y_of_t``
+attributes consumed by ``PyPR``'s observable accessors (``get_quantity``,
+``__getitem__``, ...) and by ``PyPR.solve()`` (which builds the BBN
+observables dict -- ``Neff``, ``YPBBN``, ``YPCMB``, ``DoH``, ``He3oH``,
+``He3oHe4``, ``Li7oH``, ``Omeganurel``, ``OneOverOmeganunr`` -- from
+``Y_final`` and from ``background``'s optional neutrino-sector hooks).
 """
 
 import os
@@ -57,14 +65,12 @@ class NuclearNetwork:
         network.
     background : pyprimat.background.Background
         The cosmological background (Class 1) supplying ``T_of_t``/``t_of_T``,
-        ``a_of_t``, ``rhoB_BBN``/``etab_of_T``, the normalised n<->p weak
-        rates, and the output-only quantities (``Hubble``, neutrino
-        temperature vectors, ``N_NEVO_of_Tg``/``has_heating_table``).
+        ``rhoB_BBN(t)``, and the normalised n<->p weak rates
+        ``weak_nTOp_frwrd``/``weak_nTOp_bkwrd`` (see the module docstring for
+        the full minimal interface).
 
     Attributes (populated by :meth:`solve`)
     ----------------------------------------
-    results : dict or None
-        The BBN observables dict (``None`` until :meth:`solve` has run).
     Y_final : dict or None
         Final mass-fraction abundance ``Y`` of every nuclide in
         ``abundance_names``.
@@ -79,7 +85,6 @@ class NuclearNetwork:
         self.cfg = cfg
         self.nucl = nucl
         self.background = background
-        self.results = None
         self.Y_final = None
         self.abundance_names = None
         self.Y_of_t = None
@@ -90,19 +95,23 @@ class NuclearNetwork:
 
     def solve(self):
         """
-        Integrate the nuclear network over the three temperature eras and
-        return a dict of BBN observables.
+        Integrate the nuclear network over the three temperature eras.
+
+        Populates ``self.Y_final``, ``self.abundance_names`` and
+        ``self.Y_of_t`` and returns ``self.Y_final`` (the dict of final
+        mass-fraction abundances by nuclide name).  The BBN observables dict
+        (``Neff``, ``YPBBN``, ``DoH``, ...) is built by ``PyPR.solve()`` from
+        ``self.Y_final`` and from ``background``'s optional neutrino-sector
+        hooks -- it is no longer computed here.
         """
         from .network_data import SPECIES_MD   # noqa: F401 (used for default-zero filling)
         cfg       = self.cfg
         background = self.background
-        t_vec     = background.t_vec
-        Tg_vec    = background.Tg_vec
-        Tnu_vec   = background.Tnu_vec
-        a_of_t    = background.a_of_t
         T_of_t    = background.T_of_t
         t_of_T    = background.t_of_T
-        NormWR    = background.NormWeakRates
+        rhoB_BBN  = background.rhoB_BBN
+        nTOp_frwrd = background.weak_nTOp_frwrd
+        nTOp_bkwrd = background.weak_nTOp_bkwrd
         nucl      = self.nucl
 
         # Refresh nuclear rates with current variation parameters (p_*, NP_delta_*)
@@ -120,11 +129,16 @@ class NuclearNetwork:
         t_end   = t_of_T(cfg.T_end   / cfg.MeV_to_Kelvin)
 
         # ------------------------------------------------------------------
-        # Baryon density for the nuclear network (Background, see
-        # pyprimat.background.StandardBackground.rhoB_BBN/etab_of_T)
+        # Baryon-to-photon ratio at T_weak, for the MT-era Saha (NSE) seed
         # ------------------------------------------------------------------
-        rhoB_BBN  = background.rhoB_BBN
-        etab_of_T = background.etab_of_T
+        # eta_b = n_B/n_gamma, evaluated once at T = T_weak from the two
+        # compulsory Background primitives rhoB_BBN(t) and t_of_T(T): YA is
+        # only ever called at T = cfg.T_weak (the MT seed below), so this
+        # single value is exact -- no etab_of_T(T) interpolant is needed.
+        T_weak_MeV  = cfg.T_weak / cfg.MeV_to_Kelvin
+        nB_weak     = rhoB_BBN(t_weak) / (cfg.ma * cfg.MeV4_to_gcmm3)   # [MeV^3]
+        ngamma_weak = (2. * zeta(3) / np.pi**2) * T_weak_MeV**3        # [MeV^3]
+        eta_b_weak  = nB_weak / ngamma_weak
 
         # ------------------------------------------------------------------
         # Local thermal equilibrium (Saha) abundance
@@ -143,13 +157,16 @@ class NuclearNetwork:
 
             where A=N+Z is the mass number, g_A=2J+1 the spin degeneracy,
             B_A the binding energy (keV), and η_b = n_B/n_γ the baryon-to-photon
-            ratio.  Used to seed the MT and LT era initial conditions.
+            ratio.  Used to seed the MT-era initial conditions at T = T_weak,
+            where η_b = eta_b_weak (closed over from the enclosing scope, see
+            above).
 
             Args:
                 name : nuclide name string (key into cfg.Nuclides/NuclExcessMass).
                 Yn   : free neutron mass fraction.
                 Yp   : free proton mass fraction.
-                T    : photon temperature in Kelvin.
+                T    : photon temperature in Kelvin (= cfg.T_weak at every
+                       call site).
 
             Returns:
                 Y_A  : dimensionless mass fraction (≪ 1 at T ≫ BBN onset).
@@ -172,7 +189,7 @@ class NuclearNetwork:
                     * 2**((3 * A - 5) / 2.)
                     * NormYA
                     * (cfg.kB * T)**(3. / 2. * (A - 1))
-                    * etab_of_T(T)**(A - 1)
+                    * eta_b_weak**(A - 1)
                     * Yp**Z * Yn**(A - Z)
                     * np.exp(BindE * cfg.keV / (cfg.kB * T)))
 
@@ -182,20 +199,14 @@ class NuclearNetwork:
         if cfg.verbose:
             print("[nucl]  Solving neutron decoupling at high temperature era")
 
-        nTOp_frwrd_HT = background.weak_nTOp_frwrd_raw
-        nTOp_bkwrd_HT = background.weak_nTOp_bkwrd_raw
-
-        def nTOp_frwrd_HT_norm(T): return NormWR * nTOp_frwrd_HT(T)
-        def nTOp_bkwrd_HT_norm(T): return NormWR * nTOp_bkwrd_HT(T)
-
         def Yn_i_func(T):
-            b = nTOp_bkwrd_HT_norm(T)
-            return b / (b + nTOp_frwrd_HT_norm(T))
+            b = nTOp_bkwrd(T)
+            return b / (b + nTOp_frwrd(T))
 
         def Y_prime_HT(t, Y):
             T_K = T_of_t(t) * cfg.MeV_to_Kelvin
-            f   = nTOp_frwrd_HT_norm(T_K)
-            b   = nTOp_bkwrd_HT_norm(T_K)
+            f   = nTOp_frwrd(T_K)
+            b   = nTOp_bkwrd(T_K)
             return b * Y[1] - f * Y[0], f * Y[0] - b * Y[1]
 
         Yn_i = Yn_i_func(cfg.T_start)
@@ -211,32 +222,21 @@ class NuclearNetwork:
         # ------------------------------------------------------------------
         # ODE systems for the full network
         # ------------------------------------------------------------------
-        def make_nTOp_pair(frwrd_raw, bkwrd_raw):
-            # Wrap the raw rate interpolants with the NormWR normalisation factor.
-            # NormWR = tau_n_ref / tau_n rescales K so the measured τ_n is used;
-            # it equals 1 when tau_n_flag=False.
-            def f(T): return NormWR * frwrd_raw(T)
-            def b(T): return NormWR * bkwrd_raw(T)
-            return f, b
-
-        nTOp_f_MT, nTOp_b_MT = make_nTOp_pair(background.weak_nTOp_frwrd_raw, background.weak_nTOp_bkwrd_raw)
-        nTOp_f_LT, nTOp_b_LT = make_nTOp_pair(background.weak_nTOp_frwrd_raw, background.weak_nTOp_bkwrd_raw)
-
         def Y_prime_MT(t, Y):
-            rho = rhoB_BBN(a_of_t(t)); T_K = T_of_t(t)*cfg.MeV_to_Kelvin
-            return nucl.rhsMT(Y, T_K, rho, nTOp_f_MT, nTOp_b_MT)
+            rho = rhoB_BBN(t); T_K = T_of_t(t)*cfg.MeV_to_Kelvin
+            return nucl.rhsMT(Y, T_K, rho, nTOp_frwrd, nTOp_bkwrd)
 
         def Jacobian_MT(t, Y):
-            rho = rhoB_BBN(a_of_t(t)); T_K = T_of_t(t)*cfg.MeV_to_Kelvin
-            return nucl.JacobianMT(Y, T_K, rho, nTOp_f_MT, nTOp_b_MT)
+            rho = rhoB_BBN(t); T_K = T_of_t(t)*cfg.MeV_to_Kelvin
+            return nucl.JacobianMT(Y, T_K, rho, nTOp_frwrd, nTOp_bkwrd)
 
         def Y_prime_LT(t, Y):
-            rho = rhoB_BBN(a_of_t(t)); T_K = T_of_t(t)*cfg.MeV_to_Kelvin
-            return nucl.rhsLT(Y, T_K, rho, nTOp_f_LT, nTOp_b_LT)
+            rho = rhoB_BBN(t); T_K = T_of_t(t)*cfg.MeV_to_Kelvin
+            return nucl.rhsLT(Y, T_K, rho, nTOp_frwrd, nTOp_bkwrd)
 
         def Jacobian_LT(t, Y):
-            rho = rhoB_BBN(a_of_t(t)); T_K = T_of_t(t)*cfg.MeV_to_Kelvin
-            return nucl.JacobianLT(Y, T_K, rho, nTOp_f_LT, nTOp_b_LT)
+            rho = rhoB_BBN(t); T_K = T_of_t(t)*cfg.MeV_to_Kelvin
+            return nucl.JacobianLT(Y, T_K, rho, nTOp_frwrd, nTOp_bkwrd)
 
         # ------------------------------------------------------------------
         # Mid-temperature (MT) era
@@ -338,15 +338,10 @@ class NuclearNetwork:
                                 fill_value=(0, _Y_nuc[-1]))
 
         # ------------------------------------------------------------------
-        # Optional output: full time evolution of background + abundances
+        # Optional output: full time evolution of abundances + weak rates
         # ------------------------------------------------------------------
         if cfg.output_time_evolution:
-            self._write_time_evolution(
-                sol_HT, sol_MT, sol_LT, t_weak, t_nucl,
-                nTOp_frwrd_HT_norm, nTOp_bkwrd_HT_norm,
-                nTOp_f_MT, nTOp_b_MT, nTOp_f_LT, nTOp_b_LT,
-                nucl, YA,
-            )
+            self._write_time_evolution(sol_HT, sol_LT, nucl)
 
         # ------------------------------------------------------------------
         # Optional output: two-column (nuclide, final abundance Y) table
@@ -354,43 +349,7 @@ class NuclearNetwork:
         if cfg.output_final_result:
             self._write_final_result()
 
-        # ------------------------------------------------------------------
-        # Final observables
-        # ------------------------------------------------------------------
-        Tg_last  = background.Tg_vec[-1]
-        Tnu_last = background.Tnu_vec[-1]
-
-        Neff = background.N_eff(Tg_last, Tnu_last, Tnu_last, Tnu_last)
-
-        # Access final abundances by name from the dict built in the LT era.
-        Yp_f  = finL["p"];    Yd_f  = finL["H2"]; Yt_f  = finL["H3"]
-        YHe3_f = finL["He3"]; Ya_f  = finL["He4"]
-        YLi7_f = finL["Li7"]; YBe7_f = finL["Be7"]
-
-        YPBBN  = 4. * Ya_f
-        YPCMB  = ((cfg.He4Overma / 4.) * YPBBN
-                  / ((cfg.He4Overma / 4.) * YPBBN + cfg.HOverma * (1. - YPBBN)))
-
-        # The results dict returned by solve()/PyPRresults() and used by the
-        # get_quantity()/__getitem__/Neff/YPBBN/... accessors.  All nine keys
-        # below are computed unconditionally from the background + nuclear
-        # solve and are always present, regardless of which optional flags
-        # (incomplete_decoupling, spectral_distortions, network, ...) are set
-        # -- there are no flag-dependent placeholder entries here.  The only
-        # other (file) output that does depend on a flag is the
-        # _write_time_evolution TSV's "Nheating" column, see its docstring.
-        self.results = {
-            "Neff":            Neff,
-            "Omeganurel":      background.Omeganuh2_relnu() * 1e+6,
-            "OneOverOmeganunr": 1. / (background.Omeganuh2_nrnu() * 1e-6),
-            "YPCMB":           YPCMB,
-            "YPBBN":           YPBBN,
-            "DoH":             Yd_f / Yp_f,
-            "He3oH":           (Yt_f + YHe3_f) / Yp_f,
-            "He3oHe4":         (Yt_f + YHe3_f) / Ya_f,
-            "Li7oH":           (YLi7_f + YBe7_f) / Yp_f,
-        }
-        return self.results
+        return self.Y_final
 
     def _write_final_result(self):
         """Write a two-column ``nuclide  Y`` table of final abundances.
@@ -437,11 +396,8 @@ class NuclearNetwork:
         # (output_final_result=True), so the user wants to know where it landed.
         print(f"[output] Final abundances ({len(names)} nuclides) written to {path}")
 
-    def _write_time_evolution(self, sol_HT, sol_MT, sol_LT, t_weak, t_nucl,
-                              nTOp_frwrd_HT_norm, nTOp_bkwrd_HT_norm,
-                              nTOp_f_MT, nTOp_b_MT, nTOp_f_LT, nTOp_b_LT,
-                              nucl, YA):
-        """Write the full background + abundance time series to a TSV file.
+    def _write_time_evolution(self, sol_HT, sol_LT, nucl):
+        """Write the abundance + weak-rate time series to a TSV file.
 
         Enabled by ``output_time_evolution=True``; the destination is
         ``cfg.output_file``.  Works for all three networks
@@ -449,33 +405,31 @@ class NuclearNetwork:
         derived from ``self.abundance_names`` (8 / 12 / ~59 nuclides).
 
         Columns, always present:
-            ``a``, ``T``, ``t``, ``H``       -- scale factor, photon
-                temperature [MeV], cosmic time [s], Hubble rate [s^-1];
-            ``Tnue``, ``Tnumu``, ``Tnutau``  -- the three flavour neutrino
-                temperatures [MeV];
+            ``T``, ``t``                     -- photon temperature [MeV],
+                cosmic time [s];
             ``Y<species>``                   -- one column per tracked
-                nuclide (mass-fraction abundance). During the HT era (and
-                before ``T_start_cosmo``), where every nuclide but n/p is
-                not yet integrated, its column holds the Nuclear Statistical
-                Equilibrium (Saha) prediction ``YA(name, Yn, Yp, T)``
-                (``solve()``'s local ``YA``, IDEAS2.md item 1) instead of a
-                hard 0 -- giving a smooth, physically-motivated curve in
-                log-log abundance plots instead of a gap. From the MT era
-                onward the column is the actual integrated value (which may
-                still be 0 or tiny for an untracked/negligible heavy
-                nuclide -- the Saha formula is not applied there, as NSE no
-                longer holds and ``BindE/(kB T)`` would overflow at low T9);
+                nuclide (mass-fraction abundance);
             ``n_to_p_weak_rate``, ``p_to_n_weak_rate`` -- n<->p weak rates
-                [s^-1] (zero before the nuclear network starts).
+                [s^-1] (already normalised, see
+                ``background.weak_nTOp_frwrd``/``weak_nTOp_bkwrd``; defined
+                at every output time, including before the nuclear network
+                starts, since they depend only on T).
+
+        Before the nuclear network starts integrating a given species (the
+        HT era for everything but n/p, and the time before ``T_start_cosmo``
+        for n/p too), its ``Y<species>`` column is **exactly 0** -- the value
+        ``_embed``/``Y_of_t`` produce there.  A previous version of this
+        method filled that region with the Nuclear Statistical Equilibrium
+        (Saha) prediction ``YA(name, Yn, Yp, T)`` for a smoother log-log
+        plot; this was removed because the fill is *often wrong*: NSE need
+        not hold for every nuclide all the way down to ``T_start_cosmo``
+        (e.g. for non-standard backgrounds with extra entropy injection or a
+        non-thermal neutrino sector), and a silently-injected equilibrium
+        value is worse than an honest 0 that a plotting tool can choose to
+        mask. Consumers that want a smooth pre-MT curve can compute the Saha
+        value themselves from the ``T``/``t`` columns.
 
         Conditional columns:
-            ``Nheating`` -- the NEVO heating function N(T_gamma) driving the
-                a(T_gamma) ODE (see
-                :meth:`pyprimat.background.StandardBackground._setup_background_and_cosmo`).
-                Included only when ``background.has_heating_table`` (i.e.
-                ``cfg.incomplete_decoupling=True``); under
-                ``InstantaneousDecoupling`` it would just be a column of
-                zeros, so it is omitted entirely.
             per-reaction flux columns (``<reaction>_frwrd``) -- included only
                 when ``cfg.output_rates_time_evolution=True`` *and*
                 ``network`` is ``small``/``medium``.  Omitted for
@@ -483,9 +437,18 @@ class NuclearNetwork:
                 ``run[species](t)`` abundance interpolators (and the
                 tabulated rates on ``nucl``) directly if reaction-level
                 fluxes are needed for the large network.
+
+        The background-only columns (``a``, ``H``, ``Tnue``/``Tnumu``/
+        ``Tnutau``, ``Nheating``, energy densities, ...) are no longer part
+        of this file -- they are written separately by
+        ``background.write_time_evolution`` when
+        ``cfg.output_background_evolution=True`` (see
+        :mod:`pyprimat.background`).
         """
         cfg = self.cfg
         background = self.background
+        nTOp_frwrd = background.weak_nTOp_frwrd
+        nTOp_bkwrd = background.weak_nTOp_bkwrd
         # Derive column names from the actual abundance names so custom networks
         # (which may have fewer or different nuclides than the standard 8 or 12)
         # produce a TSV with the correct number of columns.
@@ -499,97 +462,20 @@ class NuclearNetwork:
         t_end   = sol_LT.t[-1]
         t_out   = np.logspace(np.log10(t_cosmo), np.log10(t_end), cfg.output_n_points)
 
-        a_out = background.a_of_t(t_out)
         T_out = background.T_of_t(t_out)
 
-        Tnue_of_t   = interp1d(background.t_vec, background.Tnue_vec,   bounds_error=False,
-                               fill_value="extrapolate", kind='linear')
-        Tnumu_of_t  = interp1d(background.t_vec, background.Tnumu_vec,  bounds_error=False,
-                               fill_value="extrapolate", kind='linear')
-        Tnutau_of_t = interp1d(background.t_vec, background.Tnutau_vec, bounds_error=False,
-                               fill_value="extrapolate", kind='linear')
-        Tnue_out   = Tnue_of_t(t_out)
-        Tnumu_out  = Tnumu_of_t(t_out)
-        Tnutau_out = Tnutau_of_t(t_out)
-
-        H_out = np.array([
-            background.Hubble(T_out[i], Tnue_out[i], Tnumu_out[i], Tnutau_out[i])
-            for i in range(t_out.size)
-        ])
-
-        # Weak rates: zero before nuclear network starts
-        t_start = sol_HT.t[0]
+        # Weak rates: already normalised and defined for any T, including
+        # before the nuclear network starts (mask_nuc below is for the
+        # abundance columns only).
         T_K_out = T_out * cfg.MeV_to_Kelvin
-        weak_n_to_p_out = np.zeros_like(t_out)
-        weak_p_to_n_out = np.zeros_like(t_out)
+        weak_n_to_p_out = nTOp_frwrd(T_K_out)
+        weak_p_to_n_out = nTOp_bkwrd(T_K_out)
 
-        mask_ht = (t_out >= t_start) & (t_out <= t_weak)
-        mask_mt = (t_out >  t_weak)  & (t_out <= t_nucl)
-        mask_lt =  t_out >  t_nucl
-
-        weak_n_to_p_out[mask_ht] = nTOp_frwrd_HT_norm(T_K_out[mask_ht])
-        weak_p_to_n_out[mask_ht] = nTOp_bkwrd_HT_norm(T_K_out[mask_ht])
-        weak_n_to_p_out[mask_mt] = nTOp_f_MT(T_K_out[mask_mt])
-        weak_p_to_n_out[mask_mt] = nTOp_b_MT(T_K_out[mask_mt])
-        weak_n_to_p_out[mask_lt] = nTOp_f_LT(T_K_out[mask_lt])
-        weak_p_to_n_out[mask_lt] = nTOp_b_LT(T_K_out[mask_lt])
-
-        # Abundances: zero before nuclear network starts
+        # Abundances: zero before nuclear network starts (Y_of_t's fill_value)
+        t_start = sol_HT.t[0]
         Y_out = np.zeros((len(t_out), n_nuc))
         mask_nuc = t_out >= t_start
         Y_out[mask_nuc] = Y_of_t(t_out[mask_nuc])
-
-        # ------------------------------------------------------------------
-        # Fill not-yet-tracked abundances with their NSE (Saha) prediction
-        # ------------------------------------------------------------------
-        # _embed (in solve()) zero-fills any species not yet integrated in a
-        # given era -- every nuclide but n/p during the HT era, and every
-        # species before t_start (only the cosmological background has been
-        # solved there). Those exact 0s are a hard discontinuity in a
-        # log-log abundance plot (pyprimat.gui.panels.render_evolution_panel
-        # masks out y<=0 entirely). Replace each such 0 with the Nuclear
-        # Statistical Equilibrium value YA(name, Yn, Yp, T) (IDEAS2.md item
-        # 1): at these early, hot times every nuclide *is* in NSE, and YA's
-        # eta_b^(A-1) suppression already makes it negligibly small there --
-        # so this gives a smooth, physical curve down to T_start_cosmo
-        # instead of a gap.
-        i_n = self.abundance_names.index("n")
-        i_p = self.abundance_names.index("p")
-        Yn_for_NSE = Y_out[:, i_n].copy()
-        Yp_for_NSE = Y_out[:, i_p].copy()
-        mask_pre = ~mask_nuc
-        if mask_pre.any():
-            # Before t_start, n and p are not yet integrated either; use the
-            # n<->p weak-equilibrium fraction at T_out (Yn_i_func in solve(),
-            # b/(b+f) with b, f the backward/forward HT weak rates).
-            b_pre = nTOp_bkwrd_HT_norm(T_K_out[mask_pre])
-            f_pre = nTOp_frwrd_HT_norm(T_K_out[mask_pre])
-            Yn_eq = b_pre / (b_pre + f_pre)
-            Yn_for_NSE[mask_pre] = Yn_eq
-            Yp_for_NSE[mask_pre] = 1. - Yn_eq
-            Y_out[mask_pre, i_n] = Yn_eq
-            Y_out[mask_pre, i_p] = 1. - Yn_eq
-
-        # Restrict the replacement to the HT era (t_out < t_weak, which also
-        # covers t_out < t_start): this is the only region where _embed is
-        # guaranteed to zero-fill *every* non-n/p species (only n,p are
-        # integrated there), and where T is high enough (>= T_weak ~ 1 MeV)
-        # that BindE*keV/(kB*T) stays of order a few hundred at most --
-        # exp() cannot overflow. For t_out >= t_weak, a column that is
-        # exactly 0 reflects the MT/LT solution itself (a genuinely tiny or
-        # untracked heavy nuclide); applying the Saha formula there would be
-        # both physically wrong (NSE has long broken down) and numerically
-        # unsafe (BindE/(kB T) -> large at the low T9 of the LT era, so
-        # exp() overflows to inf, and inf*0 from the eta_b^(A-1)/Y^... prefactors
-        # yields nan).
-        mask_ht_or_pre = t_out < t_weak
-        for j, name in enumerate(self.abundance_names):
-            if name in ("n", "p"):
-                continue
-            zero = mask_ht_or_pre & (Y_out[:, j] == 0.)
-            if zero.any():
-                Y_out[zero, j] = YA(name, Yn_for_NSE[zero], Yp_for_NSE[zero],
-                                     T_K_out[zero])
 
         if cfg.output_rates_time_evolution and not cfg.is_large:
             rxn_rate_cols = sorted(
@@ -611,33 +497,13 @@ class NuclearNetwork:
             rxn_rate_cols = []
             rxn_rate_out = np.empty((len(t_out), 0))
 
-        # The "Nheating" column is the NEVO heating function N(T_gamma) that
-        # drives the a(T_gamma) ODE (see
-        # StandardBackground._setup_background_and_cosmo).  It is only
-        # physically meaningful when a real NEVO table was loaded
-        # (cfg.incomplete_decoupling=True); under InstantaneousDecoupling,
-        # background.N_NEVO_of_Tg is the N=0 stub used to close the ODE under
-        # plain EM entropy conservation, so writing it out would just be a
-        # column of zeros masquerading as data.  Include the column only when
-        # it carries real information (background.has_heating_table).
-        heating_cols = ["Nheating"] if background.has_heating_table else []
-        if background.has_heating_table:
-            heating_out = (background.N_NEVO_of_Tg(T_out),)
-        else:
-            heating_out = ()
-
         # Resolve relative paths against the current working directory (the
         # universal convention), not the installed-package directory.
         out_path = os.path.abspath(cfg.output_file)
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
-        out_data = np.column_stack((a_out, T_out, t_out, H_out,
-                                    Tnue_out, Tnumu_out, Tnutau_out)
-                                    + heating_out
-                                    + (Y_out,
-                                       weak_n_to_p_out, weak_p_to_n_out, rxn_rate_out))
-        out_header = "\t".join(["a", "T", "t", "H",
-                                 "Tnue", "Tnumu", "Tnutau"]
-                               + heating_cols
+        out_data = np.column_stack((T_out, t_out, Y_out,
+                                     weak_n_to_p_out, weak_p_to_n_out, rxn_rate_out))
+        out_header = "\t".join(["T", "t"]
                                + nuc_cols
                                + ["n_to_p_weak_rate", "p_to_n_weak_rate"] + rxn_rate_cols)
         np.savetxt(out_path, out_data, delimiter='\t', header=out_header, comments='')

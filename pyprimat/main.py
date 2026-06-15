@@ -120,6 +120,10 @@ class PyPR:
         # ------------------------------------------------------------------
         self.nuclear = NuclearNetwork(cfg, self.nucl, self.background)
 
+        # Populated by solve() with the BBN observables dict (Neff, YPBBN,
+        # DoH, ...); None until solve() has run (see _ensure_solved).
+        self.results = None
+
         if cfg.verbose:
             print(f"[init]  Initialisation complete in {time.time()-self._t0:.1f} s")
 
@@ -132,13 +136,26 @@ class PyPR:
         Integrate the nuclear network over the three temperature eras and
         return a dict of BBN observables.
 
-        Delegates to :meth:`pyprimat.nuclear_network.NuclearNetwork.solve`
-        (Class 2), which is driven by ``self.background`` (Class 1, see
-        :mod:`pyprimat.background`).  After this call, ``self.nuclear.results``,
-        ``self.nuclear.Y_final``, ``self.nuclear.abundance_names`` and
-        ``self.nuclear.Y_of_t`` are populated.
+        Delegates the ODE integration to
+        :meth:`pyprimat.nuclear_network.NuclearNetwork.solve` (Class 2),
+        which is driven by ``self.background`` (Class 1, see
+        :mod:`pyprimat.background`) and populates ``self.nuclear.Y_final``,
+        ``self.nuclear.abundance_names`` and ``self.nuclear.Y_of_t``.  The
+        "final observables" -- light-element ratios from ``Y_final``, plus
+        ``Neff``/``Omeganurel``/``OneOverOmeganunr`` from the background's
+        optional neutrino-sector hooks (:meth:`Background.rho_nu_total_final`,
+        :meth:`Background.N_eff`, :meth:`Background.Omeganuh2_relnu`/
+        :meth:`Background.Omeganuh2_nrnu`) -- are assembled here, into
+        ``self.results``, which is what ``get_quantity``/``__getitem__``/
+        ``Neff()``/``YPBBN()``/... and :meth:`PyPRresults` read.
+
+        The neutrino-sector keys (``Neff``, ``Omeganurel``,
+        ``OneOverOmeganunr``) are only added to the dict if the background
+        actually provides that information (``None`` returned from the
+        corresponding hook) -- a minimal background with no neutrino-sector
+        model simply omits them.
         """
-        results = self.nuclear.solve()
+        self.nuclear.solve()
 
         # For the large network, NuclearNetwork.solve() discovers nuclides
         # beyond the small/medium set (e.g. B10, C12, ...).  Extend the
@@ -150,6 +167,51 @@ class PyPR:
             for s, (N, Z) in self.nucl.large_NZ.items():
                 self.N[s], self.Z[s], self.A[s] = N, Z, N + Z
 
+        cfg  = self.cfg
+        finL = self.nuclear.Y_final
+        Yp_f, Yd_f, Yt_f, YHe3_f, Ya_f, YLi7_f, YBe7_f = (
+            finL[k] for k in ("p", "H2", "H3", "He3", "He4", "Li7", "Be7"))
+
+        # Primordial helium mass fraction (BBN definition: Y_p = 4 Y_He4,
+        # i.e. mass of He4 over total baryon mass, since Y is the per-baryon
+        # abundance normalised so sum_s A_s Y_s = 1).
+        YPBBN = 4. * Ya_f
+        # CMB-convention helium fraction n_He/(n_He+n_H) by mass (used by CMB
+        # codes' "Y_He"): convert the BBN Y_p (mass fraction) via the He4/H
+        # mass ratios cfg.He4Overma/cfg.HOverma.
+        YPCMB = ((cfg.He4Overma / 4.) * YPBBN
+                 / ((cfg.He4Overma / 4.) * YPBBN + cfg.HOverma * (1. - YPBBN)))
+
+        results = {
+            "YPCMB":   YPCMB,
+            "YPBBN":   YPBBN,
+            "DoH":     Yd_f / Yp_f,
+            "He3oH":   (Yt_f + YHe3_f) / Yp_f,
+            "He3oHe4": (Yt_f + YHe3_f) / Ya_f,
+            "Li7oH":   (YLi7_f + YBe7_f) / Yp_f,
+        }
+
+        # Neff = rho_nu_tot / rho_g(Tg) / ((7/8)(4/11)^(4/3)) (generic formula,
+        # Background.N_eff), evaluated at the final Tg and total neutrino
+        # energy density -- only if the background tracks a neutrino sector.
+        final_nu = self.background.rho_nu_total_final()
+        if final_nu is not None:
+            Tg_f, rho_nu_tot_f = final_nu
+            results["Neff"] = self.background.N_eff(Tg_f, rho_nu_tot_f)
+
+        relnu = self.background.Omeganuh2_relnu()
+        if relnu is not None:
+            results["Omeganurel"] = relnu * 1e+6
+
+        nrnu = self.background.Omeganuh2_nrnu()
+        if nrnu is not None:
+            results["OneOverOmeganunr"] = 1. / (nrnu * 1e-6)
+
+        if cfg.output_background_evolution:
+            self.background.write_time_evolution(cfg.output_background_file,
+                                                   cfg.output_n_points)
+
+        self.results = results
         return results
 
     # ======================================================================
@@ -227,13 +289,13 @@ class PyPR:
         return fn
 
     def _ensure_solved(self):
-        if self.nuclear.results is None:
+        if self.results is None:
             self.solve()
 
     def PyPRresults(self):
         """Return the BBN result dict, running ``solve()`` first if needed."""
         self._ensure_solved()
-        return self.nuclear.results
+        return self.results
 
     @property
     def abundance_names(self):
@@ -246,14 +308,14 @@ class PyPR:
         return self.nuclear.abundance_names
 
     # Convenience accessors
-    def Neff(self):          self._ensure_solved(); return self.nuclear.results["Neff"]
-    def Omeganurel(self):    self._ensure_solved(); return self.nuclear.results["Omeganurel"]
-    def Omeganunonrel(self): self._ensure_solved(); return 1. / self.nuclear.results["OneOverOmeganunr"]
-    def YPCMB(self):         self._ensure_solved(); return self.nuclear.results["YPCMB"]
-    def YPBBN(self):         self._ensure_solved(); return self.nuclear.results["YPBBN"]
-    def DoH(self):           self._ensure_solved(); return self.nuclear.results["DoH"]
-    def He3oH(self):         self._ensure_solved(); return self.nuclear.results["He3oH"]
-    def Li7oH(self):         self._ensure_solved(); return self.nuclear.results["Li7oH"]
+    def Neff(self):          self._ensure_solved(); return self.results["Neff"]
+    def Omeganurel(self):    self._ensure_solved(); return self.results["Omeganurel"]
+    def Omeganunonrel(self): self._ensure_solved(); return 1. / self.results["OneOverOmeganunr"]
+    def YPCMB(self):         self._ensure_solved(); return self.results["YPCMB"]
+    def YPBBN(self):         self._ensure_solved(); return self.results["YPBBN"]
+    def DoH(self):           self._ensure_solved(); return self.results["DoH"]
+    def He3oH(self):         self._ensure_solved(); return self.results["He3oH"]
+    def Li7oH(self):         self._ensure_solved(); return self.results["Li7oH"]
 
     def get_quantity(self, quantity):
         """Return a scalar BBN quantity by name.
@@ -263,7 +325,7 @@ class PyPR:
         cfg.Nuclides ('H2', 'He4', 'Li7', ...) for the final mass fraction Y.
         """
         self._ensure_solved()
-        results = self.nuclear.results
+        results = self.results
         Y_final = self.nuclear.Y_final
         if quantity in results:
             return results[quantity]

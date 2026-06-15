@@ -7,24 +7,34 @@ Cosmological-background component for PyPRIMAT ("Class 1" of the
 
 A *background* encapsulates everything the nuclear-network integration
 (:class:`pyprimat.nuclear_network.NuclearNetwork`, "Class 2") needs about the
-expanding Universe, but nothing about nuclear reactions: the ``a <-> t <-> T``
-relations, the Hubble rate, the baryon density ``rho_B(t)``, the n<->p weak
-rates (already corrected for the neutrino temperatures/spectral distortions),
-and the derived ``N_eff``/``Omega_nu`` quantities.
+expanding Universe.  The interface deliberately is **minimal**: only the
+``T_of_t``/``t_of_T`` time<->temperature relations, the baryon mass density
+``rhoB_BBN(t)`` *as a function of cosmic time*, and the (already normalised)
+n<->p weak rates ``weak_nTOp_frwrd(T)``/``weak_nTOp_bkwrd(T)`` are compulsory.
+Everything else (scale factor ``a``, the Hubble rate, individual neutrino
+temperatures, ``N_eff``, ``Omega_nu``, the NEVO heating function, ...) is
+optional, with safe ``None``/``NotImplementedError`` defaults in
+:class:`Background`, so a minimal custom background (e.g. an externally
+supplied ``T(t)``/``rho_B(t)`` table with no neutrino-sector model at all) can
+still drive :class:`pyprimat.nuclear_network.NuclearNetwork`.
 
 :class:`Background` is the interface; :class:`StandardBackground` is today's
-(and so far only) implementation: NEVO non-instantaneous decoupling or
+(and so far only) full implementation: NEVO non-instantaneous decoupling or
 instantaneous decoupling, selected via ``cfg.incomplete_decoupling``, with the
 neutrino sector itself delegated to
 :func:`pyprimat.neutrino_history.make_neutrino_history` (already a pluggable
 seam).  Following the style of :mod:`pyprimat.neutrino_history`, this is a
-plain base class whose interface methods raise ``NotImplementedError`` --
-*not* ``abc.ABC``/``@abstractmethod`` -- so a user can subclass
-:class:`Background` for a custom cosmology (e.g. non-standard expansion
-history) and hand an instance to a future ``PyPR(..., background=...)`` hook.
+plain base class whose compulsory interface methods raise
+``NotImplementedError`` -- *not* ``abc.ABC``/``@abstractmethod`` -- so a user
+can subclass :class:`Background` for a custom cosmology (e.g. non-standard
+expansion history) and hand an instance to a future
+``PyPR(..., background=...)`` hook.
 """
 
+import os
 import time
+from collections import OrderedDict
+
 import numpy as np
 from scipy.integrate import solve_ivp
 from scipy.interpolate import interp1d
@@ -37,62 +47,50 @@ __all__ = ["Background", "StandardBackground"]
 
 
 class Background(object):
-    """Interface for the cosmological background consumed by ``NuclearNetwork``.
+    """Minimal interface for the cosmological background consumed by
+    ``NuclearNetwork``.
 
-    ``__init__`` stores the three constructor arguments common to every
-    implementation; concrete subclasses are responsible for populating all
-    the attributes/methods documented below before returning from their own
-    ``__init__``.
+    ``__init__`` stores the constructor arguments common to every
+    implementation and sets :attr:`has_scale_factor` to ``False`` (a
+    subclass that builds ``a<->t<->T`` relations sets it to ``True``).
 
     Parameters
     ----------
     cfg : PyPRConfig
         Run-time configuration (physical constants + flags).
     plasma : pyprimat.plasma.Plasma
-        Per-instance QED/electron-thermodynamics tables.
+        Per-instance QED/electron-thermodynamics tables.  Always present
+        (even a minimal background needs ``self.plasma.rho_g`` for
+        :meth:`N_eff`).
     extra_rho : list of callable, optional
         Extra contributions to the total energy density entering the
         Friedmann equation.  Each element is a function
-        ``rho(Tg) -> MeV^4`` of the photon temperature ``Tg`` [MeV], summed
-        into ``rho_tot`` by :meth:`Hubble`.  Stored (as a list, copied) on
-        :attr:`extra_rho`; subclasses may append further components (e.g.
-        Early Dark Energy) to that list during their own setup.
+        ``rho(Tg) -> MeV^4`` of the photon temperature ``Tg`` [MeV].
+        Stored (as a list, copied) on :attr:`extra_rho`; subclasses may
+        append further components (e.g. Early Dark Energy) during their own
+        setup.  A minimal background that has no Friedmann/Hubble machinery
+        may simply ignore this list.
 
-    Attributes a subclass must set during ``__init__``
-    ----------------------------------------------------
-    Time/scale-factor relations (array-safe interpolants, all ``Tg`` in MeV,
-    ``t`` in s, ``a`` dimensionless with ``a=1`` "today" up to the small
-    entropy-injection correction -- see :attr:`a_of_T`):
+    Compulsory interface (raise ``NotImplementedError`` here)
+    -----------------------------------------------------------
+    * :meth:`T_of_t`, :meth:`t_of_T`  -- T_gamma(t) <-> t(T_gamma)
+    * :meth:`rhoB_BBN`                -- rho_B(t) [g/cm^3], the prefactor for
+      nuclear reaction rates (rate ~ rho_B)
+    * :meth:`weak_nTOp_frwrd`, :meth:`weak_nTOp_bkwrd` -- normalised n<->p
+      weak rates [s^-1] at photon temperature T [Kelvin]
 
-    * ``T_of_t``, ``t_of_T``  -- T_gamma(t) <-> t(T_gamma)
-    * ``a_of_T``, ``T_of_a``  -- a(T_gamma) <-> T_gamma(a)
-    * ``a_of_t``, ``t_of_a``  -- a(t) <-> t(a)
-    * ``TnuofT``              -- energy-weighted-average T_nu(T_gamma)
-
-    Sampled background vectors (all evaluated on the same time grid):
-
-    * ``t_vec``      -- cosmic time [s]
-    * ``Tg_vec``     -- T_gamma [MeV]
-    * ``Tnu_vec``    -- energy-weighted-average T_nu [MeV]
-    * ``Tnue_vec``, ``Tnumu_vec``, ``Tnutau_vec`` -- per-flavour T_nu [MeV]
-
-    Neutrino-sector hooks (see :mod:`pyprimat.neutrino_history`), ``None``
-    when not applicable:
-
-    * ``dFDneu_func``   -- spectral-distortion correction to the n<->p weak
-      rate integrand, or ``None``
-    * ``rho_nu_SD``     -- extra neutrino energy density rho_nu_SD(T_nu)
-      [MeV^4] from an analytic spectral distortion, or ``None``
-    * ``N_NEVO_of_Tg``  -- NEVO heating function N(T_gamma) driving the
-      a(T_gamma) ODE (the N=0 stub under instantaneous decoupling)
-    * ``has_heating_table`` -- ``True`` iff ``N_NEVO_of_Tg`` is a real NEVO
-      heating table (mirrors ``cfg.incomplete_decoupling``)
-
-    Weak-rate raw interpolants (un-normalised, [s^-1]):
-
-    * ``weak_nTOp_frwrd_raw``, ``weak_nTOp_bkwrd_raw``
-
-    and the settable :attr:`NormWeakRates` property.
+    Optional interface (concrete defaults below)
+    -----------------------------------------------
+    * :meth:`a_of_T`/:meth:`T_of_a`/:meth:`a_of_t`/:meth:`t_of_a` -- scale
+      factor relations; raise ``NotImplementedError`` unless
+      :attr:`has_scale_factor` is ``True``.
+    * :meth:`rho_nu_total_final` -- ``None`` unless the background tracks a
+      neutrino sector.
+    * :meth:`Omeganuh2_relnu`/:meth:`Omeganuh2_nrnu` -- ``None`` unless the
+      background tracks a relic neutrino background.
+    * :meth:`N_eff` -- concrete, generic formula (uses :attr:`plasma` only).
+    * :meth:`write_time_evolution`/:meth:`_background_columns` -- concrete;
+      the minimal background writes a two-column (``T``, ``t``) TSV.
     """
 
     def __init__(self, cfg, plasma, extra_rho=None):
@@ -101,76 +99,177 @@ class Background(object):
         # Pluggable extra energy-density components (Early Dark Energy etc.);
         # copied so the caller's list is not mutated by subclass setup.
         self.extra_rho = list(extra_rho) if extra_rho is not None else []
+        # Set True by a subclass that builds a<->t<->T relations
+        # (StandardBackground); a minimal background has no scale factor.
+        self.has_scale_factor = False
 
     # ======================================================================
-    # Friedmann expansion rate
+    # Time <-> temperature (compulsory)
     # ======================================================================
 
-    def Hubble(self, Tg, Tnue, Tnumu, Tnutau):
-        """Hubble rate H [s^-1] at photon temperature ``Tg`` [MeV] and the
-        three flavour neutrino temperatures ``Tnue``/``Tnumu``/``Tnutau``
-        [MeV] (array-safe)."""
+    def T_of_t(self, t):
+        """Photon temperature T_gamma(t) [MeV] at cosmic time ``t`` [s]
+        (array-safe)."""
+        raise NotImplementedError
+
+    def t_of_T(self, T):
+        """Cosmic time t(T_gamma) [s] at photon temperature ``T`` [MeV]
+        (array-safe)."""
         raise NotImplementedError
 
     # ======================================================================
-    # Baryon sector
+    # Scale factor (optional)
     # ======================================================================
 
-    def rhoB_of_t(self, t):
-        """Baryon mass density rho_B(t) [g cm^-3] -- the prefactor for
-        nuclear reaction rates (rate ~ rho_B)."""
+    def a_of_T(self, T):
+        """Scale factor a(T_gamma) (array-safe); requires
+        :attr:`has_scale_factor`."""
         raise NotImplementedError
 
-    def etab_of_T(self, T_K):
-        """Baryon-to-photon ratio eta_b(T) = n_B(a(T)) / n_gamma(T) at photon
-        temperature ``T_K`` [Kelvin]; used by the Saha (NSE) seed."""
+    def T_of_a(self, a):
+        """Photon temperature T_gamma(a) [MeV] (array-safe); requires
+        :attr:`has_scale_factor`."""
+        raise NotImplementedError
+
+    def a_of_t(self, t):
+        """Scale factor a(t) (array-safe); requires
+        :attr:`has_scale_factor`."""
+        raise NotImplementedError
+
+    def t_of_a(self, a):
+        """Cosmic time t(a) [s] (array-safe); requires
+        :attr:`has_scale_factor`."""
         raise NotImplementedError
 
     # ======================================================================
-    # n <-> p weak rates (normalised)
+    # Baryon sector (compulsory)
+    # ======================================================================
+
+    def rhoB_BBN(self, t):
+        """Baryon mass density rho_B(t) [g cm^-3] at cosmic time ``t`` [s]
+        -- the prefactor for nuclear reaction rates (rate ~ rho_B)."""
+        raise NotImplementedError
+
+    # ======================================================================
+    # n <-> p weak rates (normalised, compulsory)
     # ======================================================================
 
     def weak_nTOp_frwrd(self, T_K):
         """Normalised n -> p weak rate [s^-1] at photon temperature ``T_K``
-        [Kelvin], i.e. ``NormWeakRates * weak_nTOp_frwrd_raw(T_K)``."""
+        [Kelvin]."""
         raise NotImplementedError
 
     def weak_nTOp_bkwrd(self, T_K):
         """Normalised p -> n weak rate [s^-1] at photon temperature ``T_K``
-        [Kelvin], i.e. ``NormWeakRates * weak_nTOp_bkwrd_raw(T_K)``."""
-        raise NotImplementedError
-
-    @property
-    def NormWeakRates(self):
-        """Normalisation factor applied to the raw n<->p weak-rate
-        interpolants (settable -- the MC driver rescales it per-sample to
-        propagate the neutron-lifetime uncertainty, see
-        ``pyprimat.main._mc_run_batch``)."""
-        raise NotImplementedError
-
-    @NormWeakRates.setter
-    def NormWeakRates(self, value):
+        [Kelvin]."""
         raise NotImplementedError
 
     # ======================================================================
-    # Derived cosmology
+    # Derived cosmology (optional)
     # ======================================================================
 
-    def N_eff(self, Tg, Tnue, Tnumu, Tnutau):
-        """Effective number of relativistic neutrino species at photon
-        temperature ``Tg`` [MeV] and flavour neutrino temperatures
-        ``Tnue``/``Tnumu``/``Tnutau`` [MeV]."""
-        raise NotImplementedError
+    def rho_nu_total_final(self):
+        """Final-time neutrino sector summary, or ``None``.
+
+        A concrete subclass that tracks a neutrino sector returns
+        ``(Tg_final, rho_nu_tot_final)`` -- the photon temperature [MeV] and
+        the *total* neutrino energy density [MeV^4] (summed over flavours,
+        plus any extra/spectral-distortion contributions) at the end of the
+        integration.  Together with :meth:`N_eff` this gives
+        ``Neff = N_eff(Tg_final, rho_nu_tot_final)``.  Returns ``None`` when
+        no such information is available (the minimal background).
+        """
+        return None
 
     def Omeganuh2_relnu(self):
         """Omega_nu h^2 x 1e-6 for the relic neutrino background, treated as
-        relativistic today (massless-neutrino convention)."""
-        raise NotImplementedError
+        relativistic today (massless-neutrino convention), or ``None`` if
+        not tracked."""
+        return None
 
     def Omeganuh2_nrnu(self):
         """Omega_nu h^2 x 1e-6 for the relic neutrino background, treated as
-        non-relativistic today (massive-neutrino convention)."""
-        raise NotImplementedError
+        non-relativistic today (massive-neutrino convention), or ``None`` if
+        not tracked."""
+        return None
+
+    def N_eff(self, Tg, rho_nu_tot):
+        """Effective number of relativistic neutrino species.
+
+        Generic formula, valid for any background that can supply the total
+        neutrino energy density ``rho_nu_tot`` [MeV^4] at photon temperature
+        ``Tg`` [MeV]:
+
+            Neff = rho_nu_tot / rho_g(Tg) / ((7/8) (4/11)^(4/3))
+
+        where ``rho_g(Tg)`` (from :attr:`plasma`, always present) is the
+        photon energy density.  The ``(7/8)(4/11)^(4/3)`` factor converts one
+        massless fermionic neutrino species (at its own temperature, energy
+        density ``(7/8) rho_g(Tnu)``) into photon-temperature units via the
+        standard instantaneous-decoupling ratio ``Tnu/Tg = (4/11)^(1/3)``, so
+        that ``Neff = 3`` for three such species with no extra entropy
+        injection.
+
+        ``rho_nu_tot`` is whatever :meth:`rho_nu_total_final` (or an
+        equivalent subclass-specific calculation) returns -- for
+        :class:`StandardBackground` it already bundles the three
+        flavour-dependent neutrino temperatures, any extra ΔNeff/extra_rho
+        contributions to the neutrino sector, and the spectral-distortion
+        extra energy density.
+        """
+        return rho_nu_tot / self.plasma.rho_g(Tg) / ((7. / 8.) * (4. / 11.) ** (4. / 3.))
+
+    # ======================================================================
+    # Background time-evolution output (optional, concrete default)
+    # ======================================================================
+
+    def _background_columns(self, t_out):
+        """Return an ``OrderedDict`` of output columns evaluated on ``t_out``.
+
+        The minimal background provides only ``T`` and ``t``; subclasses
+        (e.g. :class:`StandardBackground`) extend this with ``a``, ``H``,
+        individual neutrino temperatures, energy densities, etc.
+        """
+        return OrderedDict([("T", self.T_of_t(t_out)), ("t", t_out)])
+
+    def write_time_evolution(self, path, n_points):
+        """Write the background time evolution to ``path`` as a TSV.
+
+        The output grid is ``n_points`` log-spaced cosmic times ``t`` from
+        ``t_of_T(T_start_cosmo)`` to ``t_of_T(T_end)`` (the same span as the
+        nuclear-network time-evolution output, see
+        :mod:`pyprimat.nuclear_network`).  Columns are whatever
+        :meth:`_background_columns` returns for this background -- at least
+        ``T`` [MeV] and ``t`` [s]; :class:`StandardBackground` adds ``a``,
+        ``H``, the three flavour neutrino temperatures, the NEVO heating
+        function (if available), and the plasma/neutrino/extra/total energy
+        densities [MeV^4].
+
+        Enabled by ``cfg.output_background_evolution=True``; the destination
+        is ``cfg.output_background_file`` (relative paths resolve against the
+        current working directory, like ``cfg.output_file``).
+        """
+        cfg = self.cfg
+        T_start_cosmo = cfg.T_start_cosmo / cfg.MeV_to_Kelvin   # [MeV]
+        T_end_MeV     = cfg.T_end         / cfg.MeV_to_Kelvin   # [MeV]
+        t_lo = self.t_of_T(T_start_cosmo)
+        t_hi = self.t_of_T(T_end_MeV)
+        t_out = np.logspace(np.log10(t_lo), np.log10(t_hi), n_points)
+
+        cols = self._background_columns(t_out)
+
+        out_path = os.path.abspath(path)
+        out_dir = os.path.dirname(out_path)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+        out_data = np.column_stack(list(cols.values()))
+        out_header = "\t".join(cols.keys())
+        np.savetxt(out_path, out_data, delimiter='\t', header=out_header, comments='')
+
+        # Always announce: written only on explicit request
+        # (output_background_evolution=True), like the nuclear-network TSV.
+        print(f"[output] Background time-evolution data ({len(t_out)} rows) "
+              f"written to {out_path}")
 
 
 class StandardBackground(Background):
@@ -240,7 +339,15 @@ class StandardBackground(Background):
     # ======================================================================
 
     def Hubble(self, Tg, Tnue, Tnumu, Tnutau):
-        """Friedmann expansion rate H [s^-1] (see :meth:`Background.Hubble`)."""
+        """Friedmann expansion rate H [s^-1] at photon temperature ``Tg``
+        [MeV] and the three flavour neutrino temperatures
+        ``Tnue``/``Tnumu``/``Tnutau`` [MeV] (array-safe).
+
+        Internal to :class:`StandardBackground` (drives the a(T) and t(a)
+        ODEs in :meth:`_setup_background_and_cosmo`, and the ``H`` column of
+        :meth:`_background_columns`) -- not part of the minimal
+        :class:`Background` interface.
+        """
         cfg     = self.cfg
         thermo  = self.plasma
         rho_pl  = thermo.rho_g(Tg) + thermo.rho_e(Tg) - thermo.PQEDofT(Tg) + Tg * thermo.dPQEDdT(Tg)
@@ -486,43 +593,23 @@ class StandardBackground(Background):
                                 fill_value=(a_arr[0], a_arr[-1]))
         self.t_of_a = interp1d(a_arr, t_vec, bounds_error=False,
                                 fill_value=(t_vec[0], t_vec[-1]))
+        self.has_scale_factor = True
         self.N_NEVO_of_Tg = N_NEVO_of_Tg
 
         # Whether N_NEVO_of_Tg is a *real* heating table (NEVOTable, read from
         # rates/NEVO/) or just the N=0 stub used by InstantaneousDecoupling to
         # close the a(T) ODE under EM entropy conservation.  Consumed by
-        # NuclearNetwork._write_time_evolution to decide whether the
-        # "Nheating" column carries physical information or would just be a
-        # column of zeros.
+        # _background_columns to decide whether the "Nheating" column carries
+        # physical information or would just be a column of zeros.
         self.has_heating_table = cfg.incomplete_decoupling
 
     def _setup_derived_cosmo(self):
-        """Build N_eff and relic-neutrino Omega functions from the stored background.
+        """Build relic-neutrino Omega functions from the stored background.
 
         Called after _setup_background_and_cosmo.
         Requires self.Tg_vec, self.Tnu_vec to be set.
         """
         cfg    = self.cfg
-        thermo = self.plasma
-
-        # N_eff
-        def N_eff(Tg, Tnue, Tnumu, Tnutau):
-            rho_g   = thermo.rho_g(Tg)
-            rho_rad = thermo.rho_nu(Tnue) + thermo.rho_nu(Tnumu) + thermo.rho_nu(Tnutau) + rho_g + thermo.rho_nu_extra(Tg)
-            # Analytic spectral distortions add an extra neutrino energy
-            # density on top of the (possibly shifted) FD temperatures Tnue/
-            # Tnumu/Tnutau -- mirror Hubble's treatment exactly: a single
-            # aggregate term evaluated at the energy-weighted mean Tnu, added
-            # to rho_rad before forming the Neff ratio. As in Hubble, the
-            # NEVO (incomplete_decoupling) case needs no correction since its
-            # Tnu's are already the energy-equivalent FD temperatures, so
-            # self.rho_nu_SD is None there.
-            if self.rho_nu_SD is not None:
-                Tnu_avg = ((Tnue**4 + Tnumu**4 + Tnutau**4) / 3.)**0.25
-                rho_rad += self.rho_nu_SD(Tnu_avg)
-            return (rho_rad - rho_g) / rho_g / ((7. / 8.) * (4. / 11.) ** (4. / 3.))
-
-        self._N_eff = N_eff
 
         # Relic neutrino abundances
         def Omeganuh2_relnu():
@@ -536,10 +623,36 @@ class StandardBackground(Background):
         self._Omeganuh2_relnu = Omeganuh2_relnu
         self._Omeganuh2_nrnu  = Omeganuh2_nrnu
 
-    def N_eff(self, Tg, Tnue, Tnumu, Tnutau):
-        """Effective number of relativistic neutrino species (see
-        :meth:`Background.N_eff`)."""
-        return self._N_eff(Tg, Tnue, Tnumu, Tnutau)
+    def rho_nu_total_final(self):
+        """Final-time ``(Tg, rho_nu_tot)`` (see :meth:`Background.rho_nu_total_final`).
+
+        ``rho_nu_tot`` sums the three flavour-dependent neutrino energy
+        densities (at the final ``Tnue``/``Tnumu``/``Tnutau``), the extra
+        neutrino energy density ``rho_nu_extra(Tg)`` (e.g. from
+        ``cfg.DeltaNeff``), and -- if analytic spectral distortions are
+        active (:attr:`rho_nu_SD` is not ``None``) -- the extra
+        spectral-distortion energy density evaluated at the final
+        energy-weighted average neutrino temperature.  This mirrors the
+        ``rho_rad - rho_g`` numerator of the former ``N_eff`` closure, minus
+        the ``rho_g`` term itself (now folded into the generic
+        :meth:`Background.N_eff`).
+        """
+        thermo = self.plasma
+        Tg_f     = self.Tg_vec[-1]
+        Tnue_f   = self.Tnue_vec[-1]
+        Tnumu_f  = self.Tnumu_vec[-1]
+        Tnutau_f = self.Tnutau_vec[-1]
+
+        rho_nu_tot_f = (thermo.rho_nu(Tnue_f) + thermo.rho_nu(Tnumu_f)
+                        + thermo.rho_nu(Tnutau_f) + thermo.rho_nu_extra(Tg_f))
+
+        if self.rho_nu_SD is not None:
+            # Energy-weighted average T_ν at the final time (self.Tnu_vec is
+            # exactly this average, see _setup_background_and_cosmo).
+            Tnu_avg_f = self.Tnu_vec[-1]
+            rho_nu_tot_f += self.rho_nu_SD(Tnu_avg_f)
+
+        return Tg_f, rho_nu_tot_f
 
     def Omeganuh2_relnu(self):
         """Omega_nu h^2 x 1e-6, relativistic-neutrino convention (see
@@ -550,6 +663,92 @@ class StandardBackground(Background):
         """Omega_nu h^2 x 1e-6, non-relativistic-neutrino convention (see
         :meth:`Background.Omeganuh2_nrnu`)."""
         return self._Omeganuh2_nrnu()
+
+    # ======================================================================
+    # Background time-evolution output
+    # ======================================================================
+
+    def _background_columns(self, t_out):
+        """Background output columns (see :meth:`Background._background_columns`).
+
+        Extends the base ``T``, ``t`` columns with ``a``, ``H``, the three
+        flavour neutrino temperatures, the NEVO heating function (if
+        ``has_heating_table``), and the plasma/neutrino/extra/total energy
+        densities [MeV^4].
+        """
+        cfg    = self.cfg
+        thermo = self.plasma
+        cols = super()._background_columns(t_out)
+        T_out = cols["T"]
+
+        a_out = self.a_of_t(t_out)
+
+        # Per-flavour neutrino temperatures, interpolated on the same time
+        # grid as the rest of the stored background (self.t_vec).
+        Tnue_of_t   = interp1d(self.t_vec, self.Tnue_vec,   bounds_error=False,
+                               fill_value="extrapolate", kind='linear')
+        Tnumu_of_t  = interp1d(self.t_vec, self.Tnumu_vec,  bounds_error=False,
+                               fill_value="extrapolate", kind='linear')
+        Tnutau_of_t = interp1d(self.t_vec, self.Tnutau_vec, bounds_error=False,
+                               fill_value="extrapolate", kind='linear')
+        Tnue_out   = Tnue_of_t(t_out)
+        Tnumu_out  = Tnumu_of_t(t_out)
+        Tnutau_out = Tnutau_of_t(t_out)
+
+        H_out = np.array([
+            self.Hubble(T_out[i], Tnue_out[i], Tnumu_out[i], Tnutau_out[i])
+            for i in range(t_out.size)
+        ])
+
+        cols["a"]      = a_out
+        cols["H"]      = H_out
+        cols["Tnue"]   = Tnue_out
+        cols["Tnumu"]  = Tnumu_out
+        cols["Tnutau"] = Tnutau_out
+
+        # The "Nheating" column is the NEVO heating function N(T_gamma) that
+        # drives the a(T_gamma) ODE (see _setup_background_and_cosmo).  It is
+        # only physically meaningful when a real NEVO table was loaded
+        # (cfg.incomplete_decoupling=True); under InstantaneousDecoupling,
+        # N_NEVO_of_Tg is the N=0 stub used to close the ODE under plain EM
+        # entropy conservation, so writing it out would just be a column of
+        # zeros masquerading as data.
+        if self.has_heating_table:
+            cols["Nheating"] = self.N_NEVO_of_Tg(T_out)
+
+        # Energy densities [MeV^4]: plasma (photons + e+- pairs, with QED
+        # corrections), total neutrino sector (three flavours + extra +
+        # spectral-distortion contribution), optional extra (Early Dark
+        # Energy etc.), and their sum.
+        #
+        # thermo.rho_e/PQEDofT/dPQEDdT/rho_nu_extra are scalar-only (they
+        # branch on ``Tg < me/_ELEC_THERMO_LOWT_RATIO`` or
+        # ``cfg.DeltaNeff == 0.``), so evaluate them element-wise over T_out
+        # -- same pattern as H_out above.
+        rho_e_out      = np.array([thermo.rho_e(T)      for T in T_out])
+        PQEDofT_out    = np.array([thermo.PQEDofT(T)    for T in T_out])
+        dPQEDdT_out    = np.array([thermo.dPQEDdT(T)    for T in T_out])
+        rho_nu_extra_out = np.array([thermo.rho_nu_extra(T) for T in T_out])
+
+        rho_plasma = (thermo.rho_g(T_out) + rho_e_out
+                      - PQEDofT_out + T_out * dPQEDdT_out)
+        rho_nu_tot = (thermo.rho_nu(Tnue_out) + thermo.rho_nu(Tnumu_out)
+                      + thermo.rho_nu(Tnutau_out) + rho_nu_extra_out)
+        if self.rho_nu_SD is not None:
+            Tnu_avg_out = ((Tnue_out**4 + Tnumu_out**4 + Tnutau_out**4) / 3.)**0.25
+            rho_nu_tot = rho_nu_tot + self.rho_nu_SD(Tnu_avg_out)
+
+        cols["rho_plasma"] = rho_plasma
+        cols["rho_nu_tot"] = rho_nu_tot
+
+        rho_tot = rho_plasma + rho_nu_tot
+        if self.extra_rho:
+            rho_extra = sum(rho_extra_fn(T_out) for rho_extra_fn in self.extra_rho)
+            cols["rho_extra"] = rho_extra
+            rho_tot = rho_tot + rho_extra
+        cols["rho_tot"] = rho_tot
+
+        return cols
 
     # ======================================================================
     # n <-> p weak rates
@@ -581,7 +780,9 @@ class StandardBackground(Background):
     @property
     def NormWeakRates(self):
         """Normalisation factor applied to the raw n<->p weak-rate
-        interpolants (see :attr:`Background.NormWeakRates`)."""
+        interpolants (settable -- the MC driver rescales it per-sample to
+        propagate the neutron-lifetime uncertainty, see
+        ``pyprimat.main._mc_run_batch``)."""
         return self._norm_weak_rates
 
     @NormWeakRates.setter
@@ -602,39 +803,20 @@ class StandardBackground(Background):
     # Baryon sector
     # ======================================================================
 
-    def _nB(self, a):
-        """Comoving baryon number density n_B(a) = n_B0 / a^3 [MeV^3].
+    def _rhoB_of_a(self, a):
+        """Baryon mass density at scale factor ``a`` [g cm^-3].
 
         ``n0CMB`` is the present-day CMB photon number density [MeV^3] and
         ``eta0b = n_B/n_gamma`` the baryon-to-photon ratio (from
-        ``cfg.Omegabh2``).  Internal helper for :meth:`etab_of_T`; not part
-        of the public :class:`Background` interface (rho_B is exported
-        instead, via :meth:`rhoB_of_t`).
-        """
-        cfg = self.cfg
-        return cfg.n0CMB * cfg.eta0b / a**3   # [MeV^3]
-
-    def etab_of_T(self, T_K):
-        """Effective baryon-to-photon ratio at photon temperature ``T_K``
-        (Kelvin) (see :meth:`Background.etab_of_T`).
-
-        eta_b(T) = n_B(a(T)) / n_gamma(T), n_gamma = (2 zeta(3)/pi^2) T^3.
-        """
-        cfg = self.cfg
-        T_MeV = T_K / cfg.MeV_to_Kelvin
-        ngCMB = (2. * zeta(3)) / np.pi**2 * T_MeV**3
-        return self._nB(self.a_of_T(T_MeV)) / ngCMB
-
-    def rhoB_BBN(self, a):
-        """Baryon mass density at scale factor ``a`` [g cm^-3].
-
-        Used as the prefactor for nuclear reaction rates (rate ~ rho_B).
+        ``cfg.Omegabh2``); ``rho_B = m_B n_B`` with ``n_B = n0CMB eta0b / a^3``
+        (comoving baryon number conservation).  Internal helper for
+        :meth:`rhoB_BBN`.
         """
         cfg = self.cfg
         n0B = cfg.n0CMB * cfg.eta0b
         return cfg.ma * n0B * cfg.MeV4_to_gcmm3 / a**3  # [g cm^-3]
 
-    def rhoB_of_t(self, t):
+    def rhoB_BBN(self, t):
         """Baryon mass density rho_B(t) [g cm^-3] (see
-        :meth:`Background.rhoB_of_t`)."""
-        return self.rhoB_BBN(self.a_of_t(t))
+        :meth:`Background.rhoB_BBN`)."""
+        return self._rhoB_of_a(self.a_of_t(t))

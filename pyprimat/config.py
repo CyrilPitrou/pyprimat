@@ -110,17 +110,26 @@ DEFAULT_PARAMS: dict = {
     "epsrel_thermal":             1.e-2,   # dblquad fallback: relative tolerance
     
     # ---- Output options ------------------------------------------------------
-    # Writes a TSV (cfg.output_file) with the full time evolution of the
-    # background and of every nuclide in the chosen network (8/12/~59 for
-    # small/medium/large); see main.PyPR._write_time_evolution.
+    # Writes a TSV (cfg.output_file) with the time evolution of T, t, and of
+    # every nuclide's abundance in the chosen network (8/12/~59 for
+    # small/medium/large) plus the n<->p weak rates; see
+    # nuclear_network.NuclearNetwork._write_time_evolution.
     "output_time_evolution":      False,
     "output_rates_time_evolution": False, #whether to include or not the nuclear rates evolution in the output time evolution file. This is only useful if you want to inspect the rates evolution, otherwise it is better to set it to False to save disk space and speed up the code. Ignored (with a printed note) for network="large", where per-reaction flux columns are omitted.
     "output_n_points":            500,
     "output_file":                "results/output_tables.tsv",
-    # Two-column dump (nuclide name, final mass-fraction abundance Y) at the end of BBN. 
+    # Two-column dump (nuclide name, final mass-fraction abundance Y) at the end of BBN.
     "output_final_result":        False,
     "output_final_file":          "results/output_final.dat",
-    
+
+    # Writes a separate TSV (cfg.output_background_file) with the cosmological
+    # background's own time evolution (T, t, and -- if available -- a, H,
+    # individual neutrino temperatures, NEVO heating function, and
+    # plasma/neutrino/extra/total energy densities); see
+    # background.Background.write_time_evolution.
+    "output_background_evolution": False,
+    "output_background_file":     "results/output_background.tsv",
+
 
     # ---- nuclear network --------------------------------------------------
     "rate_interp_order":          "linear",   # interpolation of every nuclear rate table:

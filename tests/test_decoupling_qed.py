@@ -323,32 +323,32 @@ def test_has_heating_table_flag_tracks_incomplete_decoupling():
 @pytest.mark.slow
 @pytest.mark.solve
 def test_nheating_column_present_only_with_heating_table(tmp_path):
-    """The TSV written by output_time_evolution=True includes an "Nheating"
-    column when incomplete_decoupling=True (a real NEVO heating table is
-    available), and omits it entirely when incomplete_decoupling=False (where
-    it would just be a column of zeros from the InstantaneousDecoupling
-    stub)."""
+    """The background time-evolution TSV (output_background_evolution=True)
+    includes an "Nheating" column when incomplete_decoupling=True (a real
+    NEVO heating table is available), and omits it entirely when
+    incomplete_decoupling=False (where it would just be a column of zeros
+    from the InstantaneousDecoupling stub)."""
     from pyprimat.main import PyPR
 
-    out_nevo = tmp_path / "nevo.tsv"
+    out_nevo = tmp_path / "nevo_background.tsv"
     PyPR({
         "network": "small",
         "incomplete_decoupling": True,
-        "output_time_evolution": True,
-        "output_file": str(out_nevo),
+        "output_background_evolution": True,
+        "output_background_file": str(out_nevo),
     }).solve()
     header_nevo = out_nevo.read_text().splitlines()[0].split("\t")
     assert "Nheating" in header_nevo
 
-    out_inst = tmp_path / "inst.tsv"
+    out_inst = tmp_path / "inst_background.tsv"
     PyPR({
         "network": "small",
         "incomplete_decoupling": False,
         # spectral_distortions=True (PyPRConfig default) requires
         # incomplete_decoupling=True; disable it for the instantaneous case.
         "spectral_distortions": False,
-        "output_time_evolution": True,
-        "output_file": str(out_inst),
+        "output_background_evolution": True,
+        "output_background_file": str(out_inst),
     }).solve()
     header_inst = out_inst.read_text().splitlines()[0].split("\t")
     assert "Nheating" not in header_inst
@@ -356,14 +356,16 @@ def test_nheating_column_present_only_with_heating_table(tmp_path):
 
 @pytest.mark.slow
 @pytest.mark.solve
-def test_time_evolution_HT_era_filled_with_NSE_value(tmp_path):
-    """IDEAS2.md item 1: in the HT era (t < t_weak, where ``_embed`` zero-fills
-    every nuclide but n/p), the ``Y<species>`` columns of the
-    ``output_time_evolution`` TSV hold the Nuclear Statistical Equilibrium
-    (Saha) prediction ``YA(name, Yn, Yp, T)`` instead of a hard 0 -- a smooth
-    curve down to ``T_start_cosmo`` rather than a gap (the NEXT line, the first
-    MT-era row, may legitimately still be 0/tiny for a heavy nuclide and is not
-    checked here)."""
+def test_time_evolution_HT_era_abundances_are_zero_before_network_starts(tmp_path):
+    """Before the nuclear network starts integrating a given species (the HT
+    era for every nuclide but n/p), the ``Y<species>`` columns of the
+    ``output_time_evolution`` TSV are **exactly 0** (the value ``_embed``/
+    ``Y_of_t`` produce there) -- a previous version filled this region with
+    the Nuclear Statistical Equilibrium (Saha) prediction, which was removed
+    because the fill is often physically wrong (see
+    ``NuclearNetwork._write_time_evolution``'s docstring). The columns must
+    still be finite (the NEXT line, the first MT-era row, may legitimately
+    still be 0/tiny for a heavy nuclide and is not checked here)."""
     from pyprimat.main import PyPR
     import numpy as np
 
@@ -388,8 +390,5 @@ def test_time_evolution_HT_era_filled_with_NSE_value(tmp_path):
         if name in ("n", "p"):
             continue
         y = data[0, header.index("Y" + name)]
-        # Saha-suppressed (eta_b^(A-1)) but strictly positive -- not the hard
-        # 0 that _embed alone would produce.
-        assert y > 0., f"Y{name} is not positive at the first HT-era row"
+        assert y == 0., f"Y{name} is not exactly 0 at the first HT-era row"
         assert np.isfinite(y), f"Y{name} is not finite at the first HT-era row"
-        assert y < 1., f"Y{name} exceeds a physical mass fraction"
