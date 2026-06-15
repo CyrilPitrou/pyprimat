@@ -1,13 +1,17 @@
 # PyPRIMAT — documentation
 
 This folder holds the extensive PyPRIMAT user + physics documentation.
+The current document describes **PyPRIMAT version 0.1.0**; when the code moves to
+v0.2.0 (architectural changes), a new `PyPRIMAT_documentation_v0.2.0.{tex,pdf}`
+should be added alongside.
 
 | File | Purpose |
 |------|---------|
-| `PyPRIMAT_documentation.tex` | The LaTeX source (4 sections: usage, plasma thermodynamics, weak interactions, nuclear reactions). |
+| `PyPRIMAT_documentation_v0.1.0.tex` | The LaTeX source (usage, plasma thermodynamics, weak interactions, nuclear reactions, sensitivity, appendices A–G). |
 | `PyPRIMAT_doc_figures.ipynb` | Jupyter notebook that regenerates every figure into `figures/`. Uses only the public PyPRIMAT API. |
 | `figures/` | PDF figures included by the `.tex` (one per `\includegraphics`). |
-| `PyPRIMAT_documentation.pdf` | Compiled output. |
+| `tab_reactions.tex`, `tab_nuclides.tex` | Generated reaction-list and nuclide-data tables, `\input` by the document. |
+| `PyPRIMAT_documentation_v0.1.0.pdf` | Compiled output. |
 
 ## Rebuilding
 
@@ -21,7 +25,7 @@ jupyter nbconvert --to notebook --execute --inplace \
 
 # 2. compile the document
 cd doc
-latexmk -pdf PyPRIMAT_documentation.tex
+latexmk -pdf PyPRIMAT_documentation_v0.1.0.tex
 ```
 
 You can also open the notebook in Jupyter and run *Kernel → Restart & Run All*.

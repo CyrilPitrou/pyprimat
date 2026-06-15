@@ -78,7 +78,8 @@
 
 \title{\textbf{PyPRIMAT}\\[2pt]
        \large A Python package for precision Big Bang Nucleosynthesis\\[6pt]
-       \normalsize User guide and physics reference}
+       \normalsize User guide and physics reference\\[4pt]
+       \normalsize\textit{Documentation for PyPRIMAT version 0.1.0}}
 \author{Cyril Pitrou}
 \date{\today}
 
@@ -107,7 +108,9 @@ Equations follow the review of Pitrou, Coc, Uzan \& Vangioni,
 \emph{Physics Reports} \textbf{754} (2018) 1 \cite{PhysRep2018} (cited as
 ``\PR''), and references therein, which the reader should consult for
 derivations.  Figures are produced by the companion notebook
-\code{PyPRIMAT\_doc\_figures.ipynb}.
+\code{PyPRIMAT\_doc\_figures.ipynb}. This document describes \textbf{PyPRIMAT
+version 0.1.0}; a forthcoming v0.2.0 is expected to introduce architectural
+changes, after which this reference will be updated.
 \end{abstract}
 
 \tableofcontents
@@ -225,7 +228,7 @@ expansion rate is fixed by the Friedmann equation (\PR\ Eq.~9),
 \label{eq:friedmann}
 \end{equation}
 and the scale factor $a(\Tg)$ follows from conservation of the comoving
-electromagnetic-plasma entropy $\mathcal{S}\,a^3$ (\PR\ Eqs.~21--24).
+electromagnetic-plasma entropy $s\,a^3$ (\PR\ Eqs.~21--24).
 
 \subsection{Solving the background: the two ODEs $a(\Tg)$ and $t(a)$}
 \label{sec:bckg-ode}
@@ -416,7 +419,7 @@ constant and the forward rate becomes the one-dimensional integral (\PR\
 Eqs.~77--83)
 \begin{equation}
   \overline\Gamma_{n\to p} = \Kw\!\int_0^\infty\! p^2\,\dd p\,
-     \big[\chi_+(E)+\chi_+(-E)\big],
+     \left[\chi_+(E)+\chi_+(-E)\right],
   \quad
   \chi_\pm(E)\equiv (E_\nu^\mp)^2\,g_\nu(E_\nu^\mp)\,g(-E),
 \label{eq:born}
@@ -664,12 +667,29 @@ At $T_{\rm end}$ the code forms the nine entries of the result dictionary:
 \end{equation}
 where $^3$H$+^3$He and $^7$Be$+^7$Li include the post-BBN $\beta$-decays
 $^3$H$\to{}^3$He and $^7$Be$\to{}^7$Li. $\Neff$ is read off the
-neutrino-to-photon energy ratio at $T_{\rm end}$ via Eq.~\eqref{eq:neff};
-$\YP^{\rm CMB}$ is the helium mass fraction \emph{by mass} (using the
-$^4$He/$^1$H mass ratio) as relevant for CMB analyses; and \code{Omeganurel} /
-\code{OneOverOmeganunr} are the relativistic relic-neutrino $\Omega_\nu h^2$ and
-the inverse non-relativistic $\Omega_\nu h^2$ per summed eV, built from the
-$T_\nu/\Tg$ ratio at $T_{\rm end}$ scaled to today through $T_0^{\rm CMB}$.
+neutrino-to-photon energy ratio at $T_{\rm end}$ via Eq.~\eqref{eq:neff}.
+
+\paragraph{$\YP^{\rm BBN}$ versus $\YP^{\rm CMB}$.}
+$\YP^{\rm BBN}=4Y_{^4{\rm He}}$ is the helium \emph{nucleon} fraction: $Y_{^4{\rm He}}=
+n_{^4{\rm He}}/n_b$ is the number of $^4$He per baryon, and multiplying by $A=4$
+gives the fraction of \emph{baryons} (counted as nucleons) locked in $^4$He.
+This is the natural BBN output but is not exactly a mass fraction, because a
+bound $^4$He nucleus is lighter than four free nucleons (binding energy) and the
+$^1$H atom mass differs slightly from one atomic mass unit. CMB likelihoods
+instead parametrise helium by its \emph{true mass fraction}
+$Y_P=\rho_{^4{\rm He}}/(\rho_{^4{\rm He}}+\rho_{^1{\rm H}})$, so for consistency
+PyPRIMAT also returns
+\begin{equation}
+  \YP^{\rm CMB}=\frac{\tfrac14\,r_{\rm He}\,\YP^{\rm BBN}}
+                    {\tfrac14\,r_{\rm He}\,\YP^{\rm BBN}+r_{\rm H}\,(1-\YP^{\rm BBN})},
+  \qquad r_{\rm He}\equiv\frac{m_{^4{\rm He}}}{m_u},\ \ r_{\rm H}\equiv\frac{m_{^1{\rm H}}}{m_u},
+\end{equation}
+which reweights the nucleon fraction by the actual $^4$He and $^1$H masses (in
+atomic mass units $m_u$); numerically $\YP^{\rm CMB}$ is about $0.5\%$ below
+$\YP^{\rm BBN}$. Finally \code{Omeganurel} / \code{OneOverOmeganunr} are the
+relativistic relic-neutrino $\Omega_\nu h^2$ and the inverse non-relativistic
+$\Omega_\nu h^2$ per summed eV, built from the $T_\nu/\Tg$ ratio at $T_{\rm end}$
+scaled to today through $T_0^{\rm CMB}$.
 
 \subsection{Networks, eras, and rate variation}
 The reaction list is named in
@@ -803,10 +823,10 @@ The thermal $e^\pm$/photon interactions shift the masses by (\PR\ Eqs.~40, 42;
 \cite{Mangano2001,LopezTurner1998})
 \begin{equation}
 \begin{aligned}
-  \frac{\delta m_e^2(p,T)}{T^2} &= \frac{4\afs}{\pi}\big[I^{(0,1)}_- + I^{(0,1)}_+(x)\big]
+  \frac{\delta m_e^2(p,T)}{T^2} &= \frac{4\afs}{\pi}\left[I^{(0,1)}_- + I^{(0,1)}_+(x)\right]
      - \frac{2\bar m_e^2\afs}{\pi\bar p}\!\int_0^\infty\!\dd\bar q\,
        \frac{\bar q}{\mathcal{E}_{\bar q}}
-       \ln\!\Big|\frac{\bar p+\bar q}{\bar p-\bar q}\Big|\,
+       \ln\!\left|\frac{\bar p+\bar q}{\bar p-\bar q}\right|\,
        \frac{1}{e^{\mathcal{E}_{\bar q}}+1},\\
   \frac{\delta m_\gamma^2}{T^2} &= \frac{8\afs}{\pi}I^{(0,1)}_+(x),
 \end{aligned}
@@ -818,7 +838,7 @@ electromagnetic coupling $e$ (with $\afs=e^2/4\pi$). PyPRIMAT
 two columns of \code{rates/plasma/QED\_*.txt}:
 \begin{align}
   \frac{\delta P_a}{T^4} &= \frac{\afs}{\pi}\!\left[
-     -\frac{2}{3}I^{(0,1)}_+(x) - \frac{2}{\pi^2}\big(I^{(0,1)}_+(x)\big)^2\right]
+     -\frac{2}{3}I^{(0,1)}_+(x) - \frac{2}{\pi^2}\left(I^{(0,1)}_+(x)\right)^2\right]
      && [O(e^2),\ \text{dominant, negative}],\\
   \frac{\delta P_{e^3}}{T^4} &= \frac{4}{3}\sqrt{2\pi}\,\afs^{3/2}
      \left[\frac{I^{(0,1)}_+(x)+I^{(2,-1)}_+(x)}{\pi^2}\right]^{3/2}
@@ -826,7 +846,7 @@ two columns of \code{rates/plasma/QED\_*.txt}:
   \frac{\delta P_b}{T^4} &= \frac{\afs}{\pi^3}\,\bar m_e^2\!
      \iint\!\frac{\bar p^2\,\dd\bar p}{\mathcal{E}_{\bar p}}
      \frac{\bar q^2\,\dd\bar q}{\mathcal{E}_{\bar q}}
-     \ln\!\Big|\frac{\bar p+\bar q}{\bar p-\bar q}\Big|
+     \ln\!\left|\frac{\bar p+\bar q}{\bar p-\bar q}\right|
      \frac{1}{(e^{\mathcal{E}_{\bar p}}+1)(e^{\mathcal{E}_{\bar q}}+1)}
      && [O(e^4),\ \text{optional}],
 \end{align}
@@ -908,8 +928,8 @@ it to $\lambda_0^{\rm RC+FM}\simeq1.75474$.
 The corrected forward rate is (\PR\ Eq.~99)
 \begin{equation}
   \Gamma^{\mathrm{RC}0}_{n\to p}=\Kw\!\int_0^\infty\! p^2\,\dd p\,
-    \big[\mathcal F_+(E)R(E,E_\nu)\chi_+(E)
-        +\mathcal F_+(-E)R(E,\Gap+E)\chi_+(-E)\big],
+    \left[\mathcal F_+(E)R(E,E_\nu)\chi_+(E)
+        +\mathcal F_+(-E)R(E,\Gap+E)\chi_+(-E)\right],
 \end{equation}
 where the Fermi (Coulomb) factor $\mathcal F_\pm(x)=F(|x|)$ if $\pm x>0$ and $1$
 otherwise switches on only when the electron and proton are on the same side.
@@ -919,21 +939,28 @@ with Sirlin's function (\PR\ Eqs.~A78--A80; \cite{Sirlin1967})
   \mathcal C(E,k_{\max}) &= 4\ln\frac{m_Z}{m_p}+\ln\frac{m_p}{m_A}+2C+A_g
      + g(E,k_{\max}),\\
   g(E,k_{\max}) &= 3\ln\frac{m_p}{m_e}-\frac34
-     + \frac{4}{\beta}L\!\Big(\frac{2\beta}{1+\beta}\Big)
-     + 4[R(\beta)-1]\!\Big[\frac{k_{\max}}{3E}-\frac32+\ln\frac{2k_{\max}}{m_e}\Big]
+     + \frac{4}{\beta}L\!\left(\frac{2\beta}{1+\beta}\right)
+     + 4[R(\beta)-1]\!\left[\frac{k_{\max}}{3E}-\frac32+\ln\frac{2k_{\max}}{m_e}\right]
      \nonumber\\
-     &\quad + R(\beta)\Big[2(1+\beta^2)+\frac{k_{\max}^2}{6E^2}-4\beta R(\beta)\Big],
+     &\quad + R(\beta)\left[2(1+\beta^2)+\frac{k_{\max}^2}{6E^2}-4\beta R(\beta)\right],
 \end{align}
 with $\beta=p/E$, $R(\beta)=\tfrac{1}{2\beta}\ln\tfrac{1+\beta}{1-\beta}$,
 $L[x]=\int_0^x\tfrac{\ln(1-t)}{t}\dd t$ the Spence function, and the constants
 $C\simeq0.891$, $A_g\simeq-0.34$, $m_A\simeq1.2$~GeV. By default the code uses
 the Marciano--Sirlin resummed form (\PR\ Eq.~A81; \cite{Czarnecki2004})
 \begin{equation}
-  R(E,k_{\max}) = \Big[1+\tfrac{\afs}{2\pi}\big(g(E,k_{\max})-3\ln\tfrac{m_p}{2\Gap}\big)\Big]
-    \Big(L+\tfrac{\afs}{\pi}C+\tfrac{\afs}{2\pi}\delta\Big)
-    \Big[S+\tfrac{\afs(m_p)}{2\pi}\big(\ln\tfrac{m_p}{m_A}+A_g\big)+\text{NLL}\Big],
+\begin{aligned}
+  R(E,k_{\max}) = {}&\left[1+\tfrac{\afs}{2\pi}\left(g(E,k_{\max})-3\ln\tfrac{m_p}{2\Gap}\right)\right]
+    \left(L+\tfrac{\afs}{\pi}C+\tfrac{\afs}{2\pi}\delta\right)\\
+    &\times\left[S+\tfrac{\afs(m_p)}{2\pi}\left(\ln\tfrac{m_p}{m_A}+A_g\right)+\text{NLL}\right],
+\end{aligned}
 \end{equation}
-with $L\simeq1.02094$, $S\simeq1.02248$, $\afs(m_p)\simeq1/134$. The reverse rate
+where $L\simeq1.02094$ and $S\simeq1.02248$ are the (resummed) short- and
+long-distance electroweak factors, $\afs(m_p)\simeq1/134$ is the fine-structure
+constant run to the proton mass, and the two remaining constants are small
+fixed higher-order pieces: $\delta$ is a two-loop/short-distance correction with
+$\tfrac{\afs}{2\pi}\delta\simeq-4.3\times10^{-4}$, and $\mathrm{NLL}\simeq-10^{-4}$
+is the next-to-leading-log remainder (\PR\ Eq.~A81). The reverse rate
 uses $\chi_+\to\chi_-$, $\mathcal F_+\to\mathcal F_-$, preserving detailed balance.
 
 \subsection*{Bremsstrahlung and finite-temperature corrections}
@@ -944,21 +971,37 @@ finite-temperature radiative correction has three parts (\PR\ Eqs.~104--106;
 $\Gamma^{T}=\Gamma^{\gamma,T}+\Gamma^{\Delta E,T}+\Gamma^{ep+ee,T}$. The
 photon-exchange part is
 \begin{equation}
+\begin{aligned}
   \Gamma^{\gamma,T}_{n\to p}=\frac{\afs\Kw}{2\pi}\!\int_0^\infty\!\frac{\dd k}{k}
     \!\int_{m_e}^\infty\!\dd E\,
-    \Big\{A(E,k)\big[g(-E)\tilde\chi^A_+(E,k)+g(E)\tilde\chi^A_+(-E,k)\big]
-    - kB(E,k)\big[\dots\big]\Big\},
+    \Big\{&A(E,k)\left[g(-E)\tilde\chi^A_+(E,k)+g(E)\tilde\chi^A_+(-E,k)\right]\\
+    -\;&k\,B(E,k)\left[g(-E)\tilde\chi^B_+(E,k)+g(E)\tilde\chi^B_+(-E,k)\right]\Big\},
+\end{aligned}
 \end{equation}
-with $\tilde\chi^A_\pm(E,k)=\tilde\chi_\pm(E-k)+\tilde\chi_\pm(E+k)-2\tilde\chi_\pm(E)$
-and $\tilde\chi^B_\pm(E,k)=\pm[\tilde\chi_\pm(E-k)-\tilde\chi_\pm(E+k)]$; the
-electron-energy-shift part is
+with the stimulated-emission/absorption kernels
+$\tilde\chi^A_\pm(E,k)=\tilde\chi_\pm(E-k)+\tilde\chi_\pm(E+k)-2\tilde\chi_\pm(E)$,
+$\tilde\chi^B_\pm(E,k)=\pm\left[\tilde\chi_\pm(E-k)-\tilde\chi_\pm(E+k)\right]$
+(with $\tilde\chi_\pm$ the Born kernel without its $p^2$ measure) and $A,B$ the
+Bose factors of the photon bath. The electron-energy-shift part is
 \begin{equation}
   \Gamma^{\Delta E,T}_{n\to p}=-\frac{2\afs\Kw}{\pi}\!\int\!\dd p\,
-    [\chi_+(E)+\chi_+(-E)]
-    \Big[\frac{\pi^2T^2}{6}+\!\int_{m_e}^\infty\!\dd E'\,p'g(E')
-    \Big(1-\frac{m_e^2}{E'^2-E^2}\Big)\Big].
+    \left[\chi_+(E)+\chi_+(-E)\right]
+    \left[\frac{\pi^2T^2}{6}+\!\int_{m_e}^\infty\!\dd E'\,p'g(E')
+    \left(1-\frac{m_e^2}{E'^2-E^2}\right)\right],
 \end{equation}
-These integrals are evaluated with the \code{vegas} Monte-Carlo library (or
+with $E'=\sqrt{p'^2+m_e^2}$, and the proton--electron + electron self-energy
+part is (\PR\ Eq.~106)
+\begin{equation}
+\begin{aligned}
+  \Gamma^{ep+ee,T}_{n\to p}=\frac{\afs\Kw}{2\pi}\!\int_{m_e}^\infty\!\!\dd E\,
+    &\left[\chi_+(E)+\chi_+(-E)\right]\!
+    \int_{m_e}^\infty\!\!\dd E'\,g(E')\frac{E}{E'^2-E^2}\\
+    \times\Big\{&8pp'-(E'^2+E^2)\ln\!\left(\frac{p+p'}{p-p'}\right)^{\!2}\\
+    &-\frac{E'}{E}(E'^2+E^2)\ln\!\left[\frac{(EE'+pp')^2-m_e^4}{(EE'-pp')^2-m_e^4}\right]\Big\},
+\end{aligned}
+\end{equation}
+all three with $\Gamma_{p\to n}=\Gamma_{n\to p}|_{\chi_+\to\chi_-}$. These
+integrals are evaluated with the \code{vegas} Monte-Carlo library (or
 \code{scipy.dblquad}) and cached.
 
 \subsection*{Finite nucleon mass and weak magnetism}
@@ -1001,8 +1044,20 @@ corrections it shifts $\lambda_0$ by $\delta\lambda_0^{\rm FM}\simeq-3.63\times
 \subsection*{Spectral distortions}
 Finally, the equilibrium $g_\nu$ in $\chi_\pm$ is replaced by the actual neutrino
 occupation $f_\nu=g_\nu+\delta f_\nu$, which deviates from a Fermi--Dirac because
-of incomplete decoupling (\code{spectral\_distortions=True}). PyPRIMAT supports
-two forms of $\delta f_\nu$ (\code{neutrino\_history.py}):
+of incomplete decoupling (\code{spectral\_distortions=True}). The distortion is
+small, so the rate is \emph{linearized} in $\delta f_\nu$: substituting
+$g_\nu\to g_\nu+\delta f_\nu$ in $\chi_\pm$ [Eq.~\eqref{eq:born}] and keeping the
+first-order term gives the additive correction
+\begin{equation}
+  \delta\Gamma^{\rm SD}_{n\to p}=\Kw\!\int_0^\infty\! p^2\,\dd p\,
+    \left[\delta\chi_+(E)+\delta\chi_+(-E)\right],
+  \qquad
+  \delta\chi_\pm(E)=(E_\nu^\mp)^2\,\delta f_\nu(E_\nu^\mp)\,g(-E),
+\end{equation}
+i.e.\ the Born kernel with the neutrino Fermi--Dirac replaced by its distortion
+$\delta f_\nu$ evaluated at the same shifted neutrino energy $E_\nu^\mp=E\mp\Gap$
+(and $\chi_+\to\chi_-$ for $p\to n$). PyPRIMAT supports two forms of
+$\delta f_\nu$ (\code{neutrino\_history.py}):
 \begin{itemize}\itemsep2pt
   \item \emph{NEVO-table} (default, \code{analytic\_distortions=False}): the
     distortion is read from the full NEVO spectrum file as a function of comoving
@@ -1028,16 +1083,16 @@ two forms of $\delta f_\nu$ (\code{neutrino\_history.py}):
 At thermal equilibrium a non-relativistic species has number density (\PR\
 Eq.~A33)
 \begin{equation}
-  n_i = g_i\Big(\frac{m_iT}{2\pi}\Big)^{3/2}e^{\xi_i-x_i},
+  n_i = g_i\left(\frac{m_iT}{2\pi}\right)^{3/2}e^{\xi_i-x_i},
   \qquad g_i=2s_i+1,\ \ \xi_i=\mu_i/T,\ \ x_i=m_i/T .
 \end{equation}
 At NSE a nuclide is in chemical equilibrium with its nucleons,
 $\mu_i=Z_i\mu_p+(A_i-Z_i)\mu_n$, which gives (\PR\ Eq.~A35)
 \begin{equation}
   n_i^{\rm NSE} = \frac{g_i m_i^{3/2}}{2^{A_i}}
-    \Big(\frac{n_p}{m_p^{3/2}}\Big)^{Z_i}
-    \Big(\frac{n_n}{m_n^{3/2}}\Big)^{A_i-Z_i}
-    \Big(\frac{2\pi}{T}\Big)^{3(A_i-1)/2} e^{B_i/T},
+    \left(\frac{n_p}{m_p^{3/2}}\right)^{Z_i}
+    \left(\frac{n_n}{m_n^{3/2}}\right)^{A_i-Z_i}
+    \left(\frac{2\pi}{T}\right)^{3(A_i-1)/2} e^{B_i/T},
   \qquad B_i = Z_im_p+(A_i-Z_i)m_n-m_i,
 \end{equation}
 with $B_i$ the binding energy. Requiring forward and reverse fluxes to cancel at
@@ -1053,9 +1108,9 @@ reactions conserve $Z$ and $A$ (so the $n_p,n_n$ powers cancel) leaves a functio
 of masses, spins and $T$ only (\PR\ Eq.~134),
 \begin{equation}
   \frac{\gamma_{j\to i}}{\gamma_{i\to j}}
-   = \frac{\prod_i \tfrac{1}{N_i!}\big[g_i(m_iT/2\pi)^{3/2}\big]^{N_i}}
-          {\prod_j \tfrac{1}{N_j!}\big[g_j(m_jT/2\pi)^{3/2}\big]^{N_j}}\,
-     \exp\!\Big(\frac{\sum_j m_j-\sum_i m_i}{T}\Big),
+   = \frac{\prod_i \tfrac{1}{N_i!}\left[g_i(m_iT/2\pi)^{3/2}\right]^{N_i}}
+          {\prod_j \tfrac{1}{N_j!}\left[g_j(m_jT/2\pi)^{3/2}\right]^{N_j}}\,
+     \exp\!\left(\frac{\sum_j m_j-\sum_i m_i}{T}\right),
 \end{equation}
 which collapses to the three-constant form of Eq.~\eqref{eq:detbal}: $\alpha$
 gathers the spin/mass/$2\pi$ prefactors, $\beta=\tfrac{3}{2}(\sum N_i-\sum N_j)$
