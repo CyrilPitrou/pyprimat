@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-bbn_network.py
-===============
+nuclear_network.py
+==================
 ``NuclearNetwork`` (Class 2 of the PyPR split, see ``pyprimat.background`` for
 Class 1): the nuclear-reaction-network ODE integration across the HT/MT/LT
 temperature eras.
@@ -52,7 +52,7 @@ class NuclearNetwork:
     cfg : pyprimat.config.PyPRConfig
         Run-time configuration (network choice, temperature-era boundaries,
         numerical tolerances, rate-variation parameters p_*, ...).
-    nucl : pyprimat.nuclear.UpdateNuclearRates
+    nucl : pyprimat.network_data.UpdateNuclearRates
         Compiled MT/LT reaction-rate kernels (RHS + Jacobian) for the chosen
         network.
     background : pyprimat.background.Background
@@ -93,7 +93,7 @@ class NuclearNetwork:
         Integrate the nuclear network over the three temperature eras and
         return a dict of BBN observables.
         """
-        from .nuclear import SPECIES_MD   # noqa: F401 (used for default-zero filling)
+        from .network_data import SPECIES_MD   # noqa: F401 (used for default-zero filling)
         cfg       = self.cfg
         background = self.background
         t_vec     = background.t_vec

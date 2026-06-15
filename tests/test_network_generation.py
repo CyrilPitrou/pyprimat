@@ -135,7 +135,7 @@ def _load_reactions_csv():
 def test_reaction_list_is_superset_of_known_networks():
     """The deduced large list must contain every reaction of the 12-key and
     62-reaction networks (matched by their <reactants>TO<products> file name)."""
-    from pyprimat.nuclear import to_filename, _KEY12_REACTIONS, _REACTIONS_MEDIUM
+    from pyprimat.network_data import to_filename, _KEY12_REACTIONS, _REACTIONS_MEDIUM
     names = {r["name"] for r in _load_reactions_csv()}
     for compact in _KEY12_REACTIONS:
         name = compact if 'TO' in compact else to_filename(compact)
@@ -162,7 +162,7 @@ def test_detailed_balance_formula_consistency():
     values in detailed_balance.csv: beta exactly,
     alpha and gamma to better than 1% (the documented detailed-balance accuracy)."""
     from pyprimat.config import PyPRConfig
-    from pyprimat.nuclear import compute_detailed_balance_coefficients, reaction_species
+    from pyprimat.network_data import compute_detailed_balance_coefficients, reaction_species
     cfg = PyPRConfig()
     with open(os.path.join(_AC2024_DIR, "detailed_balance.csv")) as f:
         db_rows = list(csv.DictReader(f))

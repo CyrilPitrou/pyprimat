@@ -14,7 +14,7 @@ directory layout entirely.  Building the wheel also exercises the
 ``[tool.setuptools.package-data]`` declaration in ``pyproject.toml``: if a
 required file under ``rates/`` were ever excluded, the import would still
 succeed but ``PyPR(...).solve()`` would fail with a ``FileNotFoundError``
-deep inside ``pyprimat.nuclear``/``pyprimat.weak_rates``.
+deep inside ``pyprimat.network_data``/``pyprimat.weak_rates``.
 
 The venv is created with ``--system-site-packages`` so the already-installed
 numpy/scipy/joblib (and any optional numba/vegas) are reused --

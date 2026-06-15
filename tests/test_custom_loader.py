@@ -22,7 +22,7 @@ These tests verify:
 import numpy as np
 import pytest
 
-from pyprimat.nuclear import load_network
+from pyprimat.network_data import load_network
 from pyprimat.config import PyPRConfig
 
 

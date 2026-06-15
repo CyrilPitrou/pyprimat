@@ -56,7 +56,7 @@ def _solve(params_items):
         and ``run[name](t)`` are all ready to use without triggering further
         computation -- together with the contents of the time-evolution TSV
         (``output_time_evolution`` format, see
-        ``bbn_network.py:NuclearNetwork._write_time_evolution``) as a string.
+        ``nuclear_network.py:NuclearNetwork._write_time_evolution``) as a string.
         ``_write_time_evolution`` derives its ``Y<species>`` columns from
         ``self.abundance_names``, so this works the same way
         for all three networks (8 / 12 / ~59 nuclide columns).

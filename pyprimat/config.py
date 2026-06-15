@@ -331,7 +331,7 @@ class PyPRConfig:
         # finalised by the overrides above) to p_<rxn>=0 / NP_delta_<rxn>=0,
         # i.e. "no rate variation".  Use setdefault so any p_<rxn>/NP_delta_<rxn>
         # override already applied above is not clobbered.
-        from .nuclear import load_reaction_names
+        from .network_data import load_reaction_names
         reactions_with_tables = load_reaction_names(self, self.network)
         for entry in reactions_with_tables:
             # Each entry is "bare_name" or "bare_name, filename.txt"; only the

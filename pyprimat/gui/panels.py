@@ -26,7 +26,7 @@ import plotly.colors as pcolors
 import plotly.graph_objects as go
 import streamlit as st
 
-from pyprimat.nuclear import nuclide_latex
+from pyprimat.network_data import nuclide_latex
 
 
 # ---------------------------------------------------------------------------
@@ -180,7 +180,7 @@ def render_reactions_panel(run):
 
     Lists every reaction integrated by the chosen network's LT solver (the full
     selected set; the MT era uses only a fixed 18-reaction subset), as produced
-    by :meth:`pyprimat.nuclear.UpdateNuclearRates.describe_reactions`. Columns:
+    by :meth:`pyprimat.network_data.UpdateNuclearRates.describe_reactions`. Columns:
 
     * **Reaction** -- the readable ``a + b <-> c + d`` form with Unicode isotope
       symbols (e.g. ``²H + ²H ↔ ³He + n``);

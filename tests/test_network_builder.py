@@ -23,7 +23,7 @@ dY/dt and the Jacobian with two small kernels.  These tests check that:
 import numpy as np
 import pytest
 
-from pyprimat.nuclear import (phase_network, network_rhs, network_jacobian,
+from pyprimat.network_data import (phase_network, network_rhs, network_jacobian,
                           ORDER_SMALL, ORDER_MT, ORDER_LT,
                           SPECIES_SMALL, SPECIES_MD)
 from pyprimat.network_builder import (compile_network, NetworkKernels,
@@ -102,7 +102,7 @@ def test_driver_methods_match_reference(network, era, order_attr, species,
     ``pyprimat.reactions`` reference for every era.
     """
     from pyprimat.config import PyPRConfig
-    from pyprimat.nuclear import UpdateNuclearRates
+    from pyprimat.network_data import UpdateNuclearRates
     cfg = PyPRConfig({"network": network, "verbose": False})
     K = UpdateNuclearRates(cfg)
     order = getattr(K, order_attr)
@@ -158,7 +158,7 @@ def test_stoichiometry_conserves_baryon_and_charge():
     tracked separately via ``lepton_dZ`` (see test_formal_conservation_passes
     which uses the full uniform-Q check including the lepton contribution).
     """
-    from pyprimat.nuclear import reaction_stoichiometry
+    from pyprimat.network_data import reaction_stoichiometry
     nz = PyPRConfig().Nuclides
     A = {s: nz[s][0] + nz[s][1] for s in nz}
     Z = {s: nz[s][1] for s in nz}
@@ -190,7 +190,7 @@ def test_amax_invalid_values_rejected():
 
 def test_amax_reduces_reaction_count():
     """A stricter amax must yield fewer reactions than a looser one."""
-    from pyprimat.nuclear import load_network
+    from pyprimat.network_data import load_network
     from pyprimat.config import PyPRConfig
     cfg_full = PyPRConfig({"network": "large"})
     cfg_a20  = PyPRConfig({"network": "large", "amax": 20})
@@ -204,7 +204,7 @@ def test_amax_reduces_reaction_count():
 
 def test_amax_nuclide_bound():
     """With amax=20, every nuclide in the filtered network has A ≤ 20."""
-    from pyprimat.nuclear import load_network
+    from pyprimat.network_data import load_network
     from pyprimat.config import PyPRConfig
     cfg = PyPRConfig({"network": "large", "amax": 20})
     net = load_network(cfg, era="LT")
@@ -217,7 +217,7 @@ def test_amax_nuclide_bound():
 
 def test_amax_conservation_holds():
     """After amax filtering, baryon/charge conservation must still pass."""
-    from pyprimat.nuclear import load_network
+    from pyprimat.network_data import load_network
     from pyprimat.config import PyPRConfig
     from pyprimat.network_builder import check_conservation, compile_network
     cfg = PyPRConfig({"network": "large", "amax": 20})

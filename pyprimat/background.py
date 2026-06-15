@@ -6,7 +6,7 @@ Cosmological-background component for PyPRIMAT ("Class 1" of the
 ``PyPR`` split, see MODULAR.md).
 
 A *background* encapsulates everything the nuclear-network integration
-(:class:`pyprimat.bbn_network.NuclearNetwork`, "Class 2") needs about the
+(:class:`pyprimat.nuclear_network.NuclearNetwork`, "Class 2") needs about the
 expanding Universe, but nothing about nuclear reactions: the ``a <-> t <-> T``
 relations, the Hubble rate, the baryon density ``rho_B(t)``, the n<->p weak
 rates (already corrected for the neutrino temperatures/spectral distortions),

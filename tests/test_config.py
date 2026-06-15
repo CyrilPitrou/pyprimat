@@ -55,7 +55,7 @@ def test_p_rate_keys_count():
     ``load_reaction_names(self.data_dir, self.network)`` rather than the
     hardcoded ``_REACTIONS_MEDIUM`` list."""
     import re
-    from pyprimat.nuclear import _REACTIONS_MEDIUM, load_reaction_names
+    from pyprimat.network_data import _REACTIONS_MEDIUM, load_reaction_names
 
     cfg = PyPRConfig()  # default network="small" -> 12 reactions
     assert cfg.network == "small"

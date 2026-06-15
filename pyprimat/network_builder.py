@@ -30,7 +30,7 @@ understanding this module:
     into a :class:`CompiledNetwork` (immutable flat arrays), and
     :class:`NetworkKernels` binds it to the kernels (JIT-compiling them with
     numba if available).  This happens a handful of times total -- once for each
-    era's network -- in ``UpdateNuclearRates`` (see :mod:`pyprimat.nuclear_net`).
+    era's network -- in ``UpdateNuclearRates`` (see :mod:`pyprimat.network_data`).
     A ``CompiledNetwork`` is therefore *not* recomputed during integration; it is
     a fixed description of the reaction topology.
 

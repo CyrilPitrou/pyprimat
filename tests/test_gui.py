@@ -154,7 +154,7 @@ def test_default_run_matches_cli_reference():
     `test_cli_json_matches_default_summary` (spectral_distortions=True,
     IDEAS2.md item 2).
     """
-    from pyprimat.nuclear import nuclide_latex
+    from pyprimat.network_data import nuclide_latex
 
     at = AppTest.from_file(APP_PATH)
     at.run(timeout=120)
@@ -226,7 +226,7 @@ def test_time_evolution_download_available_for_large_network():
     """The "Time evolution (output_time_evolution.tsv)" download button is
     offered for ``network="large"`` too, not just small/medium.
 
-    ``NuclearNetwork._write_time_evolution`` (bbn_network.py) derives its
+    ``NuclearNetwork._write_time_evolution`` (nuclear_network.py) derives its
     ``Y<species>`` columns from ``self.abundance_names``, which already
     covers all three networks
     (8/12/~59 nuclides, see ``test_large_network.py::

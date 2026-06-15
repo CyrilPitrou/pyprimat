@@ -252,7 +252,7 @@ pyprimat/                    Core package
   main.py                PyPR: top-level driver
   plasma.py              Plasma thermodynamics (QED corrections, neutrino bath)
   qed_pressure.py        Analytical QED plasma-pressure corrections
-  nuclear.py             Nuclear network related functions
+  network_data.py        Nuclear network related functions
   network_builder.py     Generic stoichiometry-driven RHS/Jacobian (numba kernels)
   weak_rates.py          n ↔ p weak rate computation
 

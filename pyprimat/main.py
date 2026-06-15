@@ -25,7 +25,7 @@ __all__ = ['PyPR', 'mc_uncertainty']
 from .config       import PyPRConfig
 from . import plasma      as PyPRthermo
 from .background   import StandardBackground
-from .bbn_network  import NuclearNetwork
+from .nuclear_network import NuclearNetwork
 
 
 __version__ = "0.1.0"
@@ -101,7 +101,7 @@ class PyPR:
         # ------------------------------------------------------------------
         # 3. Initialize nuclear network (MT/LT eras)
         # ------------------------------------------------------------------
-        from .nuclear import UpdateNuclearRates
+        from .network_data import UpdateNuclearRates
         self.nucl = UpdateNuclearRates(cfg)
 
         # ------------------------------------------------------------------
@@ -116,7 +116,7 @@ class PyPR:
         # ------------------------------------------------------------------
         # 5. Build the nuclear network (Class 2): the HT/MT/LT ODE
         #    integration, driven by the Background's T(t)/rho_B(t)/weak
-        #    rates -- see pyprimat.bbn_network.NuclearNetwork.
+        #    rates -- see pyprimat.nuclear_network.NuclearNetwork.
         # ------------------------------------------------------------------
         self.nuclear = NuclearNetwork(cfg, self.nucl, self.background)
 
@@ -132,7 +132,7 @@ class PyPR:
         Integrate the nuclear network over the three temperature eras and
         return a dict of BBN observables.
 
-        Delegates to :meth:`pyprimat.bbn_network.NuclearNetwork.solve`
+        Delegates to :meth:`pyprimat.nuclear_network.NuclearNetwork.solve`
         (Class 2), which is driven by ``self.background`` (Class 1, see
         :mod:`pyprimat.background`).  After this call, ``self.nuclear.results``,
         ``self.nuclear.Y_final``, ``self.nuclear.abundance_names`` and
@@ -485,7 +485,7 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None):
     >>> mc['YPBBN'].std
     >>> mc['DoH'].values   # full sample array
     """
-    from .nuclear import load_reaction_names
+    from .network_data import load_reaction_names
 
     quantities = [quantity] if isinstance(quantity, str) else list(quantity)
 

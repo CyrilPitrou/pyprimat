@@ -21,7 +21,7 @@ import numpy as np
 import pytest
 
 from pyprimat.config import PyPRConfig
-from pyprimat.nuclear import _qed_nuclear_rescale, load_network
+from pyprimat.network_data import _qed_nuclear_rescale, load_network
 
 
 # ---------------------------------------------------------------------------

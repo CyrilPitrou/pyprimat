@@ -25,7 +25,7 @@ the repeat.
 import pytest
 
 from pyprimat.config import PyPRConfig
-from pyprimat.nuclear import load_network, reaction_stoichiometry
+from pyprimat.network_data import load_network, reaction_stoichiometry
 
 
 def test_auto_derived_stoichiometry_for_unknown_reaction():
@@ -41,7 +41,7 @@ def test_auto_derived_stoichiometry_conserves_A_and_Z():
     """The A/Z totals of the auto-derived reactants and products agree, using
     the same nuclide (N, Z) data as check_conservation: p+p (A=2, Z=2) vs
     d + e+ (A=2, Z=1+1=2)."""
-    from pyprimat.nuclear import _reaction_catalog, _default_data_dir, _LEPTON_Z
+    from pyprimat.network_data import _reaction_catalog, _default_data_dir, _LEPTON_Z
     _, _, _, nuc_NZ, _, _ = _reaction_catalog(_default_data_dir())
 
     def totals(counts):

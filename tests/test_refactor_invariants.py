@@ -123,7 +123,7 @@ def test_tabulated_electron_thermo_matches_exact(T):
 
 def test_linear_rate_matches_interp1d():
     from scipy.interpolate import interp1d
-    from pyprimat.nuclear import _LinearRate
+    from pyprimat.network_data import _LinearRate
     rng = np.random.default_rng(0)
     x = np.sort(rng.uniform(0.001, 10.0, 50))
     y = rng.uniform(1e-3, 1e3, 50)
@@ -136,7 +136,7 @@ def test_linear_rate_matches_interp1d():
 
 
 def test_linear_rate_scalar_and_array():
-    from pyprimat.nuclear import _LinearRate
+    from pyprimat.network_data import _LinearRate
     f = _LinearRate(np.array([1.0, 2.0, 3.0]), np.array([10.0, 20.0, 30.0]))
     assert f(2.0) == pytest.approx(20.0)
     np.testing.assert_allclose(f(np.array([1.5, 2.5])), [15.0, 25.0])
