@@ -24,28 +24,28 @@ pytestmark = pytest.mark.slow
 
 @pytest.mark.solve
 def test_small_network_YPBBN(solved_small):
-    assert solved_small._results["YPBBN"] == pytest.approx(0.2469983, abs=1e-4)
+    assert solved_small.nuclear.results["YPBBN"] == pytest.approx(0.2469983, abs=1e-4)
 
 
 @pytest.mark.solve
 def test_small_network_DoH(solved_small):
-    assert solved_small._results["DoH"] == pytest.approx(2.43490e-5, rel=2e-3)
+    assert solved_small.nuclear.results["DoH"] == pytest.approx(2.43490e-5, rel=2e-3)
 
 
 @pytest.mark.solve
 def test_large_network_YPBBN(solved_large):
-    assert solved_large._results["YPBBN"] == pytest.approx(0.2470017, abs=1e-4)
+    assert solved_large.nuclear.results["YPBBN"] == pytest.approx(0.2470017, abs=1e-4)
 
 
 @pytest.mark.solve
 def test_large_network_DoH(solved_large):
-    assert solved_large._results["DoH"] == pytest.approx(2.43561e-5, rel=2e-3)
+    assert solved_large.nuclear.results["DoH"] == pytest.approx(2.43561e-5, rel=2e-3)
 
 
 @pytest.mark.solve
 def test_Neff_close_to_standard(solved_small):
     """Neff should be close to 3.044 for the standard model."""
-    assert solved_small._results["Neff"] == pytest.approx(3.044, abs=0.005)
+    assert solved_small.nuclear.results["Neff"] == pytest.approx(3.044, abs=0.005)
 
 
 @pytest.mark.solve
@@ -55,20 +55,20 @@ def test_nTOp_Born_approximation_lowers_YP(solved_small):
     r_born = PyPR({"nTOp_Born_approximation": True,
                         "network": "small"})
     r_born.solve()
-    assert r_born._results["YPBBN"] < solved_small._results["YPBBN"] - 0.001
+    assert r_born.nuclear.results["YPBBN"] < solved_small.nuclear.results["YPBBN"] - 0.001
 
 
 @pytest.mark.solve
 def test_Li7oH_order_of_magnitude(solved_small):
     """Li7/H should be in the range 1e-10 to 1e-9."""
-    Li7 = solved_small._results["Li7oH"]
+    Li7 = solved_small.nuclear.results["Li7oH"]
     assert 1e-10 < Li7 < 1e-9
 
 
 @pytest.mark.solve
 def test_He3oH_order_of_magnitude(solved_small):
     """He3/H should be in the range 1e-6 to 1e-4."""
-    He3 = solved_small._results["He3oH"]
+    He3 = solved_small.nuclear.results["He3oH"]
     assert 1e-6 < He3 < 1e-4
 
 
@@ -122,8 +122,8 @@ def test_no_numba_small_matches_numba(solved_small):
     """Pure-Python (numba_installed=False) must agree with the JIT path to 1e-4."""
     from pyprimat.main import PyPR
     r_nn = PyPR({"numba_installed": False, "network": "small"}).PyPRresults()
-    assert r_nn["YPBBN"] == pytest.approx(solved_small._results["YPBBN"], rel=1e-4)
-    assert r_nn["DoH"]   == pytest.approx(solved_small._results["DoH"],   rel=1e-4)
+    assert r_nn["YPBBN"] == pytest.approx(solved_small.nuclear.results["YPBBN"], rel=1e-4)
+    assert r_nn["DoH"]   == pytest.approx(solved_small.nuclear.results["DoH"],   rel=1e-4)
 
 
 @pytest.mark.solve
@@ -145,5 +145,5 @@ def test_amax_filter_light_elements_match_medium(solved_large):
     from pyprimat.main import PyPR
     r = PyPR({"network": "large", "amax": 20}).PyPRresults()
     # Light elements should still match the medium result to ~1e-3 relative
-    assert r["YPBBN"] == pytest.approx(solved_large._results["YPBBN"], rel=1e-3)
-    assert r["DoH"]   == pytest.approx(solved_large._results["DoH"],   rel=1e-3)
+    assert r["YPBBN"] == pytest.approx(solved_large.nuclear.results["YPBBN"], rel=1e-3)
+    assert r["DoH"]   == pytest.approx(solved_large.nuclear.results["DoH"],   rel=1e-3)

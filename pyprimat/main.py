@@ -16,20 +16,16 @@ Design
 
 """
 
-import os
 import re
 import time
 import numpy as np
-from scipy.integrate import solve_ivp
-from scipy.interpolate import interp1d
-from scipy.special import zeta
 
 __all__ = ['PyPR', 'mc_uncertainty']
 
 from .config       import PyPRConfig
 from . import plasma      as PyPRthermo
-from . import weak_rates   as PyPRnTOp
-from .neutrino_history import make_neutrino_history
+from .background   import StandardBackground
+from .bbn_network  import NuclearNetwork
 
 
 __version__ = "0.1.0"
@@ -64,11 +60,12 @@ class PyPR:
         Extra contributions to the total energy density entering the
         Friedmann equation.  Each element is a function
         ``rho(Tg) -> MeV^4`` of the photon temperature ``Tg`` [MeV],
-        summed into ``rho_tot`` by :meth:`_Hubble`.  This is the generic
-        plug-in point for "dark sector" components; Early Dark Energy
-        (``cfg.fEDE > 0``) is implemented as the first such plug-in (see
-        :meth:`_setup_EDE`) and is appended automatically -- callers do not
-        need to include it here.
+        summed into ``rho_tot`` by :meth:`pyprimat.background.StandardBackground.Hubble`.
+        This is the generic plug-in point for "dark sector" components; Early
+        Dark Energy (``cfg.fEDE > 0``) is implemented as the first such
+        plug-in (see :meth:`pyprimat.background.StandardBackground._setup_EDE`)
+        and is appended automatically -- callers do not need to include it
+        here.
 
         Example: a constant extra radiation density of dRho [MeV^4],
             >>> PyPR({"network": "small"}, extra_rho=[lambda Tg: dRho])
@@ -102,389 +99,29 @@ class PyPR:
         self.plasma = PyPRthermo.Plasma(cfg)
 
         # ------------------------------------------------------------------
-        # 3. Pluggable extra energy-density components
-        # ------------------------------------------------------------------
-        self._extra_rho = list(extra_rho) if extra_rho is not None else []
-        self._setup_EDE()
-
-        # ------------------------------------------------------------------
-        # 4b. Initialize nuclear network (MT/LT eras)
+        # 3. Initialize nuclear network (MT/LT eras)
         # ------------------------------------------------------------------
         from .nuclear import UpdateNuclearRates
         self.nucl = UpdateNuclearRates(cfg)
 
         # ------------------------------------------------------------------
-        # 5. Compute or load thermal background + cosmological functions
+        # 4. Build the cosmological background (Class 1): a<->t<->T relations,
+        #    rho_B(t), n<->p weak rates, Neff/Omega_nu -- everything the
+        #    nuclear network needs about the expanding Universe.  Early Dark
+        #    Energy (cfg.fEDE > 0) is appended to extra_rho automatically by
+        #    StandardBackground; see pyprimat.background.
         # ------------------------------------------------------------------
-        self._setup_background_and_cosmo()
-        self._setup_derived_cosmo()
+        self.background = StandardBackground(cfg, self.plasma, extra_rho)
 
         # ------------------------------------------------------------------
-        # 6. Compute or load n <--> p weak rates
+        # 5. Build the nuclear network (Class 2): the HT/MT/LT ODE
+        #    integration, driven by the Background's T(t)/rho_B(t)/weak
+        #    rates -- see pyprimat.bbn_network.NuclearNetwork.
         # ------------------------------------------------------------------
-        self._setup_weak_rates()
-        self._results = None
+        self.nuclear = NuclearNetwork(cfg, self.nucl, self.background)
 
         if cfg.verbose:
             print(f"[init]  Initialisation complete in {time.time()-self._t0:.1f} s")
-
-    # ======================================================================
-    # Private: Early Dark Energy setup
-    # ======================================================================
-
-    def _setup_EDE(self):
-        """Build the EDE energy-density function from cfg.fEDE/zcEDE/wnEDE.
-
-        If fEDE > 0, appends a ``rho_EDE(Tg) -> MeV^4`` callable to
-        ``self._extra_rho`` (the generic extra-energy-density plug-in list);
-        otherwise a no-op.  Must be called after self.plasma
-        and self._extra_rho are set, since it evaluates rho_g and appends to
-        that list.
-        """
-        cfg = self.cfg
-        if cfg.fEDE == 0.:
-            return
-
-        thermo  = self.plasma
-        acEDE   = 1. / (1. + cfg.zcEDE)
-        amaxEDE = acEDE * (4. / (3. * cfg.wnEDE - 1.))**(1. / (3. * cfg.wnEDE + 3.))
-        TmaxEDE = cfg.T0CMB / amaxEDE / cfg.MeV_to_Kelvin   # [MeV]
-        TcEDE   = cfg.T0CMB / acEDE   / cfg.MeV_to_Kelvin   # [MeV]
-
-        #The final Neff value in the standard case (3.044) is hard coded here.
-        rhocEDEac = (cfg.fEDE / (1. - cfg.fEDE)
-                     * thermo.rho_g(TmaxEDE)
-                     * (1. + 3.044 * 7./8. * (4./11.)**(4./3.))
-                     / 2.
-                     * (1. + 4. / (3. * cfg.wnEDE - 1.)))
-
-        def rho_EDE(T):
-            return 2. * rhocEDEac / (1. + (TcEDE / T)**(3. * cfg.wnEDE + 3.))
-
-        self._extra_rho.append(rho_EDE)
-
-    # ======================================================================
-    # Private: background thermodynamics + cosmological setup
-    # ======================================================================
-
-    # Friedmann expansion rate
-    def _Hubble(self, Tg, Tnue, Tnumu, Tnutau):
-        cfg     = self.cfg
-        thermo  = self.plasma
-        rho_pl  = thermo.rho_g(Tg) + thermo.rho_e(Tg) - thermo.PQEDofT(Tg) + Tg * thermo.dPQEDdT(Tg)
-        rho_3nu = thermo.rho_nu(Tnue) + thermo.rho_nu(Tnumu) + thermo.rho_nu(Tnutau)
-        rho_tot = rho_pl + rho_3nu + thermo.rho_nu_extra(Tg)
-        for rho_extra in self._extra_rho:
-            rho_tot += rho_extra(Tg)
-        # For analytic spectral distortions the neutrino phase-space distribution
-        # is shifted from a perfect FD, adding extra energy density.  The NEVO
-        # case needs no correction: the NEVO temperatures are defined as the
-        # energy-equivalent FD temperature, so rho_nu already accounts for the
-        # distortion.
-        if getattr(self, '_rho_nu_SD', None) is not None:
-            # Average T_ν: use the energy-weighted mean of the three flavours.
-            Tnu_avg = ((Tnue**4 + Tnumu**4 + Tnutau**4) / 3.)**0.25
-            rho_tot += self._rho_nu_SD(Tnu_avg)
-        return cfg.MeV_to_secm1 * (rho_tot * 8. * np.pi / (3. * cfg.Mpl**2))**0.5
-
-    def _setup_background_and_cosmo(self):
-        """Cosmological background thermodynamics.
-
-        Two operating modes, selected by ``cfg.incomplete_decoupling``:
-
-        *Incomplete decoupling* (``True``, default):
-            Reads the pre-computed NEVO neutrino-decoupling table
-            (``rates/NEVO/NEVOPRIMAT_col_1_7.csv``).  The three neutrino
-            flavour temperatures T_νe, T_νμ, T_ντ are interpolated from the
-            table, and the NEVO heating function N(T_γ) — representing the
-            extra entropy injected into neutrinos during e+e- annihilations —
-            drives the a(T_γ) ODE.
-
-        *Instantaneous (complete) decoupling* (``False``):
-            The NEVO table is **not** loaded.  All three neutrino flavours are
-            assumed to have decoupled instantaneously from the EM plasma, so
-            their common temperature is given by EM entropy conservation:
-
-                T_ν = (spl(T_γ) / s_∞)^{1/3}
-
-            where s_∞ = 11π²/45 is the high-T limit of spl(T)/T³ (photons +
-            e+e- pairs at T >> m_e).  The NEVO heating function is set to
-            N ≡ 0, reducing the a(T_γ) ODE to standard EM entropy
-            conservation.  QED corrections to the plasma equation of state are
-            still included via the spl/PQEDofT tables in both modes.
-
-        In both modes the method builds all interpolants used by
-        ``_setup_derived_cosmo``, ``_setup_weak_rates``, and ``solve()``.
-
-        Independently of the above, ``cfg.external_background`` selects how
-        ``a(T_γ)`` itself is obtained (requires ``incomplete_decoupling=True``):
-
-        *Minimal* (``False``, default):
-            ``a(T_γ)`` is reconstructed by solving the entropy-conservation
-            ODE ``d(ln a)/d(ln T) = -(3 s̄ + T ds̄/dT)/(N_NEVO + 3 s̄)`` driven
-            by the NEVO heating function ``N_NEVO(T_γ)``.
-
-        *External* (``True``):
-            ``a(T_γ)`` is read directly from the NEVO table's ``x`` column
-            (``x ∝ a`` by the NEVO convention), with radiation-domination
-            extrapolation (``a ∝ 1/T_γ``) outside the table. No ODE is
-            solved for ``a(T)``. ``t(a)`` is obtained the same way in both
-            modes (Hubble integration below), since no NEVO file carries a
-            cosmic-time column. See NEUTRINOS.md for the derivation and the
-            empirical check that the two modes agree to ~1e-6.
-        """
-        cfg    = self.cfg
-        thermo = self.plasma
-
-        Tstartcosmo  = cfg.T_start_cosmo / cfg.MeV_to_Kelvin
-        Tstart = cfg.T_start / cfg.MeV_to_Kelvin   # [MeV]
-        Tend   = cfg.T_end   / cfg.MeV_to_Kelvin   # [MeV]
-
-        # ------------------------------------------------------------------
-        # Step 1 - Neutrino-sector background (temperatures, heating,
-        #          spectral distortion, extra neutrino energy density)
-        # ------------------------------------------------------------------
-        # The neutrino sector is encapsulated in a NeutrinoHistory object
-        # (pyprimat.neutrino_history): NEVOTable for incomplete
-        # decoupling, InstantaneousDecoupling otherwise, optionally decorated
-        # with the analytic μ+y spectral distortion (AnalyticDistortion).  It
-        # exposes the three flavour temperature functions, the NEVO heating
-        # N(T_γ) that drives the a(T_γ) ODE, the n<->p weak-rate distortion
-        # dFDneu_func, and the extra neutrino energy density rho_nu_SD.
-        nh = make_neutrino_history(cfg, thermo)
-
-        Tnue_of_Tg   = nh.Tnue_of_Tg
-        Tnumu_of_Tg  = nh.Tnumu_of_Tg
-        Tnutau_of_Tg = nh.Tnutau_of_Tg
-        N_NEVO_of_Tg = nh.N_NEVO_of_Tg
-
-        # Spectral-distortion hooks consumed by _Hubble (extra ρ via
-        # self._rho_nu_SD) and _setup_weak_rates (self._dFDneu_func).  Both are
-        # None when there are no distortions.
-        self._dFDneu_func = nh.dFDneu_func   # None means "no spectral distortions"
-        self._rho_nu_SD   = nh.rho_nu_SD     # None means "no extra energy density"
-
-        # ------------------------------------------------------------------
-        # Step 2 – Build a(T) / invert to T(a)
-        # ------------------------------------------------------------------
-        def _sbar(T):
-            return thermo.spl(T) / T**3   # dimensionless
-
-        z0   = cfg.T0CMB / cfg.MeV_to_Kelvin   # [MeV]
-        # Algebraic entropy-conservation boundary value a(Tend) = zend/Tend,
-        # used as the ODE initial condition (minimal mode) and as the
-        # table-normalisation anchor (external_background mode) -- see
-        # NEUTRINOS.md.  Requires no ODE: _sbar is the analytic
-        # electron-thermo spline.
-        zend = z0 / (_sbar(Tend) / cfg.s0bar) ** (1. / 3.)
-        a_end = zend / Tend
-
-        # Build the log-temperature grid directly with linspace and feed it
-        # straight to t_eval.  Do NOT reconstruct it as log(logspace(...)):
-        # the log->exp->log roundtrip can push an endpoint 1 ULP outside the
-        # integration span [log(Tend), log(Tstartcosmo)], which makes
-        # solve_ivp raise "Values in t_eval are not within t_span" for some
-        # values of Tend (e.g. T_end = 2e-3 MeV fails while 1e-3 MeV happens
-        # to roundtrip exactly).  np.linspace guarantees its endpoints equal
-        # the span bounds exactly, so the check always passes.
-        lnT_sol = np.linspace(np.log(Tend), np.log(Tstartcosmo), cfg.n_temperature_table)
-        T_sol   = np.exp(lnT_sol)
-
-        if cfg.external_background:
-            # --------------------------------------------------------------
-            # external_background=True: a(T) read directly from the NEVO
-            # table's x column (a ∝ x by the NEVO convention; see
-            # NEUTRINOS.md), normalised so a(Tend) matches the algebraic
-            # a_end above -- the same boundary value the minimal-mode ODE
-            # converges to.  No ODE solve.
-            # --------------------------------------------------------------
-            K = a_end / float(nh.x_of_Tg(Tend))
-
-            def a_of_T(T):
-                return K * nh.x_of_Tg(T)
-        else:
-            # --------------------------------------------------------------
-            # minimal mode (default): solve the entropy-conservation ODE
-            # d(ln a)/d(ln T) for the EM plasma.  The reduced entropy
-            # sbar = s/T^3 and its T-derivative are both obtained
-            # analytically from the electron-thermo spline via
-            # thermo.spl_and_dspl_dT (a single evaluation returning s and
-            # ds/dT): this is exact and fast, so no numerical-derivative
-            # fallback (numdifftools / finite differences) is needed.
-            # --------------------------------------------------------------
-            def _dlnadlnT_NEVO(lnT, y):
-                T = np.exp(lnT)
-                s, ds_dT = thermo.spl_and_dspl_dT(T)
-                sb     = s / T**3
-                dsbdT  = ds_dT / T**3 - 3. * s / T**4   # d(s/T^3)/dT, chain rule
-                N = float(N_NEVO_of_Tg(T))
-                return [-(3. * sb + T * dsbdT) / (N + 3. * sb)]
-
-            lna_end = np.log(a_end)
-            _t_nevo_a0 = time.time()
-            sol_lna = solve_ivp(_dlnadlnT_NEVO,
-                                [np.log(Tend), np.log(Tstartcosmo)],
-                                [lna_end],
-                                t_eval=lnT_sol,
-                                method='LSODA', rtol=0.1*cfg.numerical_precision, atol=1e-10)
-            if cfg.debug:
-                print((f"[bckg]  Finished a(T) solve in {time.time()- _t_nevo_a0:.2f} s "
-                       f"(status={sol_lna.status}, nfev={sol_lna.nfev})"), flush=True)
-            _lnalnT = interp1d(sol_lna.t, sol_lna.y[0].flatten(),
-                               bounds_error=False, fill_value="extrapolate")
-
-            def a_of_T(T):
-                return np.exp(_lnalnT(np.log(T)))
-
-        # ------------------------------------------------------------------
-        # Step 3 – Invert a(T) → T(a), then integrate dt/d(ln a) = 1/H(a)
-        # ------------------------------------------------------------------
-        T_grid = T_sol                          # already sampled low→high
-        a_grid = a_of_T(T_grid)                  # low a → high a (a_of_T is array-safe)
-
-        T_of_a = interp1d(a_grid, T_grid, bounds_error=False, fill_value="extrapolate")
-
-        a_ini = a_of_T(Tstartcosmo)
-        a_fin = a_of_T(Tend)
-
-        # ------------------------------------------------------------------
-        # Step 4 – Integrate dt/d(ln a) = 1/H(a)
-        # ------------------------------------------------------------------
-        def Hubble_NEVO(Tg):
-            return self._Hubble(Tg, Tnue_of_Tg(Tg), Tnumu_of_Tg(Tg), Tnutau_of_Tg(Tg))
-
-        t_ini = 1. / (2. * Hubble_NEVO(Tstartcosmo))
-
-        # Log-scale-factor grid, built directly in log space (see the note on
-        # the a(T) solve above): feeding linspace endpoints straight to t_eval
-        # avoids the log(logspace(...)) roundtrip that could land the last
-        # point 1 ULP outside [log(a_ini), log(a_fin)].
-        lna_samp = np.linspace(np.log(a_ini), np.log(a_fin), cfg.n_temperature_table)
-
-        def _dtdlna(lna, t):
-            return [1. / Hubble_NEVO(T_of_a(np.exp(lna)))]
-
-        _t_nevo_t0 = time.time()
-        sol_t = solve_ivp(_dtdlna,
-                          [np.log(a_ini), np.log(a_fin)],
-                          [t_ini],
-                          t_eval=lna_samp,
-                          method='LSODA', rtol=cfg.numerical_precision, atol=1e-12)
-        if cfg.debug:
-            print((f"[bckg]  Finished t(a) solve in {time.time()-_t_nevo_t0:.2f} s "
-                   f"(status={sol_t.status}, nfev={sol_t.nfev})"), flush=True)
-
-        t_of_lna = interp1d(sol_t.t, sol_t.y[0].flatten(),
-                            bounds_error=False, fill_value="extrapolate")
-
-        # ------------------------------------------------------------------
-        # Step 5 – Sample on the common time grid; set instance attributes
-        # ------------------------------------------------------------------
-        a_arr  = np.exp(sol_t.t)       # a values at ODE evaluation points
-        t_vec  = sol_t.y[0].flatten()  # corresponding t [s]
-        Tg_vec = T_of_a(a_arr)         # T_γ [MeV]
-
-        Tnue_vec   = Tnue_of_Tg(Tg_vec)
-        Tnumu_vec  = Tnumu_of_Tg(Tg_vec)
-        Tnutau_vec = Tnutau_of_Tg(Tg_vec)
-        # Energy-weighted average neutrino temperature (for weak rates / Omega_ν)
-        Tnu_avg_vec = ((Tnue_vec**4 + Tnumu_vec**4 + Tnutau_vec**4) / 3.)**0.25
-
-        self._t_vec      = t_vec
-        self._Tg_vec     = Tg_vec
-        self._Tnu_vec    = Tnu_avg_vec   # average, used by _setup_derived_cosmo and _setup_weak_rates
-        self._Tnue_vec   = Tnue_vec
-        self._Tnumu_vec  = Tnumu_vec
-        self._Tnutau_vec = Tnutau_vec
-
-        self._t_of_T = interp1d(Tg_vec, t_vec, bounds_error=False,
-                                 fill_value="extrapolate", kind='linear')
-        self._T_of_t = interp1d(t_vec, Tg_vec, bounds_error=False,
-                                 fill_value="extrapolate", kind='linear')
-        self._TnuofT = interp1d(Tg_vec, Tnu_avg_vec, bounds_error=False,
-                                 fill_value="extrapolate", kind='linear')
-        self._a_of_T = a_of_T   # already vectorised: np.exp(interp1d(log T))
-        self._T_of_a = T_of_a
-        self._a_of_t = interp1d(t_vec, a_arr, bounds_error=False,
-                                 fill_value=(a_arr[0], a_arr[-1]))
-        self._t_of_a = interp1d(a_arr, t_vec, bounds_error=False,
-                                 fill_value=(t_vec[0], t_vec[-1]))
-        self._N_NEVO_of_Tg = N_NEVO_of_Tg
-
-        # Whether N_NEVO_of_Tg is a *real* heating table (NEVOTable, read from
-        # rates/NEVO/) or just the N=0 stub used by InstantaneousDecoupling to
-        # close the a(T) ODE under EM entropy conservation.  Consumed by
-        # _write_time_evolution to decide whether the "Nheating" column carries
-        # physical information or would just be a column of zeros.
-        self._has_heating_table = cfg.incomplete_decoupling
-
-    def _setup_derived_cosmo(self):
-        """Build N_eff and relic-neutrino Omega functions from the stored background.
-
-        Called after _setup_background_and_cosmo.
-        Requires self._Tg_vec, self._Tnu_vec to be set.
-        """
-        cfg    = self.cfg
-        thermo = self.plasma
-
-        # N_eff
-        def N_eff(Tg, Tnue, Tnumu, Tnutau):
-            rho_g   = thermo.rho_g(Tg)
-            rho_rad = thermo.rho_nu(Tnue) + thermo.rho_nu(Tnumu) + thermo.rho_nu(Tnutau) + rho_g + thermo.rho_nu_extra(Tg)
-            # Analytic spectral distortions add an extra neutrino energy
-            # density on top of the (possibly shifted) FD temperatures Tnue/
-            # Tnumu/Tnutau -- mirror _Hubble's treatment exactly: a single
-            # aggregate term evaluated at the energy-weighted mean Tnu, added
-            # to rho_rad before forming the Neff ratio. As in _Hubble, the
-            # NEVO (incomplete_decoupling) case needs no correction since its
-            # Tnu's are already the energy-equivalent FD temperatures, so
-            # self._rho_nu_SD is None there.
-            if self._rho_nu_SD is not None:
-                Tnu_avg = ((Tnue**4 + Tnumu**4 + Tnutau**4) / 3.)**0.25
-                rho_rad += self._rho_nu_SD(Tnu_avg)
-            return (rho_rad - rho_g) / rho_g / ((7. / 8.) * (4. / 11.) ** (4. / 3.))
-
-        self._N_eff = N_eff
-
-        # Relic neutrino abundances
-        def Omeganuh2_relnu():
-            Tnu0 = self._Tnu_vec[-1] / self._Tg_vec[-1] * cfg.T0CMB / cfg.MeV_to_Kelvin
-            return (7. * np.pi**2 / 120. * Tnu0**4) / cfg.rhocOverh2
-
-        def Omeganuh2_nrnu():
-            Tnu0 = self._Tnu_vec[-1] / self._Tg_vec[-1] * cfg.T0CMB / cfg.MeV_to_Kelvin
-            return (3. / 2. * zeta(3) / np.pi**2 * Tnu0**3) / cfg.rhocOverh2
-
-        self._Omeganuh2_relnu = Omeganuh2_relnu
-        self._Omeganuh2_nrnu  = Omeganuh2_nrnu
-
-    # ======================================================================
-    # Private: weak rates
-    # ======================================================================
-
-    def _setup_weak_rates(self):
-        cfg = self.cfg
-        _t_weak0 = time.time()
-        # Single forward and backward n<->p interpolant over the whole BBN
-        # temperature range (the rate is continuous, so one grid suffices).
-        self._nTOp_frwrd, self._nTOp_bkwrd = \
-            PyPRnTOp.RecomputeWeakRates([self._Tg_vec, self._Tnue_vec], cfg,
-                                        dFDneu_func=self._dFDneu_func)
-        if cfg.debug:
-            # Wording is generic on purpose: RecomputeWeakRates may have either
-            # recomputed the rates (~2 s) or loaded them from a fingerprinted
-            # cache file (~0 s) -- see pyprimat.weak_rates.RecomputeWeakRates.
-            print((f"[weak]  n <--> p weak rates ready in "
-                   f"{time.time()-_t_weak0:.2f} s"), flush=True)
-
-        # Normalisation factor
-        _t_norm0 = time.time()
-        if cfg.tau_n_flag:
-            Fn = PyPRnTOp.ComputeFn(cfg)
-            self._NormWeakRates = 1. / (Fn * cfg.tau_n)   # [s^-1]
-        else:
-            GFtilde2 = (cfg.GF * cfg.Vud)**2 * (1. + 3. * cfg.gA**2) / (2. * np.pi**3)
-            self._NormWeakRates = cfg.MeV_to_secm1 * (GFtilde2 * cfg.me**5)
 
     # ======================================================================
     # solve(): integrate nuclear network ODEs
@@ -494,575 +131,26 @@ class PyPR:
         """
         Integrate the nuclear network over the three temperature eras and
         return a dict of BBN observables.
+
+        Delegates to :meth:`pyprimat.bbn_network.NuclearNetwork.solve`
+        (Class 2), which is driven by ``self.background`` (Class 1, see
+        :mod:`pyprimat.background`).  After this call, ``self.nuclear.results``,
+        ``self.nuclear.Y_final``, ``self.nuclear.abundance_names`` and
+        ``self.nuclear.Y_of_t`` are populated.
         """
-        from .nuclear import SPECIES_MD   # noqa: F401 (used for default-zero filling)
-        cfg       = self.cfg
-        t_vec     = self._t_vec
-        Tg_vec    = self._Tg_vec
-        Tnu_vec   = self._Tnu_vec
-        a_of_t    = self._a_of_t
-        T_of_t    = self._T_of_t
-        t_of_T    = self._t_of_T
-        NormWR    = self._NormWeakRates
-        nucl      = self.nucl
+        results = self.nuclear.solve()
 
-        # Refresh nuclear rates with current variation parameters (p_*, NP_delta_*)
-        nucl.apply_variations(cfg)
-
-        if cfg.verbose:
-            _t0 = time.time()
-
-        # ------------------------------------------------------------------
-        # Temperature era boundaries [s]
-        # ------------------------------------------------------------------
-        t_start = t_of_T(cfg.T_start / cfg.MeV_to_Kelvin)
-        t_weak  = t_of_T(cfg.T_weak  / cfg.MeV_to_Kelvin)
-        t_nucl  = t_of_T(cfg.T_nucl  / cfg.MeV_to_Kelvin)
-        t_end   = t_of_T(cfg.T_end   / cfg.MeV_to_Kelvin)
-
-        # ------------------------------------------------------------------
-        # Baryon density for the nuclear network
-        # ------------------------------------------------------------------
-        def nB(a):
-            # Comoving baryon number density: n_B = n_B0 / a³  [MeV³].
-            # n0CMB is the present-day CMB photon number density (MeV³),
-            # eta0b = n_B/n_γ the baryon-to-photon ratio (from cfg.Omegabh2).
-            return cfg.n0CMB * cfg.eta0b / a**3   # [MeV^3]
-
-        def etab_of_T(T_K):
-            # Effective baryon-to-photon ratio at photon temperature T_K (Kelvin).
-            # η_b(T) = n_B(a(T)) / n_γ(T),  n_γ = (2ζ(3)/π²) T³.
-            T_MeV = T_K / cfg.MeV_to_Kelvin
-            ngCMB = (2. * zeta(3)) / np.pi**2 * T_MeV**3
-            return nB(self._a_of_T(T_MeV)) / ngCMB
-
-        def rhoB_BBN(a):
-            # Baryon mass density at scale factor a  [g cm⁻³].
-            # Used as the prefactor for nuclear reaction rates (rate ∝ ρ_B).
-            n0B = cfg.n0CMB * cfg.eta0b
-            return cfg.ma * n0B * cfg.MeV4_to_gcmm3 / a**3  # [g cm^-3]
-
-        # ------------------------------------------------------------------
-        # Local thermal equilibrium (Saha) abundance
-        # ------------------------------------------------------------------
-        def YA(name, Yn, Yp, T):
-            """Saha equilibrium mass-fraction abundance of nuclide `name`.
-
-            At high temperature each nuclide is maintained in Nuclear Statistical
-            Equilibrium (NSE) with free neutrons and protons via photo-dissociation.
-            The Saha formula gives (Phys. Rep. §V.A):
-
-                Y_A = g_A ζ(3)^{A-1} π^{(1-A)/2} 2^{(3A-5)/2}
-                      × (M_A / mₙ^N mₚ^Z)^{3/2}
-                      × (kB T)^{3(A-1)/2} η_b^{A-1}
-                      × Yₙ^N Yₚ^Z exp(B_A / kB T)
-
-            where A=N+Z is the mass number, g_A=2J+1 the spin degeneracy,
-            B_A the binding energy (keV), and η_b = n_B/n_γ the baryon-to-photon
-            ratio.  Used to seed the MT and LT era initial conditions.
-
-            Args:
-                name : nuclide name string (key into cfg.Nuclides/NuclExcessMass).
-                Yn   : free neutron mass fraction.
-                Yp   : free proton mass fraction.
-                T    : photon temperature in Kelvin.
-
-            Returns:
-                Y_A  : dimensionless mass fraction (≪ 1 at T ≫ BBN onset).
-            """
-            x     = cfg.Nuclides[name]
-            A     = x[0] + x[1]
-            Z     = x[1]
-            N     = A - Z
-            Mass  = (A * cfg.ma * cfg.MeV
-                     + cfg.keV * cfg.NuclExcessMass[name]
-                     - Z * cfg.me * cfg.MeV)
-            BindE = (N * cfg.NuclExcessMass["n"]
-                     + Z * cfg.NuclExcessMass["p"]
-                     - cfg.NuclExcessMass[name])
-            # (M_A / mₙ^N mₚ^Z)^{3/2}: ratio of nuclear to free-nucleon masses
-            NormYA = (Mass / ((cfg.mn * cfg.MeV)**(A - Z)
-                              * (cfg.mp * cfg.MeV)**Z))**(3. / 2.)
-            return ((2 * cfg.NuclSpin[name] + 1)
-                    * zeta(3)**(A - 1) * np.pi**((1 - A) / 2.)
-                    * 2**((3 * A - 5) / 2.)
-                    * NormYA
-                    * (cfg.kB * T)**(3. / 2. * (A - 1))
-                    * etab_of_T(T)**(A - 1)
-                    * Yp**Z * Yn**(A - Z)
-                    * np.exp(BindE * cfg.keV / (cfg.kB * T)))
-
-        # ------------------------------------------------------------------
-        # High-temperature (HT) era: only n and p
-        # ------------------------------------------------------------------
-        if cfg.verbose:
-            print("[nucl]  Solving neutron decoupling at high temperature era")
-
-        nTOp_frwrd_HT = self._nTOp_frwrd
-        nTOp_bkwrd_HT = self._nTOp_bkwrd
-
-        def nTOp_frwrd_HT_norm(T): return NormWR * nTOp_frwrd_HT(T)
-        def nTOp_bkwrd_HT_norm(T): return NormWR * nTOp_bkwrd_HT(T)
-
-        def Yn_i_func(T):
-            b = nTOp_bkwrd_HT_norm(T)
-            return b / (b + nTOp_frwrd_HT_norm(T))
-
-        def Y_prime_HT(t, Y):
-            T_K = T_of_t(t) * cfg.MeV_to_Kelvin
-            f   = nTOp_frwrd_HT_norm(T_K)
-            b   = nTOp_bkwrd_HT_norm(T_K)
-            return b * Y[1] - f * Y[0], f * Y[0] - b * Y[1]
-
-        Yn_i = Yn_i_func(cfg.T_start)
-        Yp_i = 1. - Yn_i
-        _t_ht0 = time.time()
-        sol_HT = solve_ivp(Y_prime_HT, [t_start, t_weak], [Yn_i, Yp_i],
-                           method='LSODA', rtol=cfg.numerical_precision, atol=1e-10)
-        if cfg.verbose:
-            print((f"[nucl]  [HT] Finished solve_ivp in {time.time()-_t_ht0:.2f} s "
-                   f"(status={sol_HT.status}, nfev={sol_HT.nfev})"), flush=True)
-        Yn_HT_f, Yp_HT_f = sol_HT.y[0][-1], sol_HT.y[1][-1]
-
-        # ------------------------------------------------------------------
-        # ODE systems for the full network
-        # ------------------------------------------------------------------
-        def make_nTOp_pair(frwrd_raw, bkwrd_raw):
-            # Wrap the raw rate interpolants with the NormWR normalisation factor.
-            # NormWR = tau_n_ref / tau_n rescales K so the measured τ_n is used;
-            # it equals 1 when tau_n_flag=False.
-            def f(T): return NormWR * frwrd_raw(T)
-            def b(T): return NormWR * bkwrd_raw(T)
-            return f, b
-
-        nTOp_f_MT, nTOp_b_MT = make_nTOp_pair(self._nTOp_frwrd, self._nTOp_bkwrd)
-        nTOp_f_LT, nTOp_b_LT = make_nTOp_pair(self._nTOp_frwrd, self._nTOp_bkwrd)
-
-        def Y_prime_MT(t, Y):
-            rho = rhoB_BBN(a_of_t(t)); T_K = T_of_t(t)*cfg.MeV_to_Kelvin
-            return nucl.rhsMT(Y, T_K, rho, nTOp_f_MT, nTOp_b_MT)
-
-        def Jacobian_MT(t, Y):
-            rho = rhoB_BBN(a_of_t(t)); T_K = T_of_t(t)*cfg.MeV_to_Kelvin
-            return nucl.JacobianMT(Y, T_K, rho, nTOp_f_MT, nTOp_b_MT)
-
-        def Y_prime_LT(t, Y):
-            rho = rhoB_BBN(a_of_t(t)); T_K = T_of_t(t)*cfg.MeV_to_Kelvin
-            return nucl.rhsLT(Y, T_K, rho, nTOp_f_LT, nTOp_b_LT)
-
-        def Jacobian_LT(t, Y):
-            rho = rhoB_BBN(a_of_t(t)); T_K = T_of_t(t)*cfg.MeV_to_Kelvin
-            return nucl.JacobianLT(Y, T_K, rho, nTOp_f_LT, nTOp_b_LT)
-
-        # ------------------------------------------------------------------
-        # Mid-temperature (MT) era
-        # ------------------------------------------------------------------
-        if cfg.verbose:
-            print("[nucl]  Solving nuclear network at mid temperature era")
-
-        # Saha (NSE) seed for all MT species except n and p, which come from
-        # the HT solution.  The MT network's species list is determined by the
-        # NetworkDefinition, so this loop is independent of the network size.
-        mt_species = nucl._mt_net.species   # e.g. 8 for small, 12 for medium
-        mt_saha = {"n": Yn_HT_f, "p": Yp_HT_f}
-        for s in mt_species:
-            if s not in mt_saha:
-                mt_saha[s] = YA(s, Yn_HT_f, Yp_HT_f, cfg.T_weak)
-        Yi_MT = [mt_saha[s] for s in mt_species]
-
-        _t_mt0 = time.time()
-        sol_MT = solve_ivp(Y_prime_MT, [t_weak, t_nucl], Yi_MT,
-                           method='BDF', jac=Jacobian_MT,
-                           rtol=cfg.numerical_precision, atol=1e-15)
-        if cfg.verbose:
-            print((f"[nucl]  [MT] Finished solve_ivp ({cfg.network} network, "
-                   f"{len(mt_species)} species) in {time.time()-_t_mt0:.2f} s "
-                   f"(status={sol_MT.status}, nfev={sol_MT.nfev})"), flush=True)
-        # Extract MT final values by name — works for any network size.
-        mt_final_raw = {s: sol_MT.y[i][-1] for i, s in enumerate(mt_species)}
-
-        # ------------------------------------------------------------------
-        # Low-temperature (LT) era
-        # ------------------------------------------------------------------
-        if cfg.verbose:
-            print("[nucl]  Solving nuclear network at low temperature era")
-
-        # Seed the LT vector from MT final values, filling any extra species
-        # (present in the LT but absent in MT) with 0.  By looking up by name,
-        # this works for any MT and LT network sizes without hardcoding.
-        species_L = nucl.species_large
-        Yi_LT = [mt_final_raw.get(s, 0.0) for s in species_L]
-
-        _t_lt0 = time.time()
-        atol = cfg.atol_large_LT if cfg.is_large else 1e-20
-        sol_LT = solve_ivp(Y_prime_LT, [t_nucl, t_end], Yi_LT,
-                           method='BDF', jac=Jacobian_LT,
-                           rtol=10.*cfg.numerical_precision, atol=atol)
-        if cfg.verbose:
-            print((f"[nucl]  [LT] Finished solve_ivp ({cfg.network} network, "
-                   f"{len(species_L)} nuclides) in {time.time()-_t_lt0:.2f} s "
-                   f"(status={sol_LT.status}, nfev={sol_LT.nfev})"), flush=True)
-        # Build LT final abundances by name; fill in 0 for any standard light
-        # species that the chosen network does not track (e.g. heavy-nuclide-only
-        # networks that drop He6 — though in practice all three standard networks
-        # include all SPECIES_MD members).
-        finL = {s: sol_LT.y[i][-1] for i, s in enumerate(species_L)}
-        for s in SPECIES_MD:
-            finL.setdefault(s, 0.0)
-
-        if cfg.verbose:
-            # Full list of every nuclide that was integrated numerically in the
-            # LT era (species_L is exactly the LT solver's state vector).  The
-            # list grows with the chosen network (8 / 12 / ~59 nuclides for
-            # small / medium / large).
-            print("-" * 50)
-            print(f"Predicted primordial abundances at the end of BBN "
-                  f"({len(species_L)} numerically solved nuclides)")
-            print("-" * 50)
-            for s in species_L:
-                print(f"  Y{s:<5}= {finL[s]:.6e}")
-
-        # ------------------------------------------------------------------
-        # Store final Y values for direct access (used by get_quantity)
-        # ------------------------------------------------------------------
-        # Use the LT species list as the canonical name list for any network.
-        self._abundance_names = species_L
-        self._Y_final = dict(finL)
-        if not cfg.is_small:
-            # Extend the N/Z/A maps to every network nuclide so callers
-            # (e.g. the AbundanceEvolution notebook) can plot all species.
-            for s, (N, Z) in nucl.large_NZ.items():
+        # For the large network, NuclearNetwork.solve() discovers nuclides
+        # beyond the small/medium set (e.g. B10, C12, ...).  Extend the
+        # N/Z/A maps (built in __init__ from cfg.Nuclides) so callers (e.g.
+        # the AbundanceEvolution notebook, pyprimat.gui.panels) can look up
+        # A[name]/Z[name]/N[name] for every species returned by
+        # abundance_names.
+        if not self.cfg.is_small:
+            for s, (N, Z) in self.nucl.large_NZ.items():
                 self.N[s], self.Z[s], self.A[s] = N, Z, N + Z
 
-        # ------------------------------------------------------------------
-        # Build abundance interpolator (always, so __getitem__ works)
-        # ------------------------------------------------------------------
-        # Each era integrates a different (growing) set of species; embed every
-        # era's solution into the common abundance-vector columns *by name*, so
-        # eras with fewer species (HT: n,p; MT: 12) line up with the LT layout.
-        names = self._abundance_names
-        col = {s: i for i, s in enumerate(names)}
-        HT_names = ["n", "p"]
-        MT_names = nucl._mt_net.species
-
-        def _embed(sol_y, era_names):
-            out = np.zeros((sol_y.shape[1], len(names)))
-            for j, nm in enumerate(era_names):
-                out[:, col[nm]] = sol_y[j]
-            return out
-
-        _t_nuc = np.concatenate((sol_HT.t, sol_MT.t[1:], sol_LT.t[1:]))
-        _Y_nuc = np.vstack((_embed(sol_HT.y, HT_names),
-                            _embed(sol_MT.y, MT_names)[1:, :],
-                            _embed(sol_LT.y, names)[1:, :]))
-        self._Y_of_t = interp1d(_t_nuc, _Y_nuc, axis=0, bounds_error=False,
-                                fill_value=(0, _Y_nuc[-1]))
-
-        # ------------------------------------------------------------------
-        # Optional output: full time evolution of background + abundances
-        # ------------------------------------------------------------------
-        if cfg.output_time_evolution:
-            self._write_time_evolution(
-                sol_HT, sol_MT, sol_LT, t_weak, t_nucl,
-                nTOp_frwrd_HT_norm, nTOp_bkwrd_HT_norm,
-                nTOp_f_MT, nTOp_b_MT, nTOp_f_LT, nTOp_b_LT,
-                nucl, YA,
-            )
-
-        # ------------------------------------------------------------------
-        # Optional output: two-column (nuclide, final abundance Y) table
-        # ------------------------------------------------------------------
-        if cfg.output_final_result:
-            self._write_final_result()
-
-        # ------------------------------------------------------------------
-        # Final observables
-        # ------------------------------------------------------------------
-        Tg_last  = self._Tg_vec[-1]
-        Tnu_last = self._Tnu_vec[-1]
-
-        Neff = self._N_eff(Tg_last, Tnu_last, Tnu_last, Tnu_last)
-
-        # Access final abundances by name from the dict built in the LT era.
-        Yp_f  = finL["p"];    Yd_f  = finL["H2"]; Yt_f  = finL["H3"]
-        YHe3_f = finL["He3"]; Ya_f  = finL["He4"]
-        YLi7_f = finL["Li7"]; YBe7_f = finL["Be7"]
-
-        YPBBN  = 4. * Ya_f
-        YPCMB  = ((cfg.He4Overma / 4.) * YPBBN
-                  / ((cfg.He4Overma / 4.) * YPBBN + cfg.HOverma * (1. - YPBBN)))
-
-        # The results dict returned by solve()/PyPRresults() and used by the
-        # get_quantity()/__getitem__/Neff/YPBBN/... accessors.  All nine keys
-        # below are computed unconditionally from the background + nuclear
-        # solve and are always present, regardless of which optional flags
-        # (incomplete_decoupling, spectral_distortions, network, ...) are set
-        # -- there are no flag-dependent placeholder entries here.  The only
-        # other (file) output that does depend on a flag is the
-        # _write_time_evolution TSV's "Nheating" column, see its docstring.
-        self._results = {
-            "Neff":            Neff,
-            "Omeganurel":      self._Omeganuh2_relnu() * 1e+6,
-            "OneOverOmeganunr": 1. / (self._Omeganuh2_nrnu() * 1e-6),
-            "YPCMB":           YPCMB,
-            "YPBBN":           YPBBN,
-            "DoH":             Yd_f / Yp_f,
-            "He3oH":           (Yt_f + YHe3_f) / Yp_f,
-            "He3oHe4":         (Yt_f + YHe3_f) / Ya_f,
-            "Li7oH":           (YLi7_f + YBe7_f) / Yp_f,
-        }
-        return self._results
-
-    def _write_final_result(self):
-        """Write a two-column ``nuclide  Y`` table of final abundances.
-
-        Dumps every tracked nuclide of the active network and its final
-        mass-fraction abundance ``Y`` at the end of BBN to
-        ``cfg.output_final_file``.  ``Y`` is normalised so that
-        ``sum_s A_s Y_s = 1`` (A = mass number), i.e. it is the per-baryon
-        abundance weighted by A.  The rows are exactly the species of the
-        chosen network: 8 for ``small``, 12 for ``medium``, ~59 for ``large``,
-        in abundance-vector order (``n`` and ``p`` first).
-
-        Enabled by ``output_final_result=True``; the destination is
-        ``output_final_file`` (relative paths resolve against the current
-        working directory, like ``output_file``).  Typical use -- get the
-        full nuclide vector of a
-        single run without going through ``get_quantity`` for each name::
-
-            PyPR(params={'output_final_result': True,
-                              'output_final_file': 'results/run_final.dat',
-                              'network': 'large'}).solve()
-
-        produces a file whose first lines read::
-
-            # nuclide       Y
-            n             4.032109e-16
-            p             7.530243e-01
-            H2            1.835287e-05
-            ...
-        """
-        cfg  = self.cfg
-        # Resolve relative paths against the current working directory (the
-        # universal convention), same rule as output_file.
-        path = os.path.abspath(cfg.output_final_file)
-        out_dir = os.path.dirname(path)
-        if out_dir:
-            os.makedirs(out_dir, exist_ok=True)
-        names = self._abundance_names
-        with open(path, 'w') as f:
-            f.write(f"# {'nuclide':<12}Y\n")
-            for nm in names:
-                f.write(f"{nm:<14}{self._Y_final[nm]:.6e}\n")
-        # Always announce: this file is written only on explicit request
-        # (output_final_result=True), so the user wants to know where it landed.
-        print(f"[output] Final abundances ({len(names)} nuclides) written to {path}")
-
-    def _write_time_evolution(self, sol_HT, sol_MT, sol_LT, t_weak, t_nucl,
-                              nTOp_frwrd_HT_norm, nTOp_bkwrd_HT_norm,
-                              nTOp_f_MT, nTOp_b_MT, nTOp_f_LT, nTOp_b_LT,
-                              nucl, YA):
-        """Write the full background + abundance time series to a TSV file.
-
-        Enabled by ``output_time_evolution=True``; the destination is
-        ``cfg.output_file``.  Works for all three networks
-        (``small``/``medium``/``large``) -- ``Y<species>`` columns are
-        derived from ``self._abundance_names`` (8 / 12 / ~59 nuclides).
-
-        Columns, always present:
-            ``a``, ``T``, ``t``, ``H``       -- scale factor, photon
-                temperature [MeV], cosmic time [s], Hubble rate [s^-1];
-            ``Tnue``, ``Tnumu``, ``Tnutau``  -- the three flavour neutrino
-                temperatures [MeV];
-            ``Y<species>``                   -- one column per tracked
-                nuclide (mass-fraction abundance). During the HT era (and
-                before ``T_start_cosmo``), where every nuclide but n/p is
-                not yet integrated, its column holds the Nuclear Statistical
-                Equilibrium (Saha) prediction ``YA(name, Yn, Yp, T)``
-                (``solve()``'s local ``YA``, IDEAS2.md item 1) instead of a
-                hard 0 -- giving a smooth, physically-motivated curve in
-                log-log abundance plots instead of a gap. From the MT era
-                onward the column is the actual integrated value (which may
-                still be 0 or tiny for an untracked/negligible heavy
-                nuclide -- the Saha formula is not applied there, as NSE no
-                longer holds and ``BindE/(kB T)`` would overflow at low T9);
-            ``n_to_p_weak_rate``, ``p_to_n_weak_rate`` -- n<->p weak rates
-                [s^-1] (zero before the nuclear network starts).
-
-        Conditional columns:
-            ``Nheating`` -- the NEVO heating function N(T_gamma) driving the
-                a(T_gamma) ODE (see :meth:`_setup_background_and_cosmo`).
-                Included only when ``self._has_heating_table`` (i.e.
-                ``cfg.incomplete_decoupling=True``); under
-                ``InstantaneousDecoupling`` it would just be a column of
-                zeros, so it is omitted entirely.
-            per-reaction flux columns (``<reaction>_frwrd``) -- included only
-                when ``cfg.output_rates_time_evolution=True`` *and*
-                ``network`` is ``small``/``medium``.  Omitted for
-                ``network="large"`` (~433 reactions): use the
-                ``run[species](t)`` abundance interpolators (and the
-                tabulated rates on ``nucl``) directly if reaction-level
-                fluxes are needed for the large network.
-        """
-        cfg = self.cfg
-        # Derive column names from the actual abundance names so custom networks
-        # (which may have fewer or different nuclides than the standard 8 or 12)
-        # produce a TSV with the correct number of columns.
-        nuc_cols = ["Y" + s for s in self._abundance_names]
-        n_nuc = len(nuc_cols)
-
-        Y_of_t = self._Y_of_t
-
-        # Uniform log-spaced output grid from T_start_cosmo to end of LT era
-        t_cosmo = self._t_of_T(cfg.T_start_cosmo / cfg.MeV_to_Kelvin)
-        t_end   = sol_LT.t[-1]
-        t_out   = np.logspace(np.log10(t_cosmo), np.log10(t_end), cfg.output_n_points)
-
-        a_out = self._a_of_t(t_out)
-        T_out = self._T_of_t(t_out)
-
-        Tnue_of_t   = interp1d(self._t_vec, self._Tnue_vec,   bounds_error=False,
-                               fill_value="extrapolate", kind='linear')
-        Tnumu_of_t  = interp1d(self._t_vec, self._Tnumu_vec,  bounds_error=False,
-                               fill_value="extrapolate", kind='linear')
-        Tnutau_of_t = interp1d(self._t_vec, self._Tnutau_vec, bounds_error=False,
-                               fill_value="extrapolate", kind='linear')
-        Tnue_out   = Tnue_of_t(t_out)
-        Tnumu_out  = Tnumu_of_t(t_out)
-        Tnutau_out = Tnutau_of_t(t_out)
-
-        H_out = np.array([
-            self._Hubble(T_out[i], Tnue_out[i], Tnumu_out[i], Tnutau_out[i])
-            for i in range(t_out.size)
-        ])
-
-        # Weak rates: zero before nuclear network starts
-        t_start = sol_HT.t[0]
-        T_K_out = T_out * cfg.MeV_to_Kelvin
-        weak_n_to_p_out = np.zeros_like(t_out)
-        weak_p_to_n_out = np.zeros_like(t_out)
-
-        mask_ht = (t_out >= t_start) & (t_out <= t_weak)
-        mask_mt = (t_out >  t_weak)  & (t_out <= t_nucl)
-        mask_lt =  t_out >  t_nucl
-
-        weak_n_to_p_out[mask_ht] = nTOp_frwrd_HT_norm(T_K_out[mask_ht])
-        weak_p_to_n_out[mask_ht] = nTOp_bkwrd_HT_norm(T_K_out[mask_ht])
-        weak_n_to_p_out[mask_mt] = nTOp_f_MT(T_K_out[mask_mt])
-        weak_p_to_n_out[mask_mt] = nTOp_b_MT(T_K_out[mask_mt])
-        weak_n_to_p_out[mask_lt] = nTOp_f_LT(T_K_out[mask_lt])
-        weak_p_to_n_out[mask_lt] = nTOp_b_LT(T_K_out[mask_lt])
-
-        # Abundances: zero before nuclear network starts
-        Y_out = np.zeros((len(t_out), n_nuc))
-        mask_nuc = t_out >= t_start
-        Y_out[mask_nuc] = Y_of_t(t_out[mask_nuc])
-
-        # ------------------------------------------------------------------
-        # Fill not-yet-tracked abundances with their NSE (Saha) prediction
-        # ------------------------------------------------------------------
-        # _embed (in solve()) zero-fills any species not yet integrated in a
-        # given era -- every nuclide but n/p during the HT era, and every
-        # species before t_start (only the cosmological background has been
-        # solved there). Those exact 0s are a hard discontinuity in a
-        # log-log abundance plot (pyprimat.gui.panels.render_evolution_panel
-        # masks out y<=0 entirely). Replace each such 0 with the Nuclear
-        # Statistical Equilibrium value YA(name, Yn, Yp, T) (IDEAS2.md item
-        # 1): at these early, hot times every nuclide *is* in NSE, and YA's
-        # eta_b^(A-1) suppression already makes it negligibly small there --
-        # so this gives a smooth, physical curve down to T_start_cosmo
-        # instead of a gap.
-        i_n = self._abundance_names.index("n")
-        i_p = self._abundance_names.index("p")
-        Yn_for_NSE = Y_out[:, i_n].copy()
-        Yp_for_NSE = Y_out[:, i_p].copy()
-        mask_pre = ~mask_nuc
-        if mask_pre.any():
-            # Before t_start, n and p are not yet integrated either; use the
-            # n<->p weak-equilibrium fraction at T_out (Yn_i_func in solve(),
-            # b/(b+f) with b, f the backward/forward HT weak rates).
-            b_pre = nTOp_bkwrd_HT_norm(T_K_out[mask_pre])
-            f_pre = nTOp_frwrd_HT_norm(T_K_out[mask_pre])
-            Yn_eq = b_pre / (b_pre + f_pre)
-            Yn_for_NSE[mask_pre] = Yn_eq
-            Yp_for_NSE[mask_pre] = 1. - Yn_eq
-            Y_out[mask_pre, i_n] = Yn_eq
-            Y_out[mask_pre, i_p] = 1. - Yn_eq
-
-        # Restrict the replacement to the HT era (t_out < t_weak, which also
-        # covers t_out < t_start): this is the only region where _embed is
-        # guaranteed to zero-fill *every* non-n/p species (only n,p are
-        # integrated there), and where T is high enough (>= T_weak ~ 1 MeV)
-        # that BindE*keV/(kB*T) stays of order a few hundred at most --
-        # exp() cannot overflow. For t_out >= t_weak, a column that is
-        # exactly 0 reflects the MT/LT solution itself (a genuinely tiny or
-        # untracked heavy nuclide); applying the Saha formula there would be
-        # both physically wrong (NSE has long broken down) and numerically
-        # unsafe (BindE/(kB T) -> large at the low T9 of the LT era, so
-        # exp() overflows to inf, and inf*0 from the eta_b^(A-1)/Y^... prefactors
-        # yields nan).
-        mask_ht_or_pre = t_out < t_weak
-        for j, name in enumerate(self._abundance_names):
-            if name in ("n", "p"):
-                continue
-            zero = mask_ht_or_pre & (Y_out[:, j] == 0.)
-            if zero.any():
-                Y_out[zero, j] = YA(name, Yn_for_NSE[zero], Yp_for_NSE[zero],
-                                     T_K_out[zero])
-
-        if cfg.output_rates_time_evolution and not cfg.is_large:
-            rxn_rate_cols = sorted(
-                name for name in dir(nucl)
-                if name.endswith("_frwrd") and callable(getattr(nucl, name))
-            )
-            rxn_rate_out = np.zeros((len(t_out), len(rxn_rate_cols)))
-            rxn_rate_out[mask_nuc] = np.column_stack([
-                getattr(nucl, name)(T_K_out[mask_nuc]) for name in rxn_rate_cols
-            ])
-        else:
-            # Per-reaction flux columns are omitted for network="large"
-            # (~433 reactions): use the run[species](t) abundance
-            # interpolators instead if reaction-level fluxes are needed.
-            if cfg.output_rates_time_evolution and cfg.is_large:
-                print("[output] output_rates_time_evolution ignored for "
-                      "network='large' (~433 reactions); per-reaction flux "
-                      "columns are omitted from the TSV.")
-            rxn_rate_cols = []
-            rxn_rate_out = np.empty((len(t_out), 0))
-
-        # The "Nheating" column is the NEVO heating function N(T_gamma) that
-        # drives the a(T_gamma) ODE (see _setup_background_and_cosmo).  It is
-        # only physically meaningful when a real NEVO table was loaded
-        # (cfg.incomplete_decoupling=True); under InstantaneousDecoupling,
-        # self._N_NEVO_of_Tg is the N=0 stub used to close the ODE under plain
-        # EM entropy conservation, so writing it out would just be a column of
-        # zeros masquerading as data.  Include the column only when it carries
-        # real information (self._has_heating_table, see
-        # _setup_background_and_cosmo).
-        heating_cols = ["Nheating"] if self._has_heating_table else []
-        if self._has_heating_table:
-            heating_out = (self._N_NEVO_of_Tg(T_out),)
-        else:
-            heating_out = ()
-
-        # Resolve relative paths against the current working directory (the
-        # universal convention), not the installed-package directory.
-        out_path = os.path.abspath(cfg.output_file)
-        os.makedirs(os.path.dirname(out_path), exist_ok=True)
-        out_data = np.column_stack((a_out, T_out, t_out, H_out,
-                                    Tnue_out, Tnumu_out, Tnutau_out)
-                                    + heating_out
-                                    + (Y_out,
-                                       weak_n_to_p_out, weak_p_to_n_out, rxn_rate_out))
-        out_header = "\t".join(["a", "T", "t", "H",
-                                 "Tnue", "Tnumu", "Tnutau"]
-                               + heating_cols
-                               + nuc_cols
-                               + ["n_to_p_weak_rate", "p_to_n_weak_rate"] + rxn_rate_cols)
-        np.savetxt(out_path, out_data, delimiter='\t', header=out_header, comments='')
-
-        # Always announce: written only on explicit request (output_time_evolution=True).
-        print(f"[output] Time-evolution data ({len(t_out)} rows) written to {out_path}")
+        return results
 
     # ======================================================================
     # Public API
@@ -1071,28 +159,29 @@ class PyPR:
     @property
     def T_of_t(self):
         """T_γ(t) interpolator [MeV], available after initialisation."""
-        return self._T_of_t
+        return self.background.T_of_t
 
     @property
     def t_of_T(self):
         """t(T_γ) interpolator [s], available after initialisation."""
-        return self._t_of_T
+        return self.background.t_of_T
 
     @property
     def a_of_T(self):
         """Scale factor a(T_γ), available after initialisation.
 
         ``a`` follows the same normalisation as the internal a(T) ODE
-        (:meth:`_setup_background_and_cosmo`): entropy conservation
-        ``a^3 * spl(T) = const`` fixed so that ``a * T -> T0CMB`` [MeV] as
-        ``T -> 0``, i.e. ``a = 1`` today up to the small entropy-injection
-        correction from e+e- annihilation encoded in ``spl(T)``.
+        (:meth:`pyprimat.background.StandardBackground._setup_background_and_cosmo`):
+        entropy conservation ``a^3 * spl(T) = const`` fixed so that
+        ``a * T -> T0CMB`` [MeV] as ``T -> 0``, i.e. ``a = 1`` today up to the
+        small entropy-injection correction from e+e- annihilation encoded in
+        ``spl(T)``.
 
         Example
         -------
         >>> p.a_of_T(1.0)   # scale factor at T_gamma = 1 MeV
         """
-        return self._a_of_T
+        return self.background.a_of_T
 
     @property
     def T_of_a(self):
@@ -1100,7 +189,7 @@ class PyPR:
 
         Inverse of :attr:`a_of_T`; same normalisation convention for ``a``.
         """
-        return self._T_of_a
+        return self.background.T_of_a
 
     @property
     def a_of_t(self):
@@ -1109,7 +198,7 @@ class PyPR:
         Same normalisation as :attr:`a_of_T`; ``t`` is the cosmic time [s]
         used by :attr:`T_of_t`/:attr:`t_of_T`.
         """
-        return self._a_of_t
+        return self.background.a_of_t
 
     @property
     def t_of_a(self):
@@ -1117,7 +206,7 @@ class PyPR:
 
         Inverse of :attr:`a_of_t`; same normalisation convention for ``a``.
         """
-        return self._t_of_a
+        return self.background.t_of_a
 
     def __getitem__(self, species):
         """Return Y(t) for a species name (e.g. 'H2', 'He4', 'Li7').
@@ -1125,25 +214,26 @@ class PyPR:
         Calls solve() automatically if needed.
         """
         self._ensure_solved()
-        if species not in self._abundance_names:
+        names = self.nuclear.abundance_names
+        if species not in names:
             raise KeyError(
-                f"Unknown species '{species}'. Available: {self._abundance_names}"
+                f"Unknown species '{species}'. Available: {names}"
             )
-        idx = self._abundance_names.index(species)
+        idx = names.index(species)
         def fn(t):
             t_arr = np.atleast_1d(np.asarray(t, dtype=float))
-            vals  = self._Y_of_t(t_arr)[:, idx]
+            vals  = self.nuclear.Y_of_t(t_arr)[:, idx]
             return float(vals[0]) if np.ndim(t) == 0 else vals
         return fn
 
     def _ensure_solved(self):
-        if self._results is None:
+        if self.nuclear.results is None:
             self.solve()
 
     def PyPRresults(self):
         """Return the BBN result dict, running ``solve()`` first if needed."""
         self._ensure_solved()
-        return self._results
+        return self.nuclear.results
 
     @property
     def abundance_names(self):
@@ -1153,17 +243,17 @@ class PyPR:
         also guarantees ``self.A``/``N``/``Z`` cover every species (handy for
         plotting ``A_i Y_i`` for all nuclides)."""
         self._ensure_solved()
-        return self._abundance_names
+        return self.nuclear.abundance_names
 
     # Convenience accessors
-    def Neff(self):          self._ensure_solved(); return self._results["Neff"]
-    def Omeganurel(self):    self._ensure_solved(); return self._results["Omeganurel"]
-    def Omeganunonrel(self): self._ensure_solved(); return 1. / self._results["OneOverOmeganunr"]
-    def YPCMB(self):         self._ensure_solved(); return self._results["YPCMB"]
-    def YPBBN(self):         self._ensure_solved(); return self._results["YPBBN"]
-    def DoH(self):           self._ensure_solved(); return self._results["DoH"]
-    def He3oH(self):         self._ensure_solved(); return self._results["He3oH"]
-    def Li7oH(self):         self._ensure_solved(); return self._results["Li7oH"]
+    def Neff(self):          self._ensure_solved(); return self.nuclear.results["Neff"]
+    def Omeganurel(self):    self._ensure_solved(); return self.nuclear.results["Omeganurel"]
+    def Omeganunonrel(self): self._ensure_solved(); return 1. / self.nuclear.results["OneOverOmeganunr"]
+    def YPCMB(self):         self._ensure_solved(); return self.nuclear.results["YPCMB"]
+    def YPBBN(self):         self._ensure_solved(); return self.nuclear.results["YPBBN"]
+    def DoH(self):           self._ensure_solved(); return self.nuclear.results["DoH"]
+    def He3oH(self):         self._ensure_solved(); return self.nuclear.results["He3oH"]
+    def Li7oH(self):         self._ensure_solved(); return self.nuclear.results["Li7oH"]
 
     def get_quantity(self, quantity):
         """Return a scalar BBN quantity by name.
@@ -1173,14 +263,16 @@ class PyPR:
         cfg.Nuclides ('H2', 'He4', 'Li7', ...) for the final mass fraction Y.
         """
         self._ensure_solved()
-        if quantity in self._results:
-            return self._results[quantity]
-        if quantity in self._Y_final:
-            return self._Y_final[quantity]
+        results = self.nuclear.results
+        Y_final = self.nuclear.Y_final
+        if quantity in results:
+            return results[quantity]
+        if quantity in Y_final:
+            return Y_final[quantity]
         raise ValueError(
             f"Unknown quantity '{quantity}'. "
-            f"Valid result keys: {list(self._results.keys())}. "
-            f"Valid nuclide names: {list(self._Y_final.keys())}."
+            f"Valid result keys: {list(results.keys())}. "
+            f"Valid nuclide names: {list(Y_final.keys())}."
         )
 
 
@@ -1277,20 +369,22 @@ def _mc_run_batch(base_params, rate_keys, quantities, seeds):
     depend on ``len(rate_keys)``) and uses it to perturb the neutron lifetime:
     ``tau_n_sample = tau_n_central + std_tau_n * randn()``.  When
     ``cfg.tau_n_flag`` is True this rescales the weak-rate normalisation
-    ``_NormWeakRates = 1/(Fn * tau_n)`` (``_setup_weak_rates``) without
-    recomputing the ``Fn`` integral -- ``Fn`` does not depend on ``tau_n``, so
-    ``_NormWeakRates * tau_n`` is invariant and is precomputed once before the
-    loop.  When ``cfg.tau_n_flag`` is False, ``tau_n`` does not enter the
-    normalisation and the draw is a harmless no-op (kept so the RNG stream is
-    identical either way).
+    ``background.NormWeakRates = 1/(Fn * tau_n)``
+    (``StandardBackground._setup_weak_rates``) without recomputing the ``Fn``
+    integral -- ``Fn`` does not depend on ``tau_n``, so
+    ``background.NormWeakRates * tau_n`` is invariant and is precomputed once
+    before the loop.  When ``cfg.tau_n_flag`` is False, ``tau_n`` does not
+    enter the normalisation and the draw is a harmless no-op (kept so the RNG
+    stream is identical either way).
     """
     inst = PyPR(params=base_params)
     cfg  = inst.cfg
     tau_n_central = cfg.tau_n
-    # _NormWeakRates = 1/(Fn * tau_n) (cfg.tau_n_flag=True case of
-    # _setup_weak_rates), so this product is the tau_n-independent 1/Fn --
-    # rescaling by it for each sampled tau_n avoids recomputing Fn.
-    norm_times_tau_n = inst._NormWeakRates * tau_n_central
+    # background.NormWeakRates = 1/(Fn * tau_n) (cfg.tau_n_flag=True case of
+    # StandardBackground._setup_weak_rates), so this product is the
+    # tau_n-independent 1/Fn -- rescaling by it for each sampled tau_n avoids
+    # recomputing Fn.
+    norm_times_tau_n = inst.background.NormWeakRates * tau_n_central
     results = []
     for seed in seeds:
         rng    = np.random.default_rng(seed)
@@ -1300,7 +394,7 @@ def _mc_run_batch(base_params, rate_keys, quantities, seeds):
         tau_n_sample = tau_n_central + cfg.std_tau_n * rng.standard_normal()
         if cfg.tau_n_flag:
             cfg.tau_n = tau_n_sample
-            inst._NormWeakRates = norm_times_tau_n / tau_n_sample
+            inst.background.NormWeakRates = norm_times_tau_n / tau_n_sample
         inst.solve()
         results.append([inst.get_quantity(q) for q in quantities])
     return results

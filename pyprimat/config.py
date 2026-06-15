@@ -291,18 +291,13 @@ class PyPRConfig:
         # Load nuclide data from CSV
         self._load_nuclide_data()
 
-        # Initialize nuclear rate variation dicts
+        # Initialize nuclear rate variation dicts as empty for now.  They are
+        # populated with the configured network's reactions *after* user
+        # overrides are applied below (self.network may itself be one of
+        # those overrides), so that the per-reaction defaults match the
+        # network actually requested by the caller.
         object.__setattr__(self, "p_rxn", {})
         object.__setattr__(self, "NP_delta_rxn", {})
-        from .nuclear import load_reaction_names
-        
-        # Load the selected network names to initialize variation parameters
-        reactions_with_tables = load_reaction_names(self.data_dir, self.network)
-        for entry in reactions_with_tables:
-            # Extract only the bare_name for initialization
-            rxn = re.split(r'[, ]+', entry, maxsplit=1)[0]
-            self.p_rxn[rxn] = 0.0
-            self.NP_delta_rxn[rxn] = 0.0
 
         user_keys = set(params.keys()) if params else set()
 
@@ -331,6 +326,20 @@ class PyPRConfig:
                     f"network must be 'small' or name an existing file in "
                     f"rates/nuclear/networks; missing {path!r}"
                 )
+
+        # Default every reaction of the *configured* network (self.network,
+        # finalised by the overrides above) to p_<rxn>=0 / NP_delta_<rxn>=0,
+        # i.e. "no rate variation".  Use setdefault so any p_<rxn>/NP_delta_<rxn>
+        # override already applied above is not clobbered.
+        from .nuclear import load_reaction_names
+        reactions_with_tables = load_reaction_names(self, self.network)
+        for entry in reactions_with_tables:
+            # Each entry is "bare_name" or "bare_name, filename.txt"; only the
+            # bare reaction name is used as the p_<rxn>/NP_delta_<rxn> key.
+            rxn = re.split(r'[, ]+', entry, maxsplit=1)[0]
+            self.p_rxn.setdefault(rxn, 0.0)
+            self.NP_delta_rxn.setdefault(rxn, 0.0)
+
         # Detect optional libraries for flags not explicitly set by the caller.
         # Messages are stored for deferred printing (after the banner).
         self._init_messages = []

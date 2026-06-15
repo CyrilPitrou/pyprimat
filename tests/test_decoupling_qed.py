@@ -281,8 +281,8 @@ def test_nevo_file_selection():
     # as e+e- annihilations proceed.  The two NEVO tables give different
     # T_νe values there, reflecting different plasma equations of state.
     T_probe = 2.0   # MeV
-    ratio_qed   = inst_qed._TnuofT(T_probe)   / T_probe
-    ratio_noqed = inst_noqed._TnuofT(T_probe) / T_probe
+    ratio_qed   = inst_qed.background.TnuofT(T_probe)   / T_probe
+    ratio_noqed = inst_noqed.background.TnuofT(T_probe) / T_probe
 
     # Both ratios must be in (0, 1] (neutrinos are cooler than or equal to
     # photons after partial reheating) and they must differ between the two
@@ -300,14 +300,14 @@ def test_nevo_file_selection():
 # ---------------------------------------------------------------------------
 # "Nheating" time-evolution column: present only for a real NEVO heating
 # table (incomplete_decoupling=True), absent for the N=0 stub used by
-# InstantaneousDecoupling (see PyPR._has_heating_table /
+# InstantaneousDecoupling (see Background.has_heating_table /
 # PyPR._write_time_evolution).
 # ---------------------------------------------------------------------------
 
 @pytest.mark.slow
 @pytest.mark.solve
 def test_has_heating_table_flag_tracks_incomplete_decoupling():
-    """``self._has_heating_table`` mirrors ``cfg.incomplete_decoupling``:
+    """``background.has_heating_table`` mirrors ``cfg.incomplete_decoupling``:
     True selects NEVOTable (a real N(T_gamma) heating table), False selects
     InstantaneousDecoupling (the N=0 stub)."""
     from pyprimat.main import PyPR
@@ -316,8 +316,8 @@ def test_has_heating_table_flag_tracks_incomplete_decoupling():
     # incomplete_decoupling=True; disable it for the instantaneous case.
     p_inst = PyPR({"network": "small", "incomplete_decoupling": False,
                     "spectral_distortions": False})
-    assert p_nevo._has_heating_table is True
-    assert p_inst._has_heating_table is False
+    assert p_nevo.background.has_heating_table is True
+    assert p_inst.background.has_heating_table is False
 
 
 @pytest.mark.slow
@@ -384,7 +384,7 @@ def test_time_evolution_HT_era_filled_with_NSE_value(tmp_path):
     # T_start_cosmo at 10 MeV).
     assert t[0] < 1e-2
 
-    for name in pr._abundance_names:
+    for name in pr.nuclear.abundance_names:
         if name in ("n", "p"):
             continue
         y = data[0, header.index("Y" + name)]

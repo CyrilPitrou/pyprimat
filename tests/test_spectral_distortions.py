@@ -59,15 +59,16 @@ def test_spectral_distortions_Neff():
 def test_analytic_distortion_shifts_Neff():
     """Analytic mu-type spectral distortions (delta_xi_nu != 0, Item 6) must
     shift Neff via the extra neutrino energy density rho_nu_SD, by exactly
-    the amount that _Hubble already adds to the expansion rate.
+    the amount that ``background.Hubble`` already adds to the expansion rate.
 
     Unlike the NEVO case above (where rho_nu_SD is 0 by construction), the
     analytic-distortion path (incomplete_decoupling=False,
     analytic_distortions=True) has a non-zero rho_nu_SD(T_nu)
-    (neutrino_history.AnalyticDistortion._rho_nu_SD). _Hubble adds the single
-    aggregate term self._rho_nu_SD(Tnu_avg) to rho_tot for the expansion
-    rate; _setup_derived_cosmo.N_eff now adds the *same* term (same Tnu_avg
-    convention) to rho_rad, so
+    (neutrino_history.AnalyticDistortion._rho_nu_SD).
+    ``background.Hubble`` adds the single aggregate term
+    ``background.rho_nu_SD(Tnu_avg)`` to rho_tot for the expansion rate;
+    ``StandardBackground._setup_derived_cosmo``'s ``N_eff`` now adds the
+    *same* term (same Tnu_avg convention) to rho_rad, so
 
         Neff_spec - Neff_base = rho_nu_SD(Tnu_last) / rho_g(Tg_last)
                                  / ((7/8)(4/11)^(4/3))
@@ -95,10 +96,10 @@ def test_analytic_distortion_shifts_Neff():
     diff = res_spec['Neff'] - res_base['Neff']
     assert 1e-3 < diff < 1e-2
 
-    Tg_last  = pr_spec._Tg_vec[-1]
-    Tnu_last = pr_spec._Tnu_vec[-1]
+    Tg_last  = pr_spec.background.Tg_vec[-1]
+    Tnu_last = pr_spec.background.Tnu_vec[-1]
     rho_g    = pr_spec.plasma.rho_g(Tg_last)
-    rho_SD   = pr_spec._rho_nu_SD(Tnu_last)
+    rho_SD   = pr_spec.background.rho_nu_SD(Tnu_last)
     diff_expected = rho_SD / rho_g / ((7. / 8.) * (4. / 11.) ** (4. / 3.))
 
     assert diff == pytest.approx(diff_expected, rel=1e-8)

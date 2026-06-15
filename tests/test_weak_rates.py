@@ -403,6 +403,6 @@ def test_recomputed_rates_match_cached():
     MeV_to_K = PyPRConfig().MeV_to_Kelvin
     for T_MeV in [0.5, 1.0, 3.0, 10.0]:
         T_K = T_MeV * MeV_to_K
-        for cached, fresh in ((r_cached._nTOp_frwrd, r_fresh._nTOp_frwrd),
-                              (r_cached._nTOp_bkwrd, r_fresh._nTOp_bkwrd)):
+        for cached, fresh in ((r_cached.background.weak_nTOp_frwrd_raw, r_fresh.background.weak_nTOp_frwrd_raw),
+                              (r_cached.background.weak_nTOp_bkwrd_raw, r_fresh.background.weak_nTOp_bkwrd_raw)):
             assert fresh(T_K) == pytest.approx(cached(T_K), rel=2e-3)

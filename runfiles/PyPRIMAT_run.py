@@ -86,7 +86,7 @@ if MyOptions.get("network", "small") in ("medium", "large"):
     print(f"  {'Nuclide':<10}  {'Y_i':>14}")
     print("  " + "-" * 26)
     for name in PyPRrun.abundance_names:
-        print(f"  {name:<10}  {PyPRrun._Y_final[name]:14.6e}")
+        print(f"  {name:<10}  {PyPRrun.nuclear.Y_final[name]:14.6e}")
     print(" ")
 
 print("--- running time: %s seconds ---" % (time.time() - start_time))

@@ -154,8 +154,8 @@ def test_external_background_a_of_T_matches_minimal_on_table_grid():
     Tg_min, Tg_max = p_min.cfg.T_end / p_min.cfg.MeV_to_Kelvin, 3.0  # MeV
     Tgs = np.logspace(np.log10(Tg_min), np.log10(Tg_max), 50)
 
-    a_min, a_ext = p_min._a_of_T(Tgs), p_ext._a_of_T(Tgs)
-    t_min, t_ext = p_min._t_of_T(Tgs), p_ext._t_of_T(Tgs)
+    a_min, a_ext = p_min.background.a_of_T(Tgs), p_ext.background.a_of_T(Tgs)
+    t_min, t_ext = p_min.background.t_of_T(Tgs), p_ext.background.t_of_T(Tgs)
 
     assert np.allclose(a_ext, a_min, rtol=1e-5)
     assert np.allclose(t_ext, t_min, rtol=1e-5)

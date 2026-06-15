@@ -70,17 +70,23 @@ def test_large_solve_conserves_baryon_and_matches_medium():
 
     # Baryon number: sum_s A_s Y_s = 1 to high precision.
     from pyprimat.config import PyPRConfig
-    A = {s: sum(PyPRConfig.Nuclides.get(s, [0, 0])) for s in big._Y_final}
+    A = {s: sum(PyPRConfig.Nuclides.get(s, [0, 0])) for s in big.nuclear.Y_final}
     # Build A for every large-network species from its (N,Z) in nuclides.csv.
     from pyprimat.nuclear import load_network
     ln = load_network(PyPRConfig({"network": "large", "verbose": False}))
     Avec = {s: int(n) + int(z) for s, n, z in zip(ln.species, ln.N, ln.Z)}
-    baryon = sum(Avec[s] * y for s, y in big._Y_final.items())
+    baryon = sum(Avec[s] * y for s, y in big.nuclear.Y_final.items())
     assert abs(baryon - 1.0) < 1e-6
 
     # Light-element finals agree with medium (relative, for the non-tiny ones).
-    for s in ("p", "H2", "H3", "He4", "Li7", "Be7"):
-        assert abs(big._Y_final[s] - med._Y_final[s]) / abs(med._Y_final[s]) < 2e-3
+    # H3/Li7/Be7 are excluded: the large network alone carries the
+    # tTOHe3Bm/Be7TOLi7Bp analytic decay reactions (commit 6221e43), whose
+    # laboratory decay constants convert ~0.23% of H3->He3 and ~18% of
+    # Be7->Li7 over the ~15-day integration window (T_end=0.001 MeV) -- a
+    # real large-network-only effect, not a regression (see CLAUDE.md
+    # "Per-nuclide final abundances").
+    for s in ("p", "H2", "He4"):
+        assert abs(big.nuclear.Y_final[s] - med.nuclear.Y_final[s]) / abs(med.nuclear.Y_final[s]) < 2e-3
 
 
 @_needs_ac2024
@@ -108,9 +114,9 @@ def test_large_network_time_evolution_tsv(tmp_path):
 
     # One Y<species> column per large-network nuclide; no reaction-flux
     # columns (output_rates_time_evolution defaults to False).
-    y_cols = ["Y" + s for s in big._abundance_names]
+    y_cols = ["Y" + s for s in big.nuclear.abundance_names]
     assert all(c in header for c in y_cols)
-    assert len(y_cols) == len(big._abundance_names)
+    assert len(y_cols) == len(big.nuclear.abundance_names)
     assert not any(h.endswith("_frwrd") for h in header)
 
     # IDEAS2.md item 1: the HT-era NSE (Saha) fill must stay finite even for
@@ -126,7 +132,11 @@ def test_large_network_time_evolution_tsv(tmp_path):
     # Compare the final-time row of the large-network TSV against the
     # medium-network's final abundances (same tolerance as the
     # final-abundance comparison in test_large_solve_conserves_baryon_and_matches_medium).
-    for s in ("He4", "H2", "Li7"):
+    # Li7 is excluded for the same reason as in that test: the large
+    # network's Be7TOLi7Bp decay reaction (commit 6221e43) converts ~18% of
+    # Be7 into Li7 over the full integration window, so large Li7 is ~4x
+    # medium Li7 by design (see CLAUDE.md "Per-nuclide final abundances").
+    for s in ("He4", "H2"):
         col = header.index("Y" + s)
         y_final_tsv = data[-1, col]
-        assert abs(y_final_tsv - med._Y_final[s]) / abs(med._Y_final[s]) < 2e-3
+        assert abs(y_final_tsv - med.nuclear.Y_final[s]) / abs(med.nuclear.Y_final[s]) < 2e-3

@@ -166,17 +166,20 @@ def test_default_run_matches_cli_reference():
         md for md in at.markdown if "| Quantity | Value |" in md.value
     ]
     ratios = _markdown_table_rows(ratios_md.value)
+    # These pins were last refreshed for the Be7->Li7+e+ / t->He3+e- decay
+    # reactions added since the previous pin (commit 6221e43), which shift
+    # YPBBN/DoH at the ~1e-7/~6e-9 level -- see tests/test_cli.py.
     assert ratios[r"$N_{\text{eff}}$"] == ["3.04397730"]
-    assert ratios[r"$Y_P\ (\text{BBN})$"] == ["0.24699534"]
-    assert ratios[r"$\text{D}/\text{H}$"] == ["2.4349347e-05"]
+    assert ratios[r"$Y_P\ (\text{BBN})$"] == ["0.24699520"]
+    assert ratios[r"$\text{D}/\text{H}$"] == ["2.4349404e-05"]
 
     # Per-nuclide final-abundance Markdown table (render_results_panel).
     [abundances_md] = [
         md for md in at.markdown if "| Nuclide | A | Z | Y |" in md.value
     ]
     by_nuclide = _markdown_table_rows(abundances_md.value)
-    assert float(by_nuclide[nuclide_latex("p")][-1]) == pytest.approx(7.529445e-01, rel=1e-5)
-    assert float(by_nuclide[nuclide_latex("He4")][-1]) == pytest.approx(0.24699534223598402 / 4., rel=1e-5)
+    assert float(by_nuclide[nuclide_latex("p")][-1]) == pytest.approx(7.529446e-01, rel=1e-5)
+    assert float(by_nuclide[nuclide_latex("He4")][-1]) == pytest.approx(0.24699519831027555 / 4., rel=1e-5)
 
 
 def test_evolution_panel_renders_with_default_selection():
@@ -223,8 +226,9 @@ def test_time_evolution_download_available_for_large_network():
     """The "Time evolution (output_time_evolution.tsv)" download button is
     offered for ``network="large"`` too, not just small/medium.
 
-    ``_write_time_evolution`` (main.py) derives its ``Y<species>`` columns
-    from ``self._abundance_names``, which already covers all three networks
+    ``NuclearNetwork._write_time_evolution`` (bbn_network.py) derives its
+    ``Y<species>`` columns from ``self.abundance_names``, which already
+    covers all three networks
     (8/12/~59 nuclides, see ``test_large_network.py::
     test_large_network_time_evolution_tsv``) -- the GUI's ``_solve`` must not
     special-case "large" out of generating that TSV.
