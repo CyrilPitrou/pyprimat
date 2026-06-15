@@ -19,6 +19,7 @@
 \usepackage{amsmath,amssymb}
 \usepackage{graphicx}
 \usepackage{booktabs}
+\usepackage{longtable}
 \usepackage{array}
 \usepackage{xcolor}
 \usepackage{listings}
@@ -1063,6 +1064,71 @@ m_i$. The masses and spins are taken from the AME/NUBASE tables
 \cite{AME2016}. PyPRIMAT computes $(\alpha,\beta,\gamma)$ once per reaction in
 \code{compute\_detailed\_balance\_coefficients} and stores them in
 \code{rates/nuclear/data/detailed\_balance.csv}.
+
+% =====================================================================
+\section{Nuclear reaction list and sources}\label{app:reactions}
+% =====================================================================
+PyPRIMAT's networks are plain lists of reaction names under
+\code{rates/nuclear/networks/} (the \code{small}, \code{medium} and
+\code{large} files); each name maps to a rate table under
+\code{rates/nuclear/tables/} whose header line records the
+reaction and a short source code \code{ref=...}.
+Tables~\ref{tab:rxn-small}--\ref{tab:rxn-large} reproduce every reaction,
+expanded as $a+b\leftrightarrow c+d$ (each tabulated forward rate is supplemented
+by its detailed-balance reverse, App.~\ref{app:nse}), with that source code.
+Throughout, $a\equiv{}^4$He ($\alpha$), $d\equiv{}^2$H, $t\equiv{}^3$H,
+$g\equiv\gamma$, $n,p$ the nucleons, and $e^\mp$ the leptons of $\beta$-decays
+(one-way, shown with $\to$). A $^\dagger$ marks rates that are analytic fits
+hard-coded in PRIMAT-Main.m; ``(borrowed)'' marks a rate set equal to another
+reaction's.
+
+The source codes follow the convention ``\textsc{Aaa}\,YY'' = first-author
+prefix + year (e.g. \texttt{And06} = Ando et al.\ 2006). The principal ones are:
+\textbf{And06} Ando et al.\ (2006, $n(p,\gamma)d$ EFT);
+\textbf{Moscoso2021} Moscoso et al.\ (2021);
+\textbf{Gom17} G\'omez I\~nesta, Iliadis \& Coc (2017);
+\textbf{Ser04} Serpico et al.\ (2004);
+\textbf{Ili16} Iliadis et al.\ (2016);
+\textbf{deSouza19a/b}, \textbf{deSouza2020} de Souza, Iliadis \& Coc (2019, 2020);
+\textbf{DAACV04} Descouvemont, Adahchour, Angulo, Coc \& Vangioni (2004);
+\textbf{NACRE II} Xu et al.\ (2013) \cite{NACRE2};
+\textbf{NACRE} Angulo et al.\ (1999);
+\textbf{ILCCF10} Iliadis, Longland, Champagne, Coc \& Fitzgerald (2010);
+\textbf{CGXSV12} Coc, Goriely, Xu, Saimpert \& Vangioni (2012) \cite{Coc2012};
+\textbf{TALYS2} the TALYS statistical-model code (Koning et al.);
+\textbf{CF88} Caughlan \& Fowler (1988);
+\textbf{MF89} Malaney \& Fowler (1989);
+\textbf{Rau94} Rauscher et al.\ (1994);
+\textbf{Wag69} Wagoner (1969);
+\textbf{Aud03} Audi, Wapstra \& Thibault (2003, $\beta$-decay/mass data);
+\textbf{Trezzi2017} Trezzi et al.\ (LUNA, 2017);
+\textbf{Bar16} Barbagallo et al.\ (n\_TOF, 2016);
+\textbf{Rij19} Rijal et al.\ (2019).
+The remaining short author--year codes -- almost all carrying the $^\dagger$
+analytic-fit marker (\texttt{Bal95}, \texttt{Bar97C}, \texttt{Efr96},
+\texttt{FK90}, \texttt{Has09c}, \texttt{Iga95}, \texttt{Kaw91}, \texttt{Koe91},
+\texttt{Men12}, \texttt{Nag06}, \texttt{Tang03}, \texttt{Wan91},
+\texttt{Wie87/89}, \texttt{TUNL\&Cam08}, \texttt{MF89\&Hei98},
+\texttt{Des99Bea01}) -- decode by the same first-author/year rule, but their
+full bibliographic entries are not reproduced here; they are catalogued in the
+compilations of Coc et al.\ \cite{Coc2012} and the NACRE/NACRE-II evaluations
+\cite{NACRE2} and are not all individually retrievable from the shipped tables.
+
+\input{tab_reactions}
+
+% =====================================================================
+\section{Nuclide data}\label{app:nuclides}
+% =====================================================================
+The nuclides tracked by the networks and their data are loaded from
+\code{nuclides.csv} (under \code{rates/nuclear/data/}): the neutron and proton
+numbers $(N,Z)$,
+the mass number $A=N+Z$, the spin $J$ (degeneracy $g_i=2J+1$), and the atomic
+mass excess $\Delta$. The latter give the binding energies
+$B_i=Z_i m_p+(A_i-Z_i)m_n-m_i$ and the reaction $Q$-values that fix the
+NSE abundances and the detailed-balance coefficients of App.~\ref{app:nse}.
+Table~\ref{tab:nuclides} lists all 59 tracked nuclides.
+
+\input{tab_nuclides}
 
 % =====================================================================
 \section{Reproducing the figures}
