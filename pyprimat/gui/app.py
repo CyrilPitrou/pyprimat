@@ -82,6 +82,20 @@ def _solve(params_items):
     """
     params = dict(params_items)
 
+    # For the large network, always integrate the "decay-time" (DT) era so the
+    # evolution panel can optionally show abundances past the end of BBN, out to
+    # the age of the Universe (its "Show radioactive decays" toggle).  The DT
+    # integration is a cheap constant-matrix exponentiation (~0.1 s), and the
+    # solve()-level guard ignores decay_era for the small/medium networks, so we
+    # can set it unconditionally for large only.  t_decay_end is set to ~13.8 Gyr
+    # (the age of the Universe) unless the user already overrode it.
+    AGE_UNIVERSE_S = 13.8e9 * 365.25 * 86400.0   # ≈ 4.35×10^17 s
+    decay_extras = {}
+    if params.get("network", "small") == "large":
+        decay_extras["decay_era"] = True
+        if "t_decay_end" not in params:    # respect an explicit user override
+            decay_extras["t_decay_end"] = AGE_UNIVERSE_S
+
     fd_evo, tmp_evo = tempfile.mkstemp(suffix=".tsv", prefix="pyprimat_evolution_")
     os.close(fd_evo)
     fd_bg, tmp_bg = tempfile.mkstemp(suffix=".tsv", prefix="pyprimat_background_")
@@ -91,7 +105,8 @@ def _solve(params_items):
                                output_time_evolution=True,
                                output_file=tmp_evo,
                                output_background_evolution=True,
-                               output_background_file=tmp_bg))
+                               output_background_file=tmp_bg,
+                               **decay_extras))
         run.solve()
         with open(tmp_evo) as f:
             time_evolution_tsv = f.read()

@@ -22,11 +22,11 @@ import os
 import re
 
 import numpy as np
-import plotly.colors as pcolors
 import plotly.graph_objects as go
 import streamlit as st
 
 from pyprimat.network_data import nuclide_latex
+from pyprimat.plotting import nuclide_styles
 
 
 # ---------------------------------------------------------------------------
@@ -386,6 +386,43 @@ def _nuclide_unicode(name):
     return mass_number.translate(_SUPERSCRIPT_DIGITS) + symbol
 
 
+# Matplotlib line styles (as returned by pyprimat.plotting.nuclide_styles) ->
+# Plotly ``line.dash`` values, so the GUI uses the *same* per-isotope dashing
+# as the notebooks.  Named styles map to Plotly's named dashes; the custom
+# (offset, on-off-tuple) patterns map to Plotly's "Npx,Mpx,..." dash strings.
+_NAMED_DASH = {
+    "solid":   "solid",
+    "dashed":  "dash",
+    "dashdot": "dashdot",
+    "dotted":  "dot",
+}
+
+
+def _plotly_dash(linestyle):
+    """Translate a matplotlib linestyle into a Plotly ``line.dash`` value.
+
+    Parameters
+    ----------
+    linestyle : str or tuple
+        Either a matplotlib named style ("solid"/"dashed"/"dashdot"/"dotted")
+        or an explicit ``(offset, (on, off, ...))`` dash tuple (the finer
+        patterns :data:`pyprimat.plotting.LINESTYLES` uses for elements with
+        many isotopes).
+
+    Returns
+    -------
+    str
+        A Plotly dash specification: a named dash for the four standard styles,
+        or a comma-separated pixel pattern (e.g. ``"5px,1px"``) for tuples.
+    """
+    if isinstance(linestyle, str):
+        return _NAMED_DASH.get(linestyle, "solid")
+    # linestyle is (offset, (on, off, on, off, ...)); Plotly ignores the offset
+    # and takes the on/off lengths as a "Npx,Mpx,..." string.
+    _offset, pattern = linestyle
+    return ",".join(f"{int(v)}px" for v in pattern)
+
+
 def render_evolution_panel(run):
     """Render the interactive ``A_i Y_i(t)`` abundance-evolution panel.
 
@@ -426,30 +463,57 @@ def render_evolution_panel(run):
         "Nuclides to plot", options=names, key="evolution_selection",
     )
 
+    # "Show radioactive decays" toggle: only meaningful for the large network,
+    # where app._solve has integrated the decay-time (DT) era and the abundance
+    # interpolator extends seamlessly past the end of BBN out to the age of the
+    # Universe.  When on, the time grid spans the full BBN+DT history (so e.g.
+    # ⁷Be→⁷Li, ³H→³He, ²²Na, ¹⁴C, ¹⁰Be decays become visible); when off (or for
+    # small/medium), only the BBN window 1 s … 1e5 s is shown.
+    has_decay = (run.cfg.network == "large"
+                 and getattr(run.cfg, "decay_era", False)
+                 and run.nuclear.Y_of_t.x[-1] > _T_GRID[-1])
+    show_decays = False
+    if has_decay:
+        show_decays = st.toggle(
+            "Show radioactive decays (out to the age of the Universe)",
+            value=True,
+            help="Extend the abundance evolution past the end of BBN through the "
+                 "decay-time (DT) era: long-lived isotopes (⁷Be, ³H, ²²Na, ¹⁴C, "
+                 "¹⁰Be, …) keep decaying for years to Gyr. See "
+                 "notebooks/DecayEvolution.ipynb.",
+            key="evolution_show_decays",
+        )
+
     use_temperature = st.radio(
         "X axis",
         ["Cosmic time t [s]", "Photon temperature T_γ [MeV]"],
         horizontal=True,
     ) == "Photon temperature T_γ [MeV]"
 
+    # Time grid.  In the decay view, sample at the interpolator's own knots (the
+    # exact computed BBN + DT time points): interp1d is piecewise-linear, and
+    # resampling a steeply-varying abundance onto a coarse synthetic grid creates
+    # spurious horizontal "shelves".  In the BBN-only view keep the fixed
+    # 1 s … 1e5 s grid (light nuclides have no such shelves there).
+    t_grid = run.nuclear.Y_of_t.x if show_decays else _T_GRID
+
+    # One fixed colour per chemical element, one line style per isotope -- shared
+    # with the notebooks via pyprimat.plotting.nuclide_styles.
+    styles = nuclide_styles(names)
+
     fig = go.Figure()
     if selection:
-        # Sample a qualitative colour per nuclide from the 'turbo' colormap,
-        # matching the cm.turbo palette used for the ~59-nuclide large
-        # network in AbundanceEvolution.ipynb.
-        n = len(selection)
-        positions = [i / (n - 1) if n > 1 else 0.0 for i in range(n)]
-        colors = pcolors.sample_colorscale("turbo", positions)
-
-        x_vals = run.T_of_t(_T_GRID) if use_temperature else _T_GRID
-        for name, color in zip(selection, colors):
-            y_vals = run.A[name] * run[name](_T_GRID)
+        x_vals = run.T_of_t(t_grid) if use_temperature else t_grid
+        for name in selection:
+            color, linestyle, _label = styles[name]
+            y_vals = run.A[name] * run[name](t_grid)
             mask = y_vals > 0  # log-y axis cannot show zero/negative values
             if not mask.any():
                 continue
             fig.add_trace(go.Scatter(
                 x=x_vals[mask], y=y_vals[mask],
-                mode="lines", name=_nuclide_unicode(name), line=dict(color=color),
+                mode="lines", name=_nuclide_unicode(name),
+                line=dict(color=color, dash=_plotly_dash(linestyle)),
             ))
 
     x_title = "Photon temperature T_γ [MeV]" if use_temperature else "Cosmic time t [s]"

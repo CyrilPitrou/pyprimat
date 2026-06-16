@@ -367,12 +367,18 @@ class NuclearNetwork:
             D = self._build_decay_matrix(nucl._lt_net)
             t_decay_end = getattr(cfg, "t_decay_end", 3.156e16)   # [s]; default 1 Gyr
             decay_n     = getattr(cfg, "decay_n_points", 200)
-            # Log-spaced time grid from t_end to t_end + t_decay_end.
-            # Using log spacing ensures dense sampling near t_end (where fast
-            # decays are active, e.g. Na22 T1/2 ≈ 2.6 yr) and coarser sampling
-            # at late times (dominated by slow decays like C14, Be10).
-            t_DT = np.logspace(np.log10(t_end + 1.0),
-                               np.log10(t_end + t_decay_end), decay_n)
+            # Time grid log-spaced in the *elapsed* time Δt = t − t_end (not in
+            # absolute t).  This is essential: the residual free neutron decays
+            # with τ_n ≈ 880 s, a transient ~10 decades shorter than t_end
+            # (~1.3×10⁶ s).  A grid log-spaced in absolute t would put its first
+            # interior point ~10⁵ s past t_end, completely skipping the neutron
+            # decay (linear interpolation between t_end and that point would
+            # flatten it).  Spacing in Δt from Δt_min = 1 s gives dense sampling
+            # immediately after t_end (resolving n, and any other fast residual)
+            # while still reaching t_decay_end with coarse late-time sampling
+            # for the slow decays (Na22, C14, Be10).
+            t_DT = t_end + np.logspace(np.log10(1.0),
+                                       np.log10(t_decay_end), decay_n)
             Y_DT = self._integrate_decay_era(D, Y0_DT, t_end, t_DT)
             if cfg.verbose:
                 print(f"[nucl]  [DT] Decay era: {decay_n} time points from "
@@ -609,6 +615,12 @@ class NuclearNetwork:
         Photons and leptons (Bm/Bp) are excluded from the ODE state vector; only
         nuclear species (those in ``net.species``) appear in D.
 
+        In addition to the ``decays.txt`` reactions, the free-neutron β decay
+        ``n → p`` is added explicitly with rate ``1/cfg.tau_n``: it is the
+        T→0 limit of the thermal n↔p weak rate (which is handled by the
+        background during HT/MT/LT, not stored as a decay table), so without it
+        the residual free neutrons at ``t_end`` would never decay.
+
         Parameters
         ----------
         net : NetworkDefinition
@@ -677,6 +689,25 @@ class NuclearNetwork:
                     A_P = A_s[P_idx]
                     # Mass-fraction gain: dY_P/dt = rate × P_mult × A_P/A_X × Y_X
                     D[P_idx, X_idx] += rate * P_mult * A_P / A_X
+
+        # ------------------------------------------------------------------
+        # Free-neutron β decay  n → p + e⁻ + ν̄
+        # ------------------------------------------------------------------
+        # The n→p transition is *not* a decays.txt entry: during BBN it is the
+        # thermal weak rate (nTOp, rxn_idx 0, T-dependent, computed by the
+        # background) and is therefore skipped above.  In the DT era T→0, so
+        # that thermal rate reduces to the vacuum decay constant λ_n = 1/τ_n
+        # (τ_n = cfg.tau_n, the neutron lifetime).  Without this term the
+        # residual free neutrons surviving at t_end (Y_n ~ 4×10⁻¹⁶) would be
+        # frozen for all of cosmic time instead of decaying to protons within
+        # ~minutes; including it lets the DT era track n correctly.  A_n = A_p
+        # = 1, so the mass-fraction gain factor A_p/A_n is unity.
+        if "n" in net.species and "p" in net.species:
+            n_idx = list(net.species).index("n")
+            p_idx = list(net.species).index("p")
+            lam_n = 1.0 / self.cfg.tau_n   # [s^-1]; τ_n = neutron lifetime
+            D[n_idx, n_idx] -= lam_n
+            D[p_idx, n_idx] += lam_n
 
         return D
 
