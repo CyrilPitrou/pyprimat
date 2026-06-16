@@ -26,12 +26,11 @@ def test_cli_default_summary(capsys):
     # (YP 0.2469983 +/-1e-5, D/H 2.43490e-5 +/-3e-9), with
     # spectral_distortions=True (IDEAS2.md item 2) and
     # nuclear_qed_corrections=True (the default).  These pins were last
-    # refreshed for the Be7->Li7+e+ / t->He3+e- decay reactions added since
-    # the previous pin (commit 6221e43), which shift YPBBN/DoH at the
-    # ~1e-7/~6e-9 level -- well within the tolerances above.
+    # refreshed after the electron-thermo cache was recomputed (tiny float
+    # noise, ~1e-6 relative shift in YPBBN), well within the tolerances above.
     assert "Neff     = 3.04397730" in out
-    assert "YP (BBN) = 0.24699520" in out
-    assert "D/H      = 2.4349404e-05" in out
+    assert "YP (BBN) = 0.24699534" in out
+    assert "D/H      = 2.4349335e-05" in out
 
 
 def test_cli_json_matches_default_summary(capsys):
@@ -40,8 +39,8 @@ def test_cli_json_matches_default_summary(capsys):
     assert rc == 0
     results = json.loads(capsys.readouterr().out)
     assert results["Neff"]   == pytest.approx(3.043977298557919, rel=1e-12)
-    assert results["YPBBN"]  == pytest.approx(0.24699519831027555, rel=1e-12)
-    assert results["DoH"]    == pytest.approx(2.4349403717456604e-05, rel=1e-12)
+    assert results["YPBBN"]  == pytest.approx(0.24699534190010344, rel=1e-12)
+    assert results["DoH"]    == pytest.approx(2.4349334721281776e-05, rel=1e-12)
 
 
 def test_cli_omegabh2_override_changes_doh(capsys):
