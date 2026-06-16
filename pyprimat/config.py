@@ -70,18 +70,28 @@ DEFAULT_PARAMS: dict = {
     # effect when incomplete_decoupling=False (no NEVO file is read at all).
 
     # ---- background mode ---------------------------------------------------
-    "external_background":       False, # If True, read the scale factor a(T_gamma) directly
+    "external_scale_factor":      False, # If True, read the scale factor a(T_gamma) directly
     # from the NEVO table's x column (a is proportional to x by the NEVO convention; see
     # NEUTRINOS.md) instead of solving the entropy-conservation ODE from the heating
     # function N_NEVO. t(a) is still obtained by Hubble integration (unchanged). Outside
     # the table's T range, both modes extrapolate assuming radiation domination
     # (a ~ 1/T, t ~ 1/T^2). Requires incomplete_decoupling=True.
 
+    "custom_background":         None, # Path (str) to a user-supplied background file
+    # containing at minimum the columns T [MeV], t [s], and a (scale factor, normalised
+    # so that a·T_γ → T0CMB_MeV as T → 0, i.e. a = 1 today). The file must be
+    # tab- or comma-delimited with a header row. Extra columns are ignored.  When set,
+    # incomplete_decoupling and spectral_distortions are forced to False (with warnings
+    # if they were True); the n<->p weak rates use the instantaneous-decoupling
+    # approximation (T_ν(T_γ) from EM entropy conservation). Neff is estimated via the
+    # Friedmann equation from the supplied a(t). Incompatible with external_scale_factor.
+
     # ---- fundamental constants (overridable for sensitivity studies) --------
     "GN":                         6.70883e-45,   # Newton's constant [MeV^-2]
 
     # ---- background thermodynamics ----------------------------------------
     "T_start_cosmo_MeV":          40.0,
+    "T_end_MeV":                  1.e-3,  # end temperature for nuclear integration [MeV]; default 0.001 MeV ≈ 11.6 MK
     "n_temperature_table":        2000,
 
     # ---- n <--> p weak rates ----------------------------------------------
@@ -159,7 +169,7 @@ DEFAULT_PARAMS: dict = {
     # Absolute solve_ivp tolerance for the large-network LT era.  The heavy
     # nuclides reach very small abundances, so this is tighter than the 1e-15
     # used for the small/medium LT era (which keep their validated tolerances).
-    "atol_large_LT":              1.e-25,
+    "atol_large_LT":              1.e-26,
     "rescale_nuclear_rates":            False, #Use to vary some rates with a uniform factor to explore their impact.
 
     # QED correction to select radiative-capture nuclear rates (Pitrou & Pospelov 2020).
@@ -171,9 +181,32 @@ DEFAULT_PARAMS: dict = {
 
     # ---- cosmological inputs ----------------------------------------------
     "Omegabh2":                   0.022425,
+    "Omegach2":                   0.11933,  # cold dark matter density parameter Omega_c h^2 (Planck 2018)
+    "h":                          0.6766,   # reduced Hubble constant h = H_0 / (100 km/s/Mpc) (Planck 2018)
     "DeltaNeff":                  0.,
     "munuOverTnu":                0., # Reduced chemical potential xi = mu/T of neutrinos (same for all flavours, nu_e, nu_mu, nu_tau).
     # munuOverTnu != 0 with incomplete_decoupling=True is physically inconsistent (the NEVO table assumes it vanishes); use incomplete_decoupling=False to explore non-zero values.
+
+    # ---- Decay-era options -------------------------------------------------
+    # decay_reverse_rates: when True, compute detailed-balance reverse rates
+    # for radioactive-decay reactions, instead of treating them as irreversible
+    # (abg = (0, 0, 0)).  During standard BBN the forward decay rate is
+    # negligible (e.g. C14 T1/2 = 5700 yr ≫ t_end ≈ 10^6 s), so the reverse
+    # rate is likewise negligible; enabling this only matters when T_end_MeV
+    # is extended far below the standard 0.001 MeV and thermal equilibrium of
+    # long-lived isotopes becomes relevant.
+    "decay_reverse_rates":        False,
+
+    # decay_era: if True and network="large", run a fourth "Decay Time" (DT)
+    # integration era after the LT era, propagating abundances forward in time
+    # (at fixed comoving scale) purely under radioactive decay (no Hubble
+    # expansion, no thermal production).  The DT era spans t ∈ [t_end, t_end +
+    # t_decay_end], log-spaced on decay_n_points time points.
+    "decay_era":                  False,
+    "t_decay_end":                3.156e16,  # DT era duration [s] (default: 1 Gyr = 3.156e16 s)
+    "decay_n_points":             200,        # log-spaced output points in the DT era
+    "output_decay_evolution":     False,      # write TSV of DT-era abundance time evolution
+    "output_decay_file":          "results/output_decay_evolution.tsv",
 
     # ---- Early Dark Energy ------------------------------------------------
     "fEDE":                       0.,     # EDE fraction at peak; 0 = disabled
@@ -242,7 +275,6 @@ class PyPRConfig:
     T_start        = CONST.T_start
     T_weak         = CONST.T_weak
     T_nucl         = CONST.T_nucl
-    T_end          = CONST.T_end
     sW2            = CONST.sW2
     geL            = CONST.geL
     geR            = CONST.geR
@@ -272,6 +304,26 @@ class PyPRConfig:
     @property
     def T_start_cosmo(self) -> float:
         return self.T_start_cosmo_MeV * self.MeV_to_Kelvin
+
+    @property
+    def T_end(self) -> float:
+        """End temperature for nuclear integration [K].
+
+        Set via ``T_end_MeV`` [MeV] in ``DEFAULT_PARAMS`` (default 0.001 MeV,
+        i.e. the standard BBN endpoint at ~11.6 MK / ~1.3×10^6 s).  Making
+        it configurable allows extending the integration into the Decay Time
+        era (``decay_era=True``) or performing custom post-BBN analysis at
+        lower temperatures.
+
+        The default 0.001 MeV (≈ 11.6 MK, cosmic time ≈ 1.3×10⁶ s ≈ 15 days)
+        is the standard end point of BBN integration.
+
+        Example::
+
+            # Extend BBN integration to 0.0001 MeV (10× lower than default):
+            cfg = PyPRConfig({"T_end_MeV": 1e-4})
+        """
+        return self.T_end_MeV * self.MeV_to_Kelvin
 
     # Gravity: GN [MeV^-2] is overridable, so it lives in DEFAULT_PARAMS only.
     # tau_n [s] is similarly overridable (DEFAULT_PARAMS), used by weak_rates.
@@ -324,6 +376,34 @@ class PyPRConfig:
                 import warnings
                 warnings.warn(
                     f"PyPRConfig: unknown parameter keys ignored: {unknown}",
+                    stacklevel=2,
+                )
+
+        # custom_background: force instantaneous decoupling and no spectral
+        # distortions (the custom-background driver does not load NEVO tables
+        # and uses the analytic T_ν(T_γ) formula instead).  Must be checked
+        # before the external_scale_factor / spectral_distortions validations
+        # below so those see the corrected flag values.
+        if self.custom_background is not None:
+            import warnings as _w
+            if self.external_scale_factor:
+                raise ValueError(
+                    "custom_background and external_scale_factor are mutually "
+                    "exclusive: external_scale_factor reads a(T_γ) from the "
+                    "NEVO table, which is not loaded in custom_background mode."
+                )
+            forced = []
+            if self.incomplete_decoupling:
+                forced.append("incomplete_decoupling=False")
+                object.__setattr__(self, 'incomplete_decoupling', False)
+            if self.spectral_distortions:
+                forced.append("spectral_distortions=False")
+                object.__setattr__(self, 'spectral_distortions', False)
+            if forced:
+                _w.warn(
+                    f"custom_background: forcing {', '.join(forced)} "
+                    "(custom-background mode uses instantaneous-decoupling "
+                    "weak rates; spectral distortions are not supported).",
                     stacklevel=2,
                 )
 
@@ -446,12 +526,12 @@ class PyPRConfig:
                                       f"{fname!r} has {ncols} columns; "
                                       f"expected > 6")
 
-        # external_background reads a(T) directly from the NEVO table's x
+        # external_scale_factor reads a(T) directly from the NEVO table's x
         # column (NEVOTable.x_of_Tg), so it requires the NEVO table to be
         # loaded in the first place.
-        if self.external_background and not self.incomplete_decoupling:
+        if self.external_scale_factor and not self.incomplete_decoupling:
             raise ValueError(
-                "external_background=True requires incomplete_decoupling=True "
+                "external_scale_factor=True requires incomplete_decoupling=True "
                 "(a(T) is read from the NEVO table, which is only loaded by "
                 "NEVOTable)."
             )
