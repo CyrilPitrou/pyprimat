@@ -1067,6 +1067,47 @@ def _read_reaction_source(table_path):
     return "?"
 
 
+def _load_decay_table(tables_dir):
+    """Parse ``rates/nuclear/tables/decays.txt`` into a per-reaction dict.
+
+    Radioactive-decay reactions (Bm/Bp on the products side) have a rate that
+    is, by construction, independent of temperature: ``rate_s^-1 =
+    ln(2)/halflife_s``.  Rather than a 500-row table repeating the same number
+    (as the other analytic reactions get), every decay reaction has a single
+    row in ``decays.txt`` with columns ``name  halflife_s  rate_s^-1
+    uncertainty  ref`` (see :func:`generate_rates.convert_ac2024_rates.write_decay_file`).
+    This is parsed once here; :func:`load_network` then broadcasts
+    ``rate_s^-1`` to a constant array on the master T9 grid for each decay
+    reaction it selects.
+
+    Parameters
+    ----------
+    tables_dir : str
+        Path to ``rates/nuclear/tables`` (where ``decays.txt`` lives).
+
+    Returns
+    -------
+    dict[str, tuple[float, float, float, str]]
+        Maps reaction name -> ``(rate_s, f, halflife_s, ref)``, where
+        ``rate_s`` [s⁻¹] is the constant forward rate, ``f`` is the
+        multiplicative 1-sigma uncertainty factor, ``halflife_s`` [s] is the
+        half-life (kept for provenance/display), and ``ref`` is the
+        nuclear-data source label (``"-"`` if absent).
+    """
+    table = {}
+    path = os.path.join(tables_dir, "decays.txt")
+    with open(path) as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split()
+            name, halflife_s, rate_s, f = parts[0], float(parts[1]), float(parts[2]), float(parts[3])
+            ref = parts[4] if len(parts) > 4 else "?"
+            table[name] = (rate_s, f, halflife_s, ref)
+    return table
+
+
 def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None):
     """Build the selected network from its text reaction list.
 
@@ -1215,26 +1256,45 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None):
     # table (its weak rates are supplied at solve time), hence ``None``.
     files = [None]
     fwd_median, fwd_expsigma, abg = [], [], []
+    # decays.txt is loaded lazily (only the `large` network has Bm/Bp decay
+    # reactions; `is_weak` among `parsed` entries is exactly the decay flag,
+    # since the only other weak reaction is nTOp, handled separately above).
+    decay_table = None
     for name, filename, react_names, prod_names, is_weak, net_lepton_dZ in parsed:
         names.append(name)
         if is_weak:
             weak_indices.add(len(names) - 1)
         lepton_dZ_list.append(net_lepton_dZ)
-        table_path = os.path.join(tables_dir, filename)
-        sources.append(_read_reaction_source(table_path))
-        files.append(table_path)
 
         network.append((
             {idx[s]: c for s, c in react_names.items()},
             {idx[s]: c for s, c in prod_names.items()},
         ))
 
-        data = np.loadtxt(os.path.join(tables_dir, filename), unpack=True)
-        T9_src = data[0]
-        # Resample from the file's own T9 grid to the master grid.  When all
-        # tables share the same grid (the common case) this is nearly a no-op.
-        fwd_median.append(_resample_rate_table(T9_src, data[1], grid))
-        fwd_expsigma.append(_resample_rate_table(T9_src, data[2], grid))
+        if is_weak:
+            # Radioactive decay: constant (T9-independent) rate from
+            # decays.txt, broadcast onto the master grid -- no rate table,
+            # no resampling (see _load_decay_table's docstring).
+            if decay_table is None:
+                decay_table = _load_decay_table(tables_dir)
+            rate_s, f, halflife_s, ref = decay_table[name]
+            sources.append(f"{ref} (decay, T1/2={halflife_s:.4g} s)")
+            files.append(os.path.join(tables_dir, "decays.txt"))
+            fwd_median.append(np.full(grid.shape, rate_s))
+            fwd_expsigma.append(np.full(grid.shape, f))
+        else:
+            table_path = os.path.join(tables_dir, filename)
+            sources.append(_read_reaction_source(table_path))
+            files.append(table_path)
+
+            data = np.loadtxt(table_path, unpack=True)
+            T9_src = data[0]
+            # Resample from the file's own T9 grid to the master grid.  When
+            # all tables share the same grid (the common case) this is nearly
+            # a no-op.
+            fwd_median.append(_resample_rate_table(T9_src, data[1], grid))
+            fwd_expsigma.append(_resample_rate_table(T9_src, data[2], grid))
+
         abg.append(list(db.get(name, (0.0, 0.0, 0.0))))
 
     fwd_median = np.asarray(fwd_median)
