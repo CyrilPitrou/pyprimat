@@ -84,6 +84,7 @@ Be10He3TOB12p,Be10+He3,B12+p,tabulated,TALYS2
 Be10He3TOBe9a,Be10+He3,Be9+He4,tabulated,TALYS2
 Be10He3TOC12n,Be10+He3,C12+n,tabulated,TALYS2
 Be10He3TOC13g,Be10+He3,C13+g,tabulated,TALYS2
+Be10TOB10Bm,Be10,B10+Bm,analytic,Nubase
 Be10aTOC13n,Be10+He4,C13+n,tabulated,TALYS2
 Be10aTOC14g,Be10+He4,C14+g,tabulated,TALYS2
 Be10dTOB11n,Be10+H2,B11+n,tabulated,TALYS2
@@ -216,6 +217,7 @@ C14He3TOC13a,C14+He3,C13+He4,tabulated,TALYS2
 C14He3TON16p,C14+He3,N16+p,tabulated,TALYS2
 C14He3TOO16n,C14+He3,O16+n,tabulated,TALYS2
 C14He3TOO17g,C14+He3,O17+g,tabulated,TALYS2
+C14TON14Bm,C14,N14+Bm,analytic,Nubase
 C14aTOO18g,C14+He4,O18+g,tabulated,ILCCF10
 C14dTOB12a,C14+H2,B12+He4,tabulated,TALYS2
 C14dTON15n,C14+H2,N15+n,analytic,Kaw91
@@ -364,6 +366,7 @@ N17TOO16nBm,N17,O16+n+Bm,analytic,Aud03
 Na20TONe20Bp,Na20,Ne20+Bp,analytic,Aud03
 Na20nTOF17a,Na20+n,F17+He4,tabulated,TALYS2
 Na21TONe21Bp,Na21,Ne21+Bp,analytic,Aud03
+Na22TONe22Bp,Na22,Ne22+Bp,analytic,Nubase
 Ne18TOF18Bp,Ne18,F18+Bp,analytic,Aud03
 Ne18nTOF18p,Ne18+n,F18+p,tabulated,TALYS2
 Ne18nTOO15a,Ne18+n,O15+He4,tabulated,TALYS2

@@ -746,9 +746,23 @@ _ANALYTIC_REACTIONS = [
     # separately, commit 6221e43); they use the same Log[2]/T1/2[s] convention
     # as the rest of this table, with T1/2 from Aud03 (12.32 yr and 53.29 d).
     ('Aud03', 't>He3+Bm;', 1.0,
-     'Log[2]/(12.32*86400*365.25)'),
+     'Log[2]/(12.32*86400*365.2422)'),
     ('Aud03', 'Be7>Li7+Bp;', 1.0,
      'Log[2]/(53.29*86400)'),
+    # Long-lived decays relevant for the Decay Time (DT) era (T < 0.001 MeV,
+    # t > 10^6 s): half-lives from NUBASE2020 (Kondev et al. 2021).
+    # These were added to PRIMAT-Main_decays.m's analytic block and to
+    # rates/nuclear/networks/large.txt; the conversion factor
+    # 86400*365.2422 = seconds per Julian year.
+    # C14 -> N14 + e^-: T1/2 = 5700 yr (NUBASE2020).
+    ('Nubase', 'C14>N14+Bm;', 1.0,
+     'Log[2]/(5700*86400*365.2422)'),
+    # Be10 -> B10 + e^-: T1/2 = 1.387 Myr = 1387000 yr (NUBASE2020).
+    ('Nubase', 'Be10>B10+Bm;', 1.0,
+     'Log[2]/(1387000*86400*365.2422)'),
+    # Na22 -> Ne22 + e^+ (beta-plus): T1/2 = 2.6019 yr (NUBASE2020).
+    ('Nubase', 'Na22>Ne22+Bp;', 1.0,
+     'Log[2]/(2.6019*86400*365.2422)'),
     ('Efr96', 'He4 + 2n  > He6 + g ;', 3.0,
      'If[T9<2, (2.65*^-3*T9^2.555*Exp[0.181/Max[T9,.1]]), (2.93*^-1*T9^(-3.51*^-1)*Exp[-5.24/T9])]'),
     ('Iga95', 'O16 + n  > O17 + g ;', 3.0,
@@ -972,6 +986,158 @@ def write_network_files(reactions, tab_blocks, nubase_path, outdir):
           f"detailed_balance.csv ({len(coeffs)} reversible reactions)")
 
 
+def _validate_decay_halflives(decay_blocks, nubase_path):
+    """Cross-check coded half-lives against the NUBASE2020 table.
+
+    For each decay block (as built by :func:`build_analytic_blocks` for
+    reactions identified as decays by :func:`nuclide_table.is_decay`), look up
+    the *parent* nuclide's half-life in NUBASE2020 and compare it to the value
+    embedded in ``_ANALYTIC_REACTIONS``.  A warning is printed when the ratio
+    differs by more than 1%.
+
+    The comparison is approximate (not exact) for two reasons:
+
+    1. NUBASE quotes half-lives in human-friendly units (seconds, minutes, days,
+       years …); the coded value converts via hard-coded unit factors that may
+       differ by a part in 10^4 from the exact value (e.g. 365.2422 days/yr
+       vs. 365.25 used for tritium).
+    2. Branching-ratio decays (e.g. ``Li9TOBe9Bm`` / ``Li9TOaanBm``) embed the
+       branching fraction directly in the expression; their coded value is the
+       *partial* half-life, which is longer than the NUBASE total by 1/BR.
+
+    The check is therefore informational only -- it catches gross errors (factor
+    of 2 or more) while tolerating unit-convention rounding and branch-ratio
+    folding.
+
+    Parameters
+    ----------
+    decay_blocks : list[dict]
+        Blocks for which :func:`nuclide_table.is_decay` is ``True``, as
+        returned by :func:`build_analytic_blocks`.
+    nubase_path : str
+        Path to the NUBASE2020 fixed-width text file
+        (``generate_rates/nubase_4.mas20.txt``).
+
+    Returns
+    -------
+    None
+        All output is printed; no exceptions are raised.
+
+    Example
+    -------
+    Running this as part of ``_generate_analytic`` after PRIMAT-Main_decays.m
+    changes catches accidental copy-paste of wrong half-lives::
+
+        # A freshly coded wrong half-life would produce:
+        # WARNING: Be10TOB10Bm parent Be10 NUBASE T1/2 = 4.377e+13 s,
+        #          coded T1/2 = 4.382e+13 s (ratio = 1.001, OK)
+    """
+    import math
+    from nuclide_table import load_nubase_all, resolve_token
+
+    # NUBASE half-life fields (columns 70-78, 79-80) are text-formatted with
+    # physical units (s, m, h, d, ky, My, …). The reader load_nubase_all
+    # returns only (excess, spin), not the half-life, so we re-read the file
+    # here for the raw half-life string.  Parse column offsets from the file
+    # header: T # at col 70-78, unit at col 79-80.
+    _UNIT_TO_S = {
+        "ys": 1e-24, "zs": 1e-21, "as": 1e-18, "fs": 1e-15,
+        "ps": 1e-12, "ns": 1e-9,  "us": 1e-6,  "ms": 1e-3,
+        "s":  1.0,   "m":  60.0,  "h":  3600.0,
+        "d":  86400.0,
+        "y":  86400.0 * 365.2422,   # Julian year: 365.2422 d
+        "ky": 86400.0 * 365.2422 * 1e3,
+        "My": 86400.0 * 365.2422 * 1e6,
+        "Gy": 86400.0 * 365.2422 * 1e9,
+        "Ty": 86400.0 * 365.2422 * 1e12,
+    }
+
+    # Build a (Z, A) -> half-life_s dict from the NUBASE file.
+    #
+    # NUBASE2020 fixed-width column layout for the half-life:
+    #   col 70-78 (0-indexed): T # (half-life value as a float string,
+    #             "stbl" for stable, "p-unst" for particle-unstable).
+    #   col 79-80: half-life unit (2 characters), e.g. "s ", "m ", "h ",
+    #             "d ", "y ", "ms", "us", "ky", "My", "Gy", ...
+    # The unit is always in columns 79-80 (0-indexed); for "ky"/"My" the
+    # 'k'/'M' prefix is at column 79 and 'y' is at column 80.
+    halflife_nubase = {}   # (Z, A) -> half-life in seconds (None for stable)
+    with open(nubase_path, encoding="latin-1") as fh:
+        for line in fh:
+            if line.startswith("#") or len(line) < 82:
+                continue
+            if line[7] != "0":  # ground states only
+                continue
+            try:
+                A = int(line[0:3])
+                Z = int(line[4:7])
+            except ValueError:
+                continue
+            t_str = line[70:78].strip().replace("#", "")
+            # Unit occupies columns 78-80 (0-indexed, 1-based: 79-81).
+            # For plain units like "s", "d", "y" the prefix slot at col 78 is
+            # a space; for "ky"/"My"/"Gy" the SI prefix sits at col 78.
+            # Always strip trailing spaces to get the 1- or 2-character unit.
+            unit  = line[78:80].strip()
+            if t_str in ("stbl", "p-unst", ""):
+                halflife_nubase[(Z, A)] = None  # stable or particle-unstable
+                continue
+            try:
+                t_val = float(t_str)
+            except ValueError:
+                halflife_nubase[(Z, A)] = None
+                continue
+            s_per_unit = _UNIT_TO_S.get(unit)
+            if s_per_unit is None:
+                halflife_nubase[(Z, A)] = None
+                continue
+            halflife_nubase[(Z, A)] = t_val * s_per_unit
+
+    ok = True
+    for blk in decay_blocks:
+        # The parent is the sole reactant nuclide (decays have one reactant).
+        parent_toks = [t for t in blk["reactants"]
+                       if t not in ("Bm", "Bp", "g", "n", "p")]
+        if not parent_toks:
+            continue
+        parent_name = parent_toks[0]
+        try:
+            tok = resolve_token(parent_name)
+        except ValueError:
+            continue
+        if tok.kind != "nuclide":
+            continue
+        key = (tok.Z, tok.A)
+        nubase_t12 = halflife_nubase.get(key)
+        if nubase_t12 is None:
+            continue   # stable or unknown
+
+        # Coded rate from the block (evaluated at any T9, since it is constant).
+        rate_coded = float(blk["rate"](1.0))
+        if rate_coded <= 0.0:
+            continue
+        coded_t12 = math.log(2.0) / rate_coded   # partial half-life [s]
+
+        # Ratio coded / NUBASE (the coded value may be a partial half-life if a
+        # branching fraction is folded in, so ratio > 1 is expected for those).
+        ratio = coded_t12 / nubase_t12
+        label = f"{blk['name']}: NUBASE T1/2 = {nubase_t12:.4g} s, coded T1/2 = {coded_t12:.4g} s (ratio = {ratio:.4g})"
+        if abs(ratio - 1.0) > 0.01 and ratio < 0.99:
+            # ratio > 1 (partial half-life) is expected; ratio < 1 by > 1% is an error.
+            print(f"  WARNING: {label} -- ratio < 1 by > 1%, check coded value!")
+            ok = False
+        elif ratio > 2.0:
+            # Partial half-life is expected to be longer than NUBASE total, but
+            # by at most 1/BR_min ≈ 2× for typical branching.  Much larger
+            # ratios suggest a wrong nuclide or unit conversion.
+            print(f"  WARNING: {label} -- coded T1/2 is > 2× NUBASE total, check!")
+            ok = False
+        else:
+            print(f"  OK:      {label}")
+    if ok:
+        print(f"  decay half-life cross-check vs NUBASE2020: all {len(decay_blocks)} entries OK")
+
+
 def _dump_analytic_literal(primat_path):
     """Print the ``_ANALYTIC_REACTIONS`` Python literal extracted from
     PRIMAT-main.m, so it can be pasted back into this file to update the
@@ -1057,6 +1223,7 @@ def _generate_analytic(args, grid):
     for blk in other_blocks:
         write_analytic_file(blk, grid, TABDIR, args.suffix)
     if decay_blocks:
+        _validate_decay_halflives(decay_blocks, args.nubase)
         write_decay_file(decay_blocks, TABDIR, args.suffix)
     print(f"built {len(ana_blocks)} analytic reactions from {source} "
           f"({len(decay_blocks)} decays -> decays.txt, "

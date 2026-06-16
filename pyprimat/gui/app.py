@@ -51,15 +51,17 @@ def _solve(params_items):
 
     Returns
     -------
-    (pyprimat.PyPR, str)
+    (pyprimat.PyPR, str, str)
         The solved instance -- ``run.PyPRresults()``, ``run.abundance_names``,
         and ``run[name](t)`` are all ready to use without triggering further
-        computation -- together with the contents of the time-evolution TSV
-        (``output_time_evolution`` format, see
-        ``nuclear_network.py:NuclearNetwork._write_time_evolution``) as a string.
+        computation -- together with the contents of the nuclear time-evolution
+        TSV (``output_time_evolution`` format, see
+        ``nuclear_network.py:NuclearNetwork._write_time_evolution``) and of the
+        background time-evolution TSV (``output_background_evolution`` format,
+        see ``background.py:Background.write_time_evolution``), both as strings.
         ``_write_time_evolution`` derives its ``Y<species>`` columns from
-        ``self.abundance_names``, so this works the same way
-        for all three networks (8 / 12 / ~59 nuclide columns).
+        ``self.abundance_names``, so this works the same way for all three
+        networks (8 / 12 / ~59 nuclide columns).
 
     Notes
     -----
@@ -73,24 +75,32 @@ def _solve(params_items):
     because ``PyPR`` instances hold live SciPy interpolators that are not
     picklable.
 
-    The time-evolution TSV is produced by setting ``output_time_evolution=True``
-    and pointing ``output_file`` at a temporary file, which is read back into
-    memory and removed immediately -- so the cached result carries the data
-    itself rather than a path that a later, differently-parametrised solve
-    could overwrite.
+    Both TSV files are produced by pointing the respective output path at a
+    temporary file, which is read back into memory and removed immediately --
+    so the cached result carries the data itself rather than a path that a
+    later, differently-parametrised solve could overwrite.
     """
     params = dict(params_items)
 
-    fd, tmp_path = tempfile.mkstemp(suffix=".tsv", prefix="pyprimat_evolution_")
-    os.close(fd)
+    fd_evo, tmp_evo = tempfile.mkstemp(suffix=".tsv", prefix="pyprimat_evolution_")
+    os.close(fd_evo)
+    fd_bg, tmp_bg = tempfile.mkstemp(suffix=".tsv", prefix="pyprimat_background_")
+    os.close(fd_bg)
     try:
-        run = PyPR(params=dict(params, output_time_evolution=True, output_file=tmp_path))
+        run = PyPR(params=dict(params,
+                               output_time_evolution=True,
+                               output_file=tmp_evo,
+                               output_background_evolution=True,
+                               output_background_file=tmp_bg))
         run.solve()
-        with open(tmp_path) as f:
+        with open(tmp_evo) as f:
             time_evolution_tsv = f.read()
+        with open(tmp_bg) as f:
+            background_tsv = f.read()
     finally:
-        os.remove(tmp_path)
-    return run, time_evolution_tsv
+        os.remove(tmp_evo)
+        os.remove(tmp_bg)
+    return run, time_evolution_tsv, background_tsv
 
 
 def _quick_mc(params_items, num_mc):
@@ -169,7 +179,7 @@ def main():
     try:
         with st.spinner("Solving the BBN network…"):
             t0 = time.time()
-            run, time_evolution_tsv = _solve(params_items)
+            run, time_evolution_tsv, background_tsv = _solve(params_items)
             elapsed = time.time() - t0
     except Exception as exc:
         # PyPRConfig validates e.g. `amax`/`network` and the
@@ -201,7 +211,7 @@ def main():
     with tab_reactions:
         panels.render_reactions_panel(run)
     with tab_downloads:
-        panels.render_downloads_panel(run, time_evolution_tsv)
+        panels.render_downloads_panel(run, time_evolution_tsv, background_tsv)
 
 
 def _render_footer():

@@ -140,10 +140,10 @@ _BACKGROUND_FINGERPRINT_FIELDS = [
     "nevo_spectral_file",
     "nevo_grid_file",
     "nevo_file_prefix",
-    # external_background changes how a(T_gamma) is obtained (table lookup
+    # external_scale_factor changes how a(T_gamma) is obtained (table lookup
     # vs entropy-conservation ODE), hence the T_gamma(a)/Hubble history fed
     # into the weak-rate integration.
-    "external_background",
+    "external_scale_factor",
 ]
 
 

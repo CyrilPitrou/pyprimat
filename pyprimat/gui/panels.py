@@ -240,7 +240,7 @@ def render_reactions_panel(run):
     st.markdown(css + table, unsafe_allow_html=True)
 
 
-def render_downloads_panel(run, time_evolution_tsv):
+def render_downloads_panel(run, time_evolution_tsv, background_tsv):
     """Render the Downloads tab: standard output files + per-reaction rate tables.
 
     Collects every file a user might want to export from a completed run in one
@@ -251,6 +251,14 @@ def render_downloads_panel(run, time_evolution_tsv):
     * **output_time_evolution.tsv** -- the full ``A_i Y_i(t)`` time series in the
       ``output_time_evolution`` format, produced once at solve time by
       ``pyprimat.gui.app._solve`` and passed in as ``time_evolution_tsv``.
+    * **output_background.tsv** -- the cosmological background time evolution
+      (T, t, a, H, neutrino temperatures, NEVO heating, energy densities),
+      produced once at solve time by ``pyprimat.gui.app._solve`` and passed in
+      as ``background_tsv`` (see
+      ``background.py:Background.write_time_evolution``).
+    * **decays.txt** (large network only) -- the consolidated beta-decay /
+      electron-capture rate table used by the large network
+      (``rates/nuclear/tables/decays.txt``).
     * **Reaction rate tables** -- the ``rates/nuclear/tables/<name>.txt`` rate
       table for any reaction in the loaded network.  An in-table download link is
       not possible (Streamlit's HTML sanitiser strips ``data:`` hrefs and
@@ -263,11 +271,15 @@ def render_downloads_panel(run, time_evolution_tsv):
     run : pyprimat.PyPR
         An already-solved ``PyPR`` instance.
     time_evolution_tsv : str
-        Contents of the time-evolution TSV (see ``app._solve``).
+        Contents of the nuclear time-evolution TSV (see ``app._solve``).
+    background_tsv : str
+        Contents of the background time-evolution TSV (see ``app._solve``).
     """
     st.subheader("Downloads")
 
-    # 1. Standard BBN output files, side by side.
+    # 1. Standard BBN output files in a 2-column grid (first row: final
+    #    abundances + nuclear time evolution; second row: background evolution
+    #    + decays.txt for the large network).
     st.markdown("**Output files**")
     out_cols = st.columns(2)
     out_cols[0].download_button(
@@ -286,6 +298,33 @@ def render_downloads_panel(run, time_evolution_tsv):
         width="stretch",
         key="dl_evolution",
     )
+
+    bg_cols = st.columns(2)
+    bg_cols[0].download_button(
+        "Background evolution (output_background.tsv)",
+        data=background_tsv,
+        file_name="output_background.tsv",
+        mime="text/tab-separated-values",
+        width="stretch",
+        key="dl_background",
+    )
+    if run.cfg.network == "large":
+        decays_path = os.path.join(
+            run.cfg.data_dir, "rates", "nuclear", "tables", "decays.txt"
+        )
+        try:
+            with open(decays_path, "rb") as fh:
+                decays_data = fh.read()
+            bg_cols[1].download_button(
+                "Decay rates (decays.txt)",
+                data=decays_data,
+                file_name="decays.txt",
+                mime="text/plain",
+                width="stretch",
+                key="dl_decays",
+            )
+        except OSError:
+            bg_cols[1].warning("`decays.txt` is unavailable.")
 
     # 2. Per-reaction rate tables.  Only reactions with a rate table on disk are
     # offered (everything but the weak nTOp pseudo-reaction, whose rates are

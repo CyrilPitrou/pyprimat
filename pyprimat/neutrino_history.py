@@ -93,7 +93,7 @@ class NeutrinoHistory:
       table's ``x = m_e/(kB T_com)`` column, proportional to the scale
       factor ``a``), array-safe, with radiation-domination extrapolation
       (``x*T_gamma = const``) outside the table; or ``None`` when no NEVO
-      table is loaded. Used by ``external_background`` mode (see
+      table is loaded. Used by ``external_scale_factor`` mode (see
       NEUTRINOS.md) -- only :class:`NEVOTable` sets this.
 
     ``cfg`` and ``plasma`` are stored for the subclasses' use.
@@ -211,7 +211,7 @@ class NEVOTable(NeutrinoHistory):
 
         # ------------------------------------------------------------------
         # x_of_Tg: table-based scale factor a(T_γ) ∝ x(T_γ), for
-        # external_background mode (see NEUTRINOS.md). By the NEVO
+        # external_scale_factor mode (see NEUTRINOS.md). By the NEVO
         # Mathematica convention x = m_e/(kB T_com) with T_com ∝ 1/a, so
         # x ∝ a exactly.
         #

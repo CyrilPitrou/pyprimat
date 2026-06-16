@@ -350,25 +350,25 @@ def test_nevo_file_prefix_reproduces_default(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# external_background (NEUTRINOS.md Part 2)
+# external_scale_factor (NEUTRINOS.md Part 2)
 # ---------------------------------------------------------------------------
 
-def test_fingerprint_changes_with_external_background():
-    """external_background changes how a(T_gamma) is obtained, hence the
+def test_fingerprint_changes_with_external_scale_factor():
+    """external_scale_factor changes how a(T_gamma) is obtained, hence the
     T_gamma(a)/Hubble history fed into the weak-rate integration -- the
     fingerprint must change."""
     cfg0 = PyPRConfig({"network": "small"})
-    cfg1 = PyPRConfig({"network": "small", "external_background": True})
+    cfg1 = PyPRConfig({"network": "small", "external_scale_factor": True})
     fp0 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg0))
     fp1 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg1))
     assert fp0 != fp1
 
 
-def test_external_background_requires_incomplete_decoupling():
-    """external_background reads a(T) from NEVOTable.x_of_Tg, which is only
+def test_external_scale_factor_requires_incomplete_decoupling():
+    """external_scale_factor reads a(T) from NEVOTable.x_of_Tg, which is only
     built when incomplete_decoupling=True."""
-    with pytest.raises(ValueError, match="external_background.*incomplete_decoupling"):
-        PyPRConfig({"external_background": True, "incomplete_decoupling": False,
+    with pytest.raises(ValueError, match="external_scale_factor.*incomplete_decoupling"):
+        PyPRConfig({"external_scale_factor": True, "incomplete_decoupling": False,
                      "spectral_distortions": False})
 
 

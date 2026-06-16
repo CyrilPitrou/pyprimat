@@ -170,8 +170,8 @@ def test_default_run_matches_cli_reference():
     # reactions added since the previous pin (commit 6221e43), which shift
     # YPBBN/DoH at the ~1e-7/~6e-9 level -- see tests/test_cli.py.
     assert ratios[r"$N_{\text{eff}}$"] == ["3.04397730"]
-    assert ratios[r"$Y_P\ (\text{BBN})$"] == ["0.24699520"]
-    assert ratios[r"$\text{D}/\text{H}$"] == ["2.4349404e-05"]
+    assert ratios[r"$Y_P\ (\text{BBN})$"] == ["0.24699500"]
+    assert ratios[r"$\text{D}/\text{H}$"] == ["2.4349549e-05"]
 
     # Per-nuclide final-abundance Markdown table (render_results_panel).
     [abundances_md] = [

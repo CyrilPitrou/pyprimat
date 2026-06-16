@@ -1280,6 +1280,15 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None):
             rate_s, f, halflife_s, ref = decay_table[name]
             sources.append(f"{ref} (decay, T1/2={halflife_s:.4g} s)")
             files.append(os.path.join(tables_dir, "decays.txt"))
+            # Convert rate from s^-1 to the natural-unit T9-based convention:
+            # the solver calls fill_buffer which uses rates in units of the
+            # same natural-unit system as the thermonuclear rates (cm^3/s/mol,
+            # etc.), but decay rates are absolute s^-1.  The network RHS
+            # multiplies by rhoB^(R-1) where R=1 for a decay, giving rhoB^0=1,
+            # so the rate enters the ODE directly as rate_s [s^-1].
+            # We store it as rate_s (the units cancel in the ODE for R=1).
+            # However, fill_buffer returns the rate in T9-grid form:
+            # the rate column is just the constant rate_s repeated on the grid.
             fwd_median.append(np.full(grid.shape, rate_s))
             fwd_expsigma.append(np.full(grid.shape, f))
         else:
@@ -1295,7 +1304,41 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None):
             fwd_median.append(_resample_rate_table(T9_src, data[1], grid))
             fwd_expsigma.append(_resample_rate_table(T9_src, data[2], grid))
 
-        abg.append(list(db.get(name, (0.0, 0.0, 0.0))))
+        # Detailed-balance (reverse-rate) coefficients (alpha, beta, gamma).
+        # For decays: by default abg = (0,0,0) i.e. no reverse rate (decays
+        # are irreversible at BBN temperatures).  When cfg.decay_reverse_rates
+        # is True, compute the thermal reverse rate from the nuclide data so
+        # that detailed balance is enforced -- relevant only at temperatures
+        # comparable to the decay Q-value (keV range), far below BBN.
+        if is_weak and name not in db:
+            if getattr(cfg, "decay_reverse_rates", False):
+                # Derive (alpha, beta, gamma) from nuclide masses/spins.
+                # react_names / prod_names already exclude Bm/Bp leptons
+                # (from _side_counts), so pass them directly.
+                # Expand stoichiometry: {'He4': 2} -> ['He4', 'He4'] so that
+                # compute_detailed_balance_coefficients gets the correct
+                # particle count for beta and the correct Q-value sum.
+                _reactants = [s for s, c in react_names.items()
+                              for _ in range(int(c))]
+                _products  = [s for s, c in prod_names.items()
+                              for _ in range(int(c))]
+                try:
+                    _alpha, _beta, _gamma = compute_detailed_balance_coefficients(
+                        _reactants, _products, cfg
+                    )
+                    # gamma >= 0 would mean Q <= 0 (endothermic decay), which
+                    # is unphysical: all beta-decays are exothermic. Guard
+                    # against numerical accidents or unhandled edge cases.
+                    if _gamma >= 0.0:
+                        abg.append([0.0, 0.0, 0.0])
+                    else:
+                        abg.append([_alpha, _beta, _gamma])
+                except Exception:
+                    abg.append([0.0, 0.0, 0.0])
+            else:
+                abg.append([0.0, 0.0, 0.0])
+        else:
+            abg.append(list(db.get(name, (0.0, 0.0, 0.0))))
 
     fwd_median = np.asarray(fwd_median)
     fwd_expsigma = np.asarray(fwd_expsigma)

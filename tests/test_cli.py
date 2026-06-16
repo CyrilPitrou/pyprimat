@@ -26,11 +26,11 @@ def test_cli_default_summary(capsys):
     # (YP 0.2469983 +/-1e-5, D/H 2.43490e-5 +/-3e-9), with
     # spectral_distortions=True (IDEAS2.md item 2) and
     # nuclear_qed_corrections=True (the default).  These pins were last
-    # refreshed after the electron-thermo cache was recomputed (tiny float
-    # noise, ~1e-6 relative shift in YPBBN), well within the tolerances above.
+    # refreshed after adding ΛCDM components (CDM + Λ) to the Friedmann
+    # equation via extra_rho; the ~3e-7 shift in YPBBN is within tolerance.
     assert "Neff     = 3.04397730" in out
-    assert "YP (BBN) = 0.24699534" in out
-    assert "D/H      = 2.4349335e-05" in out
+    assert "YP (BBN) = 0.24699500" in out
+    assert "D/H      = 2.4349549e-05" in out
 
 
 def test_cli_json_matches_default_summary(capsys):
@@ -38,9 +38,9 @@ def test_cli_json_matches_default_summary(capsys):
     rc = main(["--json"])
     assert rc == 0
     results = json.loads(capsys.readouterr().out)
-    assert results["Neff"]   == pytest.approx(3.043977298557919, rel=1e-12)
-    assert results["YPBBN"]  == pytest.approx(0.24699534190010344, rel=1e-12)
-    assert results["DoH"]    == pytest.approx(2.4349334721281776e-05, rel=1e-12)
+    assert results["Neff"]   == pytest.approx(3.0439772985579183, rel=1e-12)
+    assert results["YPBBN"]  == pytest.approx(0.2469950029153959, rel=1e-12)
+    assert results["DoH"]    == pytest.approx(2.4349548760222525e-05, rel=1e-12)
 
 
 def test_cli_omegabh2_override_changes_doh(capsys):

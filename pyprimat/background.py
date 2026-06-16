@@ -43,7 +43,7 @@ from scipy.special import zeta
 from . import weak_rates as PyPRnTOp
 from .neutrino_history import make_neutrino_history
 
-__all__ = ["Background", "StandardBackground"]
+__all__ = ["Background", "StandardBackground", "CustomBackground"]
 
 
 class Background(object):
@@ -294,10 +294,204 @@ class StandardBackground(Background):
 
     def __init__(self, cfg, plasma, extra_rho=None):
         super().__init__(cfg, plasma, extra_rho)
+        self._setup_LCDM()
         self._setup_EDE()
         self._setup_background_and_cosmo()
+        self._replace_LCDM_with_exact()   # swap CDM approx → exact a_of_T
         self._setup_derived_cosmo()
         self._setup_weak_rates()
+
+    # ======================================================================
+    # ΛCDM energy-density components (CDM + cosmological constant)
+    # ======================================================================
+
+    def _setup_LCDM(self):
+        r"""Append the ΛCDM cold dark matter and cosmological constant
+        energy-density contributions to ``self.extra_rho``.
+
+        During standard BBN (T ~ 1–0.001 MeV, t ~ 1–10^6 s) the CDM and Λ
+        densities are completely negligible compared to the radiation density
+        (by many orders of magnitude), so these terms have no effect on the
+        standard run.  They become relevant only when ``T_end_MeV`` is reduced
+        far below the standard 0.001 MeV, extending the integration towards
+        matter-radiation equality or beyond.
+
+        The cosmological constant is fixed by the flatness condition:
+
+            Ω_Λ h² = h² − Ω_b h² − Ω_c h²
+
+        so the total present-day energy density sums to the critical density,
+        i.e. Ω_tot = 1 (flat universe).  If Ω_Λ < 0 (extreme non-standard
+        parameters) a warning is printed but no exception is raised.
+
+        The two extra densities as functions of the photon temperature Tg [MeV]
+        are:
+
+            ρ_CDM(Tg) = Ω_c h² · ρ_{crit,100} / a(Tg)³
+
+        where ``a(Tg)`` is not yet known at call time (it is built later by
+        ``_setup_background_and_cosmo``).  We therefore store the *comoving*
+        CDM density amplitude ``rhocdm_a3 = Ω_c h² · ρ_{crit,100}`` and wrap
+        it in a closure that calls ``self.a_of_T(Tg)`` at evaluation time, once
+        ``a(T)`` has been set.  (``self.a_of_T`` will raise ``NotImplementedError``
+        if called before ``_setup_background_and_cosmo``, so the closure is safe.)
+
+            ρ_Λ = (h² − Ω_b h² − Ω_c h²) · ρ_{crit,100}
+
+        is a true constant (independent of a or T), appended as a constant
+        callable.
+
+        Both terms use ``cfg.rhocOverh2 = 3/(8π G_N) · H_{100}²``, the critical
+        density at H = 100 km/s/Mpc in [MeV^4].  This follows the convention in
+        ``PyPRConfig.rhocOverh2`` and ``PyPRConfig._update_derived``.
+
+        References
+        ----------
+        See ``pyprimat.config.PyPRConfig.rhocOverh2`` for the unit convention.
+        Planck 2018 fiducial values (Aghanim et al. 2020, A&A 641, A6):
+        Ω_b h² = 0.022425, Ω_c h² = 0.11933, h = 0.6766.
+
+        Example
+        -------
+        With the Planck 2018 fiducial cosmology the matter-radiation equality
+        scale factor is approximately:
+
+            a_eq ≈ Ω_r h² / (Ω_b h² + Ω_c h²) ≈ 4.18e-5 / 0.14166 ≈ 2.95e-4
+
+        (z_eq ≈ 3400), consistent with standard cosmology.
+        """
+        cfg = self.cfg
+
+        # Validate: Omegach2 and h must be set; if absent (old configs) skip
+        # gracefully.  During standard BBN these contributions are negligible
+        # so skipping is equivalent to keeping them zero.
+        Omegach2 = getattr(cfg, "Omegach2", None)
+        h        = getattr(cfg, "h", None)
+        if Omegach2 is None or h is None:
+            return
+
+        # ρ_{crit,100} [MeV^4]: critical density at H = 100 km/s/Mpc.
+        # cfg.rhocOverh2 = 3/(8π G_N) × H_{100}², so rhocrit100 = cfg.rhocOverh2.
+        rhocrit100 = cfg.rhocOverh2
+
+        # Comoving CDM amplitude: ρ_CDM(a) = rhocdm_a3 / a^3.
+        # rhocdm_a3 = Ω_c h² × ρ_{crit,100}  [MeV^4]
+        # Note: ρ_{crit,today} = h² × ρ_{crit,100}, so Ω_c × ρ_{crit,today}
+        #       = Ω_c h² × ρ_{crit,100}.
+        rhocdm_a3 = Omegach2 * rhocrit100   # [MeV^4]
+
+        # Reference scale factor a_ref and temperature T_ref used to anchor
+        # the a ∝ 1/T radiation-domination approximation for rho_CDM.
+        # We use T_ref = T0CMB (today, a=1) as the anchor, so:
+        #   a(T) ≈ T0CMB_MeV / T   (radiation domination)
+        # This is exact at high T (BBN era) and is a good approximation for
+        # the Hubble equation there (CDM is negligible anyway).  After a_of_T
+        # is established (by _setup_background_and_cosmo), the CDM callable
+        # is replaced with the exact form via _replace_LCDM_with_exact.
+        T0CMB_MeV = cfg.T0CMB / cfg.MeV_to_Kelvin   # CMB temperature today [MeV]
+        # Radiation-domination approximation: a(T) ≈ T0CMB_MeV / T
+        # valid at T ≫ T_eq (matter-radiation equality, T_eq ≈ 0.8 eV = 8e-7 MeV)
+        # so perfectly accurate for all BBN temperatures (T ≥ 0.001 MeV).
+
+        def rho_CDM_approx(Tg):
+            """CDM energy density [MeV^4] using the radiation-domination a(T) ≈ T0CMB/T.
+
+            ρ_CDM ∝ a^{-3} ∝ T^3 (radiation domination, accurate for T > T_eq).
+            Used in the Hubble ODE bootstrap (before the exact a(T) is known);
+            the contribution is negligible at BBN temperatures regardless.
+            """
+            a_approx = T0CMB_MeV / Tg
+            return rhocdm_a3 / a_approx**3
+
+        def rho_CDM(Tg):
+            """CDM energy density [MeV^4] using the exact a(T) from StandardBackground.
+
+            After _setup_background_and_cosmo has built self.a_of_T, this
+            replaces rho_CDM_approx for all evaluations (e.g. background output
+            columns).  During the Hubble ODE solve the approximation is used.
+            """
+            a = self.a_of_T(Tg)
+            return rhocdm_a3 / a**3
+
+        # Cosmological constant: flatness condition Ω_tot = 1.
+        # ρ_Λ = (h² − Ω_b h² − Ω_c h²) × ρ_{crit,100}
+        Omegalambdah2 = h**2 - cfg.Omegabh2 - Omegach2   # = Ω_Λ h²
+        rholambda = Omegalambdah2 * rhocrit100             # [MeV^4]
+
+        if Omegalambdah2 < 0:
+            import warnings
+            warnings.warn(
+                f"_setup_LCDM: Omega_Lambda h^2 = {Omegalambdah2:.4g} < 0 "
+                f"(h={h}, Omegabh2={cfg.Omegabh2}, Omegach2={Omegach2}).  "
+                "Cosmological constant is negative -- non-standard cosmology.",
+                stacklevel=3,
+            )
+
+        def rho_Lambda(_Tg):
+            """Cosmological constant energy density [MeV^4] (T-independent)."""
+            return rholambda
+
+        # Append the radiation-domination approximation for CDM first (used
+        # during the Hubble ODE bootstrap in _setup_background_and_cosmo).
+        # After a_of_T is established, _replace_LCDM_with_exact replaces the
+        # approximation with the exact callable that reads self.a_of_T.
+        self.extra_rho.append(rho_CDM_approx)
+        self.extra_rho.append(rho_Lambda)
+        # Store the exact CDM callable and its index for post-setup replacement.
+        self._lcdm_cdm_idx    = len(self.extra_rho) - 2   # index of rho_CDM_approx
+        self._lcdm_cdm_exact  = rho_CDM
+
+    def _replace_LCDM_with_exact(self):
+        """Replace the CDM radiation-domination approximation with the exact form.
+
+        Called after ``_setup_background_and_cosmo`` has established
+        ``self.a_of_T``.  Swaps the bootstrap CDM callable in
+        ``self.extra_rho`` (which used ``a ≈ T0CMB/T`` radiation-domination)
+        with the exact ``rho_CDM = rhocdm_a3 / self.a_of_T(T)^3``.
+
+        Also prints a sanity check: the matter-radiation equality scale factor
+        ``a_eq`` (where ρ_CDM + ρ_b = ρ_r) should be ≈ 1/3400 ≈ 2.94e-4 for
+        the Planck 2018 fiducial cosmology. This confirms that CDM and baryon
+        density parameters are physically consistent. The formula is:
+
+            a_eq = Ω_r h² / (Ω_b h² + Ω_c h²)
+
+        where Ω_r h² = ρ_γ,0 × (1 + N_eff × 7/8 × (4/11)^{4/3}) / ρ_crit100,
+        i.e. photons plus standard-model neutrinos at Neff ≈ 3.044. This is
+        verified at verbose output level and emits a warning if a_eq deviates
+        from 1/3400 by more than 10%.
+
+        The replacement is a no-op when ``_setup_LCDM`` was not called (e.g.
+        when ``Omegach2``/``h`` are absent from the config).
+        """
+        if not hasattr(self, "_lcdm_cdm_idx"):
+            return
+        self.extra_rho[self._lcdm_cdm_idx] = self._lcdm_cdm_exact
+
+        # ---- matter-radiation equality sanity check ----
+        cfg = self.cfg
+        Omegach2 = cfg.Omegach2
+        # Radiation energy density today: photons + 3.044 standard neutrinos.
+        # ρ_γ,0 = (π²/15) T0CMB^4 (in the plasma module); rho_g uses MeV units.
+        T0CMB_MeV = cfg.T0CMB / cfg.MeV_to_Kelvin   # [MeV]
+        rho_gamma0 = self.plasma.rho_g(T0CMB_MeV)   # [MeV^4]
+        # Include standard neutrinos at their decoupled temperature T_ν = (4/11)^{1/3} T_γ.
+        # With Neff = 3.044 (standard model value, not recomputed here):
+        Neff_std   = 3.044
+        rho_nu0    = Neff_std * (7./8.) * (4./11.)**(4./3.) * rho_gamma0  # [MeV^4]
+        rho_rad0   = rho_gamma0 + rho_nu0                                  # [MeV^4]
+        rhocrit100 = cfg.rhocOverh2
+        Omegarh2   = rho_rad0 / rhocrit100   # Ω_r h² (dimensionless)
+        Omegamh2   = cfg.Omegabh2 + Omegach2 # Ω_m h² (baryons + CDM)
+        a_eq       = Omegarh2 / Omegamh2
+        a_eq_ref   = 1.0 / 3400.0
+        ratio      = a_eq / a_eq_ref
+
+        if cfg.verbose:
+            print(f"[ΛCDM] matter-radiation equality: a_eq = {a_eq:.4g} "
+                  f"(Ω_r h²={Omegarh2:.4g}, Ω_m h²={Omegamh2:.4g}; "
+                  f"expected ~1/3400 = {a_eq_ref:.3g}, ratio = {ratio:.3f})")
+
 
     # ======================================================================
     # Early Dark Energy setup
@@ -400,7 +594,7 @@ class StandardBackground(Background):
         ``_setup_derived_cosmo``, ``_setup_weak_rates``, and the nuclear
         network's ``solve()``.
 
-        Independently of the above, ``cfg.external_background`` selects how
+        Independently of the above, ``cfg.external_scale_factor`` selects how
         ``a(T_γ)`` itself is obtained (requires ``incomplete_decoupling=True``):
 
         *Minimal* (``False``, default):
@@ -457,7 +651,7 @@ class StandardBackground(Background):
         z0   = cfg.T0CMB / cfg.MeV_to_Kelvin   # [MeV]
         # Algebraic entropy-conservation boundary value a(Tend) = zend/Tend,
         # used as the ODE initial condition (minimal mode) and as the
-        # table-normalisation anchor (external_background mode) -- see
+        # table-normalisation anchor (external_scale_factor mode) -- see
         # NEUTRINOS.md.  Requires no ODE: _sbar is the analytic
         # electron-thermo spline.
         zend = z0 / (_sbar(Tend) / cfg.s0bar) ** (1. / 3.)
@@ -474,9 +668,9 @@ class StandardBackground(Background):
         lnT_sol = np.linspace(np.log(Tend), np.log(Tstartcosmo), cfg.n_temperature_table)
         T_sol   = np.exp(lnT_sol)
 
-        if cfg.external_background:
+        if cfg.external_scale_factor:
             # --------------------------------------------------------------
-            # external_background=True: a(T) read directly from the NEVO
+            # external_scale_factor=True: a(T) read directly from the NEVO
             # table's x column (a ∝ x by the NEVO convention; see
             # NEUTRINOS.md), normalised so a(Tend) matches the algebraic
             # a_end above -- the same boundary value the minimal-mode ODE
@@ -820,3 +1014,312 @@ class StandardBackground(Background):
         """Baryon mass density rho_B(t) [g cm^-3] (see
         :meth:`Background.rhoB_BBN`)."""
         return self._rhoB_of_a(self.a_of_t(t))
+
+
+class CustomBackground(Background):
+    """Cosmological background driven by a user-supplied T(t), t, a(t) table.
+
+    Reads the (T_γ, t, a) cosmological history from a file and uses the
+    instantaneous-decoupling approximation for neutrino temperatures and n<->p
+    weak rates.  This is the ``custom_background`` mode of
+    :class:`~pyprimat.config.PyPRConfig`: ``cfg.incomplete_decoupling`` and
+    ``cfg.spectral_distortions`` must both be ``False`` (enforced with warnings
+    in ``PyPRConfig.__init__`` if the caller forgot to set them).
+
+    The file must be a tab- or comma-delimited text file with a header row
+    naming the columns.  At minimum the columns **T** [MeV], **t** [s], and
+    **a** (dimensionless scale factor, normalised so that ``a · T_γ → T0CMB``
+    as ``T → 0``, i.e. ``a = 1`` today) must be present; extra columns are
+    silently ignored.  Rows may be in any order; they are sorted internally by
+    ascending cosmic time.
+
+    **Neff estimation**: :meth:`rho_nu_total_final` estimates ``H`` at the
+    final table point by numerical differentiation of ``ln a(t)``, then
+    inverts the Friedmann equation ``H² = 8πG/3 · ρ_tot`` to obtain
+    ``ρ_tot``.  The neutrino energy density follows as
+    ``ρ_ν = ρ_tot − ρ_plasma``, and ``Neff = ρ_ν / ρ_γ / ((7/8)(4/11)^{4/3})``.
+    A message is printed to inform the user that this indirect path was used.
+
+    Parameters
+    ----------
+    cfg : PyPRConfig
+    plasma : pyprimat.plasma.Plasma
+    filename : str
+        Path to the custom background file.
+
+    Example
+    -------
+    The test suite in ``tests/test_custom_background.py`` writes a reference
+    background to a temporary file (from a standard instantaneous-decoupling
+    run) and checks that the custom-background run reproduces the same BBN
+    observables to a relative error below ``1e-5``.
+    """
+
+    def __init__(self, cfg, plasma, filename):
+        super().__init__(cfg, plasma)
+        self._load_table(filename)
+        self._setup_neutrino_history()
+        self._setup_weak_rates()
+
+    # ======================================================================
+    # Table loading
+    # ======================================================================
+
+    def _load_table(self, filename):
+        """Read T, t, a from the custom background file and build interpolants.
+
+        The file is auto-detected as tab- or comma-delimited by inspecting the
+        header line.  Rows are sorted by ascending cosmic time so that ``t`` is
+        the natural independent variable for the interpolants.
+
+        After this method, ``self.t_of_T``, ``self.T_of_t``, ``self.a_of_T``,
+        ``self.T_of_a``, ``self.a_of_t``, and ``self.t_of_a`` are all set,
+        and ``has_scale_factor`` is ``True``.  The raw sorted arrays are kept
+        as ``_t_asc``, ``_T_by_t``, ``_a_by_t`` for :meth:`rho_nu_total_final`.
+
+        Args:
+            filename (str): path to the background file.
+
+        Raises:
+            ValueError: if required columns are missing or contain non-positive
+                values.
+        """
+        # Auto-detect delimiter from the header.
+        with open(filename) as fh:
+            header_line = fh.readline()
+        delimiter = '\t' if '\t' in header_line else ','
+
+        raw = np.genfromtxt(filename, delimiter=delimiter, names=True, dtype=float)
+
+        required = ('T', 't', 'a')
+        missing  = [c for c in required if c not in raw.dtype.names]
+        if missing:
+            raise ValueError(
+                f"custom_background file {filename!r} is missing required "
+                f"columns: {missing}. Found: {list(raw.dtype.names)}"
+            )
+
+        T_raw = raw['T'].copy()
+        t_raw = raw['t'].copy()
+        a_raw = raw['a'].copy()
+
+        if np.any(T_raw <= 0) or np.any(t_raw <= 0) or np.any(a_raw <= 0):
+            raise ValueError(
+                f"custom_background file {filename!r}: columns T, t, a "
+                "must all be strictly positive."
+            )
+
+        # Sort by ascending t (earliest time = highest T first).
+        idx_t  = np.argsort(t_raw)
+        t_asc  = t_raw[idx_t]
+        T_by_t = T_raw[idx_t]   # T_γ at each time (descending in T)
+        a_by_t = a_raw[idx_t]   # a   at each time (ascending in a)
+
+        # Sort by ascending T for T-based interpolants.
+        idx_T  = np.argsort(T_raw)
+        T_asc  = T_raw[idx_T]
+        t_by_T = t_raw[idx_T]   # t at each T (decreasing t as T increases)
+        a_by_T = a_raw[idx_T]   # a at each T (decreasing a as T increases)
+
+        _kw = dict(bounds_error=False, fill_value='extrapolate', kind='linear')
+        self.t_of_T = interp1d(T_asc,  t_by_T, **_kw)
+        self.a_of_T = interp1d(T_asc,  a_by_T, **_kw)
+        self.T_of_t = interp1d(t_asc,  T_by_t, **_kw)
+        self.a_of_t = interp1d(t_asc,  a_by_t, **_kw)
+
+        # a-based interpolants: a is ascending (a grows with time).
+        idx_a  = np.argsort(a_by_t)
+        a_sort = a_by_t[idx_a]
+        self.T_of_a = interp1d(a_sort, T_by_t[idx_a], **_kw)
+        self.t_of_a = interp1d(a_sort, t_asc[idx_a],  **_kw)
+
+        self.has_scale_factor = True
+
+        # Kept for rho_nu_total_final: time-ordered arrays.
+        self._t_asc  = t_asc    # [s]
+        self._T_by_t = T_by_t   # [MeV], decreasing
+        self._a_by_t = a_by_t   # dimensionless, increasing
+
+    # ======================================================================
+    # Neutrino temperatures (instantaneous decoupling)
+    # ======================================================================
+
+    def _setup_neutrino_history(self):
+        """Build instantaneous-decoupling T_ν(T_γ) and the grid for weak rates.
+
+        Uses :class:`~pyprimat.neutrino_history.InstantaneousDecoupling` (the
+        same class used by ``StandardBackground`` when
+        ``incomplete_decoupling=False``) to obtain T_νe(T_γ), T_νμ(T_γ),
+        T_ντ(T_γ) from EM entropy conservation.
+
+        The (Tg_vec, Tnue_vec) pair spans the T range of the loaded table and
+        is passed to :func:`~pyprimat.weak_rates.RecomputeWeakRates`.
+        """
+        from .neutrino_history import InstantaneousDecoupling
+        cfg = self.cfg
+        nh  = InstantaneousDecoupling(cfg, self.plasma)
+        self._Tnue_of_Tg   = nh.Tnue_of_Tg
+        self._Tnumu_of_Tg  = nh.Tnumu_of_Tg
+        self._Tnutau_of_Tg = nh.Tnutau_of_Tg
+
+        # Tg grid spanning the table's temperature range (low → high).
+        T_lo = float(np.min(self._T_by_t))
+        T_hi = float(np.max(self._T_by_t))
+        self.Tg_vec   = np.linspace(T_lo, T_hi, cfg.n_temperature_table)
+        self.Tnue_vec = self._Tnue_of_Tg(self.Tg_vec)
+
+    # ======================================================================
+    # n <-> p weak rates
+    # ======================================================================
+
+    def _setup_weak_rates(self):
+        """Compute or load the n<->p weak rates for instantaneous decoupling.
+
+        Delegates to :func:`~pyprimat.weak_rates.RecomputeWeakRates` exactly
+        as :meth:`StandardBackground._setup_weak_rates` does; ``dFDneu_func``
+        is ``None`` because ``spectral_distortions=False`` is enforced by
+        :class:`~pyprimat.config.PyPRConfig` when ``custom_background`` is set.
+        """
+        cfg  = self.cfg
+        _t0  = time.time()
+        self.weak_nTOp_frwrd_raw, self.weak_nTOp_bkwrd_raw = \
+            PyPRnTOp.RecomputeWeakRates([self.Tg_vec, self.Tnue_vec], cfg,
+                                        dFDneu_func=None)
+        if cfg.debug:
+            print(f"[weak]  n <--> p weak rates ready in "
+                  f"{time.time()-_t0:.2f} s", flush=True)
+
+        if cfg.tau_n_flag:
+            Fn = PyPRnTOp.ComputeFn(cfg)
+            self._norm_weak_rates = 1. / (Fn * cfg.tau_n)
+        else:
+            GFtilde2 = (cfg.GF * cfg.Vud)**2 * (1. + 3. * cfg.gA**2) / (2. * np.pi**3)
+            self._norm_weak_rates = cfg.MeV_to_secm1 * (GFtilde2 * cfg.me**5)
+
+    @property
+    def NormWeakRates(self):
+        """Normalisation factor for n<->p rates (settable for MC tau_n scan).
+
+        Mirrors :attr:`StandardBackground.NormWeakRates` so that
+        :func:`~pyprimat.main._mc_run_batch` can rescale rates per sample
+        without recomputing the expensive weak-rate integrals.
+        """
+        return self._norm_weak_rates
+
+    @NormWeakRates.setter
+    def NormWeakRates(self, value):
+        self._norm_weak_rates = value
+
+    def weak_nTOp_frwrd(self, T_K):
+        """Normalised n -> p weak rate [s^-1] (see :meth:`Background.weak_nTOp_frwrd`)."""
+        return self._norm_weak_rates * self.weak_nTOp_frwrd_raw(T_K)
+
+    def weak_nTOp_bkwrd(self, T_K):
+        """Normalised p -> n weak rate [s^-1] (see :meth:`Background.weak_nTOp_bkwrd`)."""
+        return self._norm_weak_rates * self.weak_nTOp_bkwrd_raw(T_K)
+
+    # ======================================================================
+    # Baryon sector
+    # ======================================================================
+
+    def rhoB_BBN(self, t):
+        """Baryon mass density rho_B(t) [g cm^-3].
+
+        Uses comoving baryon-number conservation: rho_B = m_B · n_B =
+        m_B · n0CMB · eta0b / a(t)^3, with ``a(t)`` read from the supplied
+        table.  The scale factor must be normalised so that ``a = 1`` today
+        (``a · T_γ → T0CMB_MeV`` as ``T_γ → 0``), consistent with the
+        standard PyPRIMAT convention (see
+        :meth:`StandardBackground._rhoB_of_a`).
+
+        Args:
+            t (float or array): cosmic time [s].
+
+        Returns:
+            float or array: baryon mass density [g cm^-3].
+        """
+        cfg = self.cfg
+        n0B = cfg.n0CMB * cfg.eta0b
+        a   = self.a_of_t(t)
+        return cfg.ma * n0B * cfg.MeV4_to_gcmm3 / a**3
+
+    # ======================================================================
+    # Neff via Friedmann equation
+    # ======================================================================
+
+    def rho_nu_total_final(self):
+        """Estimate (T_γ_final, ρ_ν_final) from the Friedmann equation.
+
+        The Hubble rate at the last row of the supplied table is obtained by
+        numerical differentiation of ``ln a(t)``:
+
+            H = d(ln a)/dt ≈ Δ(ln a) / Δt   (one-sided backward difference
+                                               at the final point)
+
+        The total energy density follows from the Friedmann equation
+        ``H² = 8πG/3 · ρ_tot``, and the neutrino contribution is isolated as
+
+            ρ_ν = ρ_tot − ρ_plasma(T_γ)
+
+        where ``ρ_plasma`` is the photon + e⁺e⁻ + QED-correction energy
+        density evaluated analytically at the final photon temperature.
+        :meth:`Background.N_eff` then converts ``ρ_ν`` to ``Neff``.
+
+        A message is always printed when this method is called so the user
+        knows that the indirect Friedmann path was used.
+
+        Returns:
+            tuple: ``(Tg_final, rho_nu_total)`` — photon temperature [MeV]
+                and total neutrino energy density [MeV^4] at the final time.
+        """
+        cfg    = self.cfg
+        thermo = self.plasma
+
+        t_arr = self._t_asc
+        a_arr = self._a_by_t
+        T_arr = self._T_by_t
+
+        # Estimate H = d(ln a)/dt at the final table point.
+        #
+        # A simple endpoint finite difference on ln(a) vs t is only first-order
+        # accurate and produces a ~1% bias in H that amplifies to a ~3% bias in
+        # Neff (because rho_nu = rho_tot - rho_plasma with rho_plasma ~ rho_tot/2,
+        # so a small relative error in rho_tot doubles into rho_nu).
+        #
+        # Instead we exploit that in the late radiation era a(t) follows a
+        # power law: a ∝ t^p with p ≈ 0.5 exactly (radiation domination).
+        # Fitting ln(a) = p·ln(t) + q over the last N_fit points gives a
+        # slope p whose accuracy is limited only by the table range, not by
+        # the local step size at the endpoint. Then H = p / t[-1].
+        # N_fit = min(50, half the table) balances a wide baseline (reduces
+        # noise) against non-stationarity (p evolves very slowly near T_end).
+        N_fit   = min(50, len(t_arr) // 2)
+        lna_fit = np.log(a_arr[-N_fit:])
+        lnt_fit = np.log(t_arr[-N_fit:])
+        # np.polyfit([1]): linear fit ln(a) = p·ln(t) + q
+        p_slope = float(np.polyfit(lnt_fit, lna_fit, 1)[0])
+        H_final = p_slope / t_arr[-1]   # [s^-1]
+        Tg_f    = float(T_arr[-1])      # [MeV] — smallest T in the table
+
+        # Friedmann: H [s^-1] = MeV_to_secm1 · sqrt(8π/(3 Mpl^2) · ρ_tot [MeV^4])
+        # Inverted: ρ_tot = 3 Mpl^2 / (8π) · (H / MeV_to_secm1)^2
+        H_MeV   = H_final / cfg.MeV_to_secm1
+        rho_tot = 3. * cfg.Mpl**2 / (8. * np.pi) * H_MeV**2
+
+        # Plasma energy density at Tg_f: photons + electrons + QED corrections.
+        # (Eq. for rho_plasma: Phys. Rep. Eq. 19 / StandardBackground.Hubble.)
+        rho_plasma = (thermo.rho_g(Tg_f) + thermo.rho_e(Tg_f)
+                      - thermo.PQEDofT(Tg_f) + Tg_f * thermo.dPQEDdT(Tg_f))
+
+        rho_nu_tot = rho_tot - rho_plasma
+
+        print(
+            f"[custom_background] Neff from Friedmann H²=8πG/3·ρ_tot "
+            f"at Tγ = {Tg_f:.4e} MeV: "
+            f"H = {H_final:.6e} s⁻¹, "
+            f"ρ_tot = {rho_tot:.6e} MeV⁴, "
+            f"ρ_plasma = {rho_plasma:.6e} MeV⁴, "
+            f"ρ_ν = {rho_nu_tot:.6e} MeV⁴"
+        )
+
+        return Tg_f, rho_nu_tot

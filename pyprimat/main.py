@@ -24,7 +24,7 @@ __all__ = ['PyPR', 'mc_uncertainty']
 
 from .config       import PyPRConfig
 from . import plasma      as PyPRthermo
-from .background   import StandardBackground
+from .background   import StandardBackground, CustomBackground
 from .nuclear_network import NuclearNetwork
 
 
@@ -107,11 +107,25 @@ class PyPR:
         # ------------------------------------------------------------------
         # 4. Build the cosmological background (Class 1): a<->t<->T relations,
         #    rho_B(t), n<->p weak rates, Neff/Omega_nu -- everything the
-        #    nuclear network needs about the expanding Universe.  Early Dark
-        #    Energy (cfg.fEDE > 0) is appended to extra_rho automatically by
-        #    StandardBackground; see pyprimat.background.
+        #    nuclear network needs about the expanding Universe.
+        #
+        #    Two modes:
+        #    * Standard (cfg.custom_background is None): StandardBackground
+        #      solves the Friedmann / entropy-conservation ODEs, loading the
+        #      NEVO non-instantaneous-decoupling table when available.
+        #    * Custom (cfg.custom_background is a file path): CustomBackground
+        #      reads T(t)/t/a(t) directly from that file and uses the
+        #      instantaneous-decoupling approximation for neutrino temperatures
+        #      and n<->p weak rates.  Neff is estimated via the Friedmann
+        #      equation from the supplied a(t) (see pyprimat.background).
+        #
+        #    Early Dark Energy (cfg.fEDE > 0) is only supported in the
+        #    standard mode (appended to extra_rho by StandardBackground).
         # ------------------------------------------------------------------
-        self.background = StandardBackground(cfg, self.plasma, extra_rho)
+        if cfg.custom_background is not None:
+            self.background = CustomBackground(cfg, self.plasma, cfg.custom_background)
+        else:
+            self.background = StandardBackground(cfg, self.plasma, extra_rho)
 
         # ------------------------------------------------------------------
         # 5. Build the nuclear network (Class 2): the HT/MT/LT ODE

@@ -2714,6 +2714,8 @@ reac="Na21>Ne21+Bp;";
 (*04/11/2010*)
 forward[T9_]:=Log[2]/22.49;
 AddReaction[reac,source,1,forward,False];
+
+
 (* Add Be7 -> Li7*)
 source="Aud03";
 reac="Be7>Li7+Bp;";
@@ -2723,8 +2725,27 @@ AddReaction[reac,source,1,forward,False];
 (* Add T -> He3*)
 source="Aud03";
 reac="t>He3+Bm;";
-forward[T9_]:=Log[2]/(12.32*86400*365.25);
+forward[T9_]:=Log[2]/(12.32*86400*365.2422);
 AddReaction[reac,source,1,forward,False];
+
+(* Add C14 -> N14 *)
+source="Nubase";
+reac="C14>N14+Bm;";
+forward[T9_]:=Log[2]/(5700*86400*365.2422);
+AddReaction[reac,source,1,forward,False];
+
+(* Add Be10 -> B10 *)
+source="Nubase";
+reac="Be10>B10+Bm;";
+forward[T9_]:=Log[2]/(1387000*86400*365.2422);
+AddReaction[reac,source,1,forward,False];
+
+(* Add Na22 -> Ne22 *)
+source="Nubase";
+reac="Na22>Ne22+Bp;";
+forward[T9_]:=Log[2]/(2.6019*86400*365.2422);
+AddReaction[reac,source,1,forward,False];
+
 
 (* *=======================================================================
   *New reactions following Thomas,Schramm et al.1993;1994

@@ -88,6 +88,7 @@ class NuclearNetwork:
         self.Y_final = None
         self.abundance_names = None
         self.Y_of_t = None
+        self._t_end = None   # cosmic time [s] at end of LT era; set by solve()
 
     # ======================================================================
     # solve(): integrate nuclear network ODEs
@@ -127,6 +128,7 @@ class NuclearNetwork:
         t_weak  = t_of_T(cfg.T_weak  / cfg.MeV_to_Kelvin)
         t_nucl  = t_of_T(cfg.T_nucl  / cfg.MeV_to_Kelvin)
         t_end   = t_of_T(cfg.T_end   / cfg.MeV_to_Kelvin)
+        self._t_end = t_end   # store for DT-era helpers and tests
 
         # ------------------------------------------------------------------
         # Baryon-to-photon ratio at T_weak, for the MT-era Saha (NSE) seed
@@ -349,7 +351,75 @@ class NuclearNetwork:
         if cfg.output_final_result:
             self._write_final_result()
 
+        # ------------------------------------------------------------------
+        # Decay Time (DT) era (optional, large network only)
+        # ------------------------------------------------------------------
+        # After BBN ends at t_end, long-lived radioactive isotopes (C14, Be10,
+        # Na22, …) continue to decay on timescales of years to millions of
+        # years.  The DT era propagates the abundance vector forward in time
+        # using only the constant decay matrix (no Hubble expansion, no
+        # thermal production), via matrix exponentiation:
+        #   Y(t) = exp(D × Δt) × Y(t_end)
+        # where D is the (constant) decay-rate matrix assembled from the decay
+        # reactions in the LT network (see _build_decay_matrix).
+        if getattr(cfg, "decay_era", False) and cfg.is_large:
+            Y0_DT = np.array([self.Y_final.get(s, 0.0) for s in self.abundance_names])
+            D = self._build_decay_matrix(nucl._lt_net)
+            t_decay_end = getattr(cfg, "t_decay_end", 3.156e16)   # [s]; default 1 Gyr
+            decay_n     = getattr(cfg, "decay_n_points", 200)
+            # Log-spaced time grid from t_end to t_end + t_decay_end.
+            # Using log spacing ensures dense sampling near t_end (where fast
+            # decays are active, e.g. Na22 T1/2 ≈ 2.6 yr) and coarser sampling
+            # at late times (dominated by slow decays like C14, Be10).
+            t_DT = np.logspace(np.log10(t_end + 1.0),
+                               np.log10(t_end + t_decay_end), decay_n)
+            Y_DT = self._integrate_decay_era(D, Y0_DT, t_end, t_DT)
+            if cfg.verbose:
+                print(f"[nucl]  [DT] Decay era: {decay_n} time points from "
+                      f"t={t_end:.3g} s to t={t_end + t_decay_end:.3g} s")
+                for i, s in enumerate(self.abundance_names[:12]):
+                    if Y_DT[-1, i] > 0:
+                        print(f"  Y{s:<5}= {Y_DT[-1, i]:.6e}")
+
+            # Extend the public Y(t) interpolator across the DT era so that
+            # callers (``run[species](t)``, ``get_quantity(..., t=...)``) see a
+            # single seamless history t_start … t_end+t_decay_end, exactly like
+            # the HT→MT→LT concatenation above.  t_DT[0] = t_end+1 > t_end, so
+            # the appended grid stays strictly increasing; Y_DT is already in
+            # ``abundance_names`` column order (it is built from Y0_DT, which is
+            # itself indexed by ``abundance_names``), matching _Y_nuc's layout.
+            # The right-hand fill_value becomes the late-time DT value (the
+            # fully-decayed state) instead of the LT endpoint.
+            _t_nuc = np.concatenate((_t_nuc, t_DT))
+            _Y_nuc = np.vstack((_Y_nuc, Y_DT))
+            self.Y_of_t = interp1d(_t_nuc, _Y_nuc, axis=0, bounds_error=False,
+                                    fill_value=(0, _Y_nuc[-1]))
+
+            if getattr(cfg, "output_decay_evolution", False):
+                self._write_decay_evolution(t_DT, Y_DT)
+
         return self.Y_final
+
+    def _lt_t_end_s(self):
+        """Return the cosmic time [s] at the end of the LT era.
+
+        Populated by :meth:`solve`.  Used by DT-era helpers and tests to anchor
+        the Δt = t − t_end offset for the decay matrix exponentiation.
+
+        Returns
+        -------
+        float
+            Cosmic time at T_end [s]; e.g. ~1.3×10^6 s (≈ 15 days) for the
+            default T_end_MeV = 0.001.
+
+        Raises
+        ------
+        RuntimeError
+            If called before :meth:`solve`.
+        """
+        if self._t_end is None:
+            raise RuntimeError("_lt_t_end_s() called before solve()")
+        return self._t_end
 
     def _write_final_result(self):
         """Write a two-column ``nuclide  Y`` table of final abundances.
@@ -510,3 +580,201 @@ class NuclearNetwork:
 
         # Always announce: written only on explicit request (output_time_evolution=True).
         print(f"[output] Time-evolution data ({len(t_out)} rows) written to {out_path}")
+
+    # ======================================================================
+    # Decay Time (DT) era helpers
+    # ======================================================================
+
+    def _build_decay_matrix(self, net):
+        r"""Build the constant decay-rate matrix D for the DT era.
+
+        In the DT era all thermonuclear reactions are frozen (T is too low for
+        any thermal activation), so only radioactive decays remain.  The
+        abundance vector Y (mass fractions Y_s = A_s n_s / n_B) evolves as:
+
+            dY/dt = D · Y
+
+        where D is a constant N×N matrix (N = number of nuclides in the LT
+        network).  Each decay reaction ``X → Y + (Z) + B±`` contributes:
+
+            D[X_idx, X_idx] -= rate_X         (loss term for the parent X)
+            D[s_idx, X_idx] += rate_X × A_s / A_X  for each stable product s
+                                                    (gain term, mass-fraction
+                                                    weighted by A_s / A_X)
+
+        The factor A_s / A_X converts the number-fraction decay flux into a
+        mass-fraction flux: if X decays to Y with rate λ, then
+        dY_Y/dt = λ × (A_Y / A_X) × Y_X (mass-fraction balance).
+
+        Photons and leptons (Bm/Bp) are excluded from the ODE state vector; only
+        nuclear species (those in ``net.species``) appear in D.
+
+        Parameters
+        ----------
+        net : NetworkDefinition
+            The LT network (``nucl._lt_net``); supplies species, N, Z,
+            stoichiometry (``net.network``), decay-reaction flags
+            (``net.weak_indices``), and rate tables (``net._fwd_median``).
+
+        Returns
+        -------
+        D : np.ndarray, shape (N, N)
+            Decay-rate matrix in [s^-1].  Off-diagonal entries are ≥ 0;
+            diagonal entries are ≤ 0 (D is a generator matrix for a Markov
+            chain, i.e. column sums are approximately 0 by mass-fraction
+            conservation — approximately because small fractions go to photons
+            and leptons).
+
+        Notes
+        -----
+        Mass-fraction conservation: Σ_s A_s D_{s,X} = 0 for each parent X.
+        Checking this is a useful consistency test (verified in the
+        implementation by the mass-action stoichiometry).
+
+        Example
+        -------
+        For a single decay C14 → N14 + Bm with rate λ (and A_C14 = A_N14 = 14):
+
+            D[C14, C14] = -λ      (C14 is lost)
+            D[N14, C14] = +λ × 14/14 = +λ    (N14 is gained)
+
+        The sum Σ_s A_s D_{s,C14} = 14×λ + 14×(-λ) = 0 ✓ (mass conserved).
+        """
+        N = len(net.species)
+        D = np.zeros((N, N))
+
+        # The rate tables (_fwd_median) are indexed without the nTOp slot:
+        # names[0] = "nTOp", names[1:] = thermonuclear reactions.
+        # _fwd_median[i] corresponds to names[i+1], so we need offset by 1.
+        # Mass numbers A_s for each species:
+        A_s = (net.N + net.Z).astype(float)   # shape (N,)
+
+        for rxn_idx in net.weak_indices:
+            if rxn_idx == 0:
+                continue   # nTOp handled by the HT/MT/LT eras, not the DT era
+            name = net.names[rxn_idx]
+            # The decay rate is constant (T9-independent), stored as a
+            # uniform array.  Read from _fwd_median at grid index 0.
+            # rate_table_idx is rxn_idx - 1 because _fwd_median excludes nTOp.
+            rate = float(net._fwd_median[rxn_idx - 1, 0])   # [s^-1]
+            if rate == 0.0:
+                continue
+
+            react, prod = net.network[rxn_idx]   # {species_idx: multiplicity}
+
+            # Parent nuclide: the sole nuclear reactant (multiplicity 1 for all
+            # beta/EC decays; multi-nucleon decays like Li8→α+α+Bm are handled
+            # via the products dict below).
+            for X_idx, X_mult in react.items():
+                # Loss term for the parent X
+                D[X_idx, X_idx] -= rate * X_mult
+                A_X = A_s[X_idx]
+
+                # Gain terms for nuclear products (the lepton Bm/Bp and photons
+                # are excluded from the ODE state and are already absent from
+                # net.network's index-based stoichiometry).
+                for P_idx, P_mult in prod.items():
+                    A_P = A_s[P_idx]
+                    # Mass-fraction gain: dY_P/dt = rate × P_mult × A_P/A_X × Y_X
+                    D[P_idx, X_idx] += rate * P_mult * A_P / A_X
+
+        return D
+
+    def _integrate_decay_era(self, D, Y0, t_end, t_grid):
+        r"""Propagate abundances through the DT era via matrix exponentiation.
+
+        The DT (Decay Time) ODE ``dY/dt = D · Y`` with constant coefficient
+        matrix D is solved exactly by:
+
+            Y(t) = exp(D × (t − t_end)) · Y_0
+
+        We form the dense matrix exponential with ``scipy.linalg.expm`` (Padé
+        approximation with *scaling-and-squaring*) and apply it to Y0:
+
+            Y(t_i) = expm(D × Δt_i) @ Y0
+
+        where Δt_i = t_i − t_end is the elapsed time since BBN end.
+
+        **Why not ``scipy.sparse.linalg.expm_multiply``?**  The decay matrix has
+        a colossal eigenvalue spread: the fastest decay (B15, T½ ≈ 10 ms) gives
+        an eigenvalue ~70 s⁻¹, while Δt reaches ~1 Gyr ≈ 3×10¹⁶ s, so
+        ‖D·Δt‖ ~ 10¹⁸.  ``expm_multiply`` selects its number of internal
+        matrix–vector products *linearly* in ‖D·Δt‖ (Al-Mohy & Higham 2011,
+        Eq. 3.6), so for this norm it attempts ~10¹⁸ products and effectively
+        hangs.  ``scipy.linalg.expm`` instead uses scaling-and-squaring whose
+        cost grows only *logarithmically* in ‖D·Δt‖ (≈ log₂‖D·Δt‖ ~ 60
+        squarings), so it handles the full 16-decade spread in milliseconds.
+        Since D is small (N ≤ 60), forming the dense exp(D·Δt) is cheap
+        (~3 ms per time point, ~0.1 s for the default 200-point grid).
+
+        Parameters
+        ----------
+        D : np.ndarray, shape (N, N)
+            Decay-rate matrix from :meth:`_build_decay_matrix` [s^-1].
+        Y0 : np.ndarray, shape (N,)
+            Initial abundance vector at t = t_end (end of LT era).
+        t_end : float
+            Cosmic time at end of BBN / start of DT era [s].
+        t_grid : np.ndarray, shape (M,)
+            Output times [s], all > t_end; log-spaced from solve().
+
+        Returns
+        -------
+        Y_t : np.ndarray, shape (M, N)
+            Abundance vectors at each output time.  Row i is Y(t_grid[i]).
+
+        Notes
+        -----
+        D's eigenvalues are the negative decay constants (≤ 0), so exp(D·Δt)
+        is a contraction and the result is numerically stable for any
+        positive Δt.
+
+        References
+        ----------
+        Al-Mohy & Higham (2009), "A New Scaling and Squaring Algorithm for the
+        Matrix Exponential", SIAM J. Matrix Anal. Appl. 31, 970–989 (the
+        algorithm behind ``scipy.linalg.expm``).
+        """
+        from scipy.linalg import expm
+
+        N_t = len(t_grid)
+        N   = len(Y0)
+        Y_t = np.zeros((N_t, N))
+
+        for k, t_k in enumerate(t_grid):
+            dt = t_k - t_end   # elapsed time since end of BBN [s]
+            # expm(D*dt) @ Y0 computes the exact solution Y(t_k) of dY/dt = D·Y.
+            Y_t[k] = expm(D * dt) @ Y0
+            # Clip small negative values that arise from floating-point
+            # cancellation (the matrix exp may produce tiny negatives for
+            # species whose abundance is near zero).
+            np.clip(Y_t[k], 0.0, None, out=Y_t[k])
+
+        return Y_t
+
+    def _write_decay_evolution(self, t_grid, Y_t):
+        """Write the DT-era abundance time series to a TSV file.
+
+        Enabled by ``cfg.output_decay_evolution=True``; the destination is
+        ``cfg.output_decay_file`` (relative paths resolve against the current
+        working directory).
+
+        Columns: ``t`` [s], then one ``Y<species>`` column per tracked
+        nuclide in ``self.abundance_names`` (in abundance-vector order).
+
+        Parameters
+        ----------
+        t_grid : np.ndarray, shape (M,)
+            Output times [s] (log-spaced from t_end to t_end + t_decay_end).
+        Y_t : np.ndarray, shape (M, N)
+            Abundance vectors at each time, from :meth:`_integrate_decay_era`.
+        """
+        cfg  = self.cfg
+        path = os.path.abspath(cfg.output_decay_file)
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+
+        nuc_cols = ["Y" + s for s in self.abundance_names]
+        out_data = np.column_stack([t_grid, Y_t])
+        out_header = "\t".join(["t"] + nuc_cols)
+        np.savetxt(path, out_data, delimiter='\t', header=out_header, comments='')
+        print(f"[output] Decay-era evolution ({len(t_grid)} rows) written to {path}")

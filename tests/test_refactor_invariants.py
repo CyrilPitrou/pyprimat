@@ -90,13 +90,20 @@ def test_extra_rho_is_additive_in_hubble():
 def test_ede_is_appended_to_extra_rho():
     """``fEDE > 0`` appends exactly one ``rho_EDE`` callable to
     ``background.extra_rho``, via the same generic plug-in mechanism that
-    ``extra_rho=`` callers use."""
+    ``extra_rho=`` callers use.
+
+    Since the ΛCDM setup (``_setup_LCDM``) always pre-populates ``extra_rho``
+    with two callables — ``rho_CDM(T)`` and ``rho_Lambda`` — the no-EDE
+    baseline has exactly 2 entries.  EDE adds one more, giving 3 total.
+    """
     from pyprimat.main import PyPR
     p_no_ede = PyPR({"network": "small", "verbose": False})
-    assert p_no_ede.background.extra_rho == []
+    # 2 ΛCDM entries (CDM + cosmological constant) always present
+    assert len(p_no_ede.background.extra_rho) == 2
 
     p_ede = PyPR({"network": "small", "verbose": False, "fEDE": 0.05})
-    assert len(p_ede.background.extra_rho) == 1
+    # EDE appends one more callable on top of the 2 ΛCDM ones
+    assert len(p_ede.background.extra_rho) == 3
 
 
 # ---------------------------------------------------------------------------
