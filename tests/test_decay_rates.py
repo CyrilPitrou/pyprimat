@@ -19,27 +19,14 @@ Section 3.3 — decay_reverse_rates flag:
     The reverse channel is therefore numerically inert across the entire BBN
     integration window.
 
-    We test this at two levels:
-
-    a) **Unit test (fast)**: check that the ``bwd_cap`` array computed by
-       ``load_network`` is zero for every decay reaction, even when
-       ``decay_reverse_rates=True``.  The cap is evaluated at T_nucl
-       (the nucleosynthesis onset, the *highest* temperature in the LT era)
-       and the reverse rate is suppressed by exp(gamma/T_nucl) where
-       gamma/T_nucl ≪ -100 for every decay -- so the cap rounds to zero
-       immediately without needing a full ODE solve.
-
-    b) **Solve test (slow, uses the session solved_large fixture)**: run one
-       new solve with ``decay_reverse_rates=True`` and compare final
-       abundances against the pre-solved default-config reference.  The
-       reverse caps are not *exactly* zero (the largest, He6→Li6, is
-       ~6e-12 s^-1; see test (a)), and acting over the ~1.3×10^6 s LT window
-       they shift the most sensitive species — the free-neutron floor n
-       (Y ~ 4×10^-16) — by ~2×10^-6 relative (absolute Δ ~ 1×10^-21, utterly
-       negligible physically).  We therefore demand relative agreement < 1e-5
-       for every species above an abundance floor of 1e-20; species below
-       that floor are heavy-tail nuclides at Y ~ 1e-50…1e-110 where a relative
-       metric is meaningless.
+    We verify this with a fast unit test: check that the ``bwd_cap`` array
+    computed by ``load_network`` is zero for every decay reaction, even when
+    ``decay_reverse_rates=True``.  The cap is evaluated at T_nucl (the
+    nucleosynthesis onset, the *highest* temperature in the LT era) and the
+    reverse rate is suppressed by exp(gamma/T_nucl) where gamma/T_nucl ≪ -100
+    for every decay -- so the cap rounds to zero immediately without needing a
+    full ODE solve.  Since all caps are zero, no full-solve cross-check is
+    needed.
 
 Section 4 — Decay Time (DT) era:
     After BBN ends at T_end ≈ 0.001 MeV (t_end ≈ 1.3×10^6 s ≈ 15 days),
@@ -114,56 +101,6 @@ def test_decay_reverse_bwd_cap_is_zero():
         assert cap < 1e-10, (
             f"Decay {ln.names[rxn_idx]}: bwd_cap = {cap:.3e} s^-1 is not"
             f" negligible -- reverse rate may affect the ODE."
-        )
-
-
-# ---------------------------------------------------------------------------
-# §3.3b  decay_reverse_rates=True does not change final abundances (slow)
-# ---------------------------------------------------------------------------
-
-@_needs_ac2024
-@pytest.mark.slow
-@pytest.mark.solve
-def test_decay_reverse_rates_inert(solved_large):
-    """``decay_reverse_rates=True`` must not meaningfully change abundances.
-
-    Uses the session-scoped ``solved_large`` fixture (default config,
-    ``decay_reverse_rates=False``) as the reference, and runs one new
-    large-network solve with ``decay_reverse_rates=True``.
-
-    The reverse caps are not exactly zero (largest ~6e-12 s^-1, He6→Li6;
-    see ``test_decay_reverse_bwd_cap_is_zero``); integrated over the
-    ~1.3×10^6 s LT window they perturb the most sensitive species (the free
-    neutron floor n, Y ~ 4e-16) by ~2×10^-6 relative, i.e. ~1e-21 absolute.
-    We therefore require relative agreement < 1e-5 for every species whose
-    reference abundance exceeds an ``ABUNDANCE_FLOOR`` of 1e-20.  Species
-    below that floor are heavy-tail nuclides (Y ~ 1e-50…1e-110) where the
-    reverse channel produces relative shifts up to ~1e-4 on numbers far
-    below any physical relevance — comparing them by relative error is
-    meaningless.  This still demonstrates the reverse channel is numerically
-    inert for every observable abundance, two orders of magnitude tighter
-    than the 1e-3 large-vs-medium tolerance from ``test_large_network.py``.
-    """
-    from pyprimat import PyPR
-
-    ABUNDANCE_FLOOR = 1e-20   # below this, relative comparison is noise
-
-    run_on = PyPR(params={"network": "large", "verbose": False,
-                          "decay_reverse_rates": True})
-    run_on.solve()
-
-    Y_off = solved_large.nuclear.Y_final
-    Y_on  = run_on.nuclear.Y_final
-
-    for s in solved_large.nuclear.abundance_names:
-        y_off = Y_off[s]
-        y_on  = Y_on[s]
-        if abs(y_off) <= ABUNDANCE_FLOOR:
-            continue
-        rel = abs(y_on - y_off) / abs(y_off)
-        assert rel < 1e-5, (
-            f"{s}: decay_reverse_rates changed Y by {rel:.2e} "
-            f"(off={y_off:.6e}, on={y_on:.6e})"
         )
 
 

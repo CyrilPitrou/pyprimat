@@ -991,7 +991,14 @@ class StandardBackground(Background):
     def weak_nTOp_bkwrd(self, T_K):
         """Normalised p -> n weak rate [s^-1] (see
         :meth:`Background.weak_nTOp_bkwrd`)."""
-        return self._norm_weak_rates * self.weak_nTOp_bkwrd_raw(T_K)
+        # Clamp to >= 0.  At low T (<~0.01 MeV) the tabulated/computed p->n rate
+        # is exp(-Q/T)-suppressed down to ~1e-40 s^-1 and the sum of the
+        # phase-space correction terms in ComputeWeakRates loses all its
+        # significant digits to cancellation, alternating sign around zero
+        # (e.g. -9.3e-47 at 0.005 MeV).  A rate is physically non-negative, so
+        # the floating-point noise is replaced by 0 rather than left to feed a
+        # spurious p->n *sink* of neutrons into the network.
+        return np.maximum(self._norm_weak_rates * self.weak_nTOp_bkwrd_raw(T_K), 0.0)
 
     # ======================================================================
     # Baryon sector
@@ -1216,7 +1223,10 @@ class CustomBackground(Background):
 
     def weak_nTOp_bkwrd(self, T_K):
         """Normalised p -> n weak rate [s^-1] (see :meth:`Background.weak_nTOp_bkwrd`)."""
-        return self._norm_weak_rates * self.weak_nTOp_bkwrd_raw(T_K)
+        # Clamp to >= 0: see the sibling implementation above -- the low-T p->n
+        # rate is dominated by cancellation noise that can go negative, which is
+        # unphysical for a rate.
+        return np.maximum(self._norm_weak_rates * self.weak_nTOp_bkwrd_raw(T_K), 0.0)
 
     # ======================================================================
     # Baryon sector

@@ -99,10 +99,22 @@ _FORM_METADATA = {
         "Pospelov 2020) to the forward rates of npTOdg, dpTOHe3g, tpTOag, "
         "taTOLi7g, He3aTOBe7g.",
     ),
-    "nTOp_Born_approximation": (
-        "Physics", "Born approximation for n↔p",
-        "Use the crude Born-approximation n<->p rate (off by a few percent); "
-        "for debugging or comparison with simpler codes only.",
+    "radiative_corrections": (
+        "Physics", "Radiative corrections (n↔p)",
+        "Include T=0 Coulomb + resummed radiative corrections (CCR, Phys. Rep. "
+        "Eq. 101; Czarnecki et al. 2004).  When False the crude Born approximation "
+        "is used instead.",
+    ),
+    "finite_mass_corrections": (
+        "Physics", "Finite-mass corrections (n↔p)",
+        "Include the Fokker-Planck finite-nucleon-mass correction to the n↔p rate "
+        "(Phys. Rep. §III.G).  Uses FMCCR when radiative_corrections=True, "
+        "FMNoCCR otherwise.",
+    ),
+    "thermal_corrections": (
+        "Physics", "Thermal radiative corrections (n↔p)",
+        "Include finite-temperature radiative corrections to the n↔p rate "
+        "(CCRTh; Brown & Sawyer 2001, Phys. Rep. §III.H).",
     ),
     "spectral_distortions": (
         "Physics", "Spectral distortions",

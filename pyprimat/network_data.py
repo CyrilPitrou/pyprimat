@@ -843,7 +843,12 @@ class NetworkDefinition:
         alpha, beta, gamma = self._abg[:, 0], self._abg[:, 1], self._abg[:, 2]
         bwd = alpha * T9 ** beta * np.exp(np.minimum(gamma / T9, _EXP_CAP)) * fwd
         bwd[fwd <= _FLOOR] = 0.0
-        
+        # A reverse rate is physically non-negative.  At low T9 the resampled
+        # forward table can carry tiny negative interpolation/extrapolation
+        # noise (and the detailed-balance prefactor amplifies it), which would
+        # turn the reverse flux into a spurious source/sink.  Floor at 0.
+        np.maximum(bwd, 0.0, out=bwd)
+
         if clamp:
             np.minimum(bwd, self._bwd_cap, out=bwd)
 

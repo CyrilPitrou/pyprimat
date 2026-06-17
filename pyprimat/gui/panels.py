@@ -240,6 +240,33 @@ def render_reactions_panel(run):
     st.markdown(css + table, unsafe_allow_html=True)
 
 
+def weak_rates_text(run):
+    """Return a TSV string (T[K], Gamma_nTOp[1/s], Gamma_pTOn[1/s]) for n↔p rates.
+
+    Evaluates the normalised forward and backward weak rates on a 500-point
+    log-spaced grid from ``cfg.T_end`` to ``cfg.T_start_cosmo`` (both in
+    Kelvin), covering the full BBN temperature range.
+
+    Parameters
+    ----------
+    run : pyprimat.PyPR
+        An already-solved ``PyPR`` instance.
+
+    Returns
+    -------
+    str
+        Tab-separated text with one header line and 500 data rows.
+    """
+    cfg = run.cfg
+    T_K = np.logspace(np.log10(cfg.T_end), np.log10(cfg.T_start_cosmo), 500)
+    frwrd = run.background.weak_nTOp_frwrd(T_K)
+    bkwrd = run.background.weak_nTOp_bkwrd(T_K)
+    lines = ["T[K]\tGamma_nTOp[1/s]\tGamma_pTOn[1/s]"]
+    for t, f, b in zip(T_K, frwrd, bkwrd):
+        lines.append(f"{t:.6e}\t{f:.6e}\t{b:.6e}")
+    return "\n".join(lines)
+
+
 def render_downloads_panel(run, time_evolution_tsv, background_tsv):
     """Render the Downloads tab: standard output files + per-reaction rate tables.
 
@@ -308,14 +335,24 @@ def render_downloads_panel(run, time_evolution_tsv, background_tsv):
         width="stretch",
         key="dl_background",
     )
+    bg_cols[1].download_button(
+        "Weak rates (nTOp_total.tsv)",
+        data=weak_rates_text(run),
+        file_name="nTOp_total.tsv",
+        mime="text/tab-separated-values",
+        width="stretch",
+        key="dl_weak_rates",
+        help="Total normalised n↔p weak rates: T[K], Γ_{n→p}[s⁻¹], Γ_{p→n}[s⁻¹].",
+    )
     if run.cfg.network == "large":
         decays_path = os.path.join(
             run.cfg.data_dir, "rates", "nuclear", "tables", "decays.txt"
         )
+        decays_cols = st.columns(2)
         try:
             with open(decays_path, "rb") as fh:
                 decays_data = fh.read()
-            bg_cols[1].download_button(
+            decays_cols[0].download_button(
                 "Decay rates (decays.txt)",
                 data=decays_data,
                 file_name="decays.txt",
@@ -324,7 +361,7 @@ def render_downloads_panel(run, time_evolution_tsv, background_tsv):
                 key="dl_decays",
             )
         except OSError:
-            bg_cols[1].warning("`decays.txt` is unavailable.")
+            decays_cols[0].warning("`decays.txt` is unavailable.")
 
     # 2. Per-reaction rate tables.  Only reactions with a rate table on disk are
     # offered (everything but the weak nTOp pseudo-reaction, whose rates are
@@ -476,7 +513,7 @@ def render_evolution_panel(run):
     if has_decay:
         show_decays = st.toggle(
             "Show radioactive decays (out to the age of the Universe)",
-            value=True,
+            value=False,
             help="Extend the abundance evolution past the end of BBN through the "
                  "decay-time (DT) era: long-lived isotopes (⁷Be, ³H, ²²Na, ¹⁴C, "
                  "¹⁰Be, …) keep decaying for years to Gyr. See "

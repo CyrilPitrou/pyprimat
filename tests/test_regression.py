@@ -49,11 +49,12 @@ def test_Neff_close_to_standard(solved_small):
 
 
 @pytest.mark.solve
-def test_nTOp_Born_approximation_lowers_YP(solved_small):
-    """Born-level n<->p rates (no radiative corrections) give lower YP."""
+def test_Born_mode_lowers_YP(solved_small):
+    """Born-only n<->p rates (radiative/finite-mass corrections off) give lower YP."""
     from pyprimat.main import PyPR
-    r_born = PyPR({"nTOp_Born_approximation": True,
-                        "network": "small"})
+    r_born = PyPR({"radiative_corrections": False,
+                   "finite_mass_corrections": False,
+                   "network": "small"})
     r_born.solve()
     assert r_born.results["YPBBN"] < solved_small.results["YPBBN"] - 0.001
 

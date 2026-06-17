@@ -99,17 +99,39 @@ DEFAULT_PARAMS: dict = {
     # fields that affect their content; RecomputeWeakRates loads the cache
     # only if its fingerprint matches, and otherwise recomputes from scratch
     # (~2 s).  See weak_rates.RecomputeWeakRates for the full cache logic.
+    #
+    # Four additive correction terms control which physical effects enter the
+    # total n<->p rate (mirroring PRIMAT-Main.m §IV.B):
+    #
+    #   radiative_corrections   -- True: replace the Born chi function with the
+    #                              Coulomb + T=0 resummed radiative correction
+    #                              (CCR, Phys. Rep. Eq. 101; Czarnecki et al. 2004).
+    #                              False: use the bare Born approximation.
+    #   finite_mass_corrections -- True: add the Fokker-Planck finite-nucleon-mass
+    #                              correction (FMCCR if radiative_corrections=True,
+    #                              FMNoCCR otherwise; Phys. Rep. §III.G).
+    #   thermal_corrections     -- True: add the finite-temperature radiative
+    #                              correction (CCRTh; Brown & Sawyer 2001,
+    #                              Phys. Rep. §III.H, Eqs. 107-113).
+    #   spectral_distortions    -- (controlled in the neutrino section above)
+    #                              Corrections from non-FD neutrino distributions;
+    #                              internally uses SD_CCR or SD_Born depending on
+    #                              radiative_corrections.
+    #
+    # Born (crude) mode = radiative_corrections=False, finite_mass_corrections=False,
+    #                     thermal_corrections=False.  All True = full PRIMAT rate.
     "weak_rate_cache":            True,  # If False, never load the cache (always recompute); save_nTOp still controls whether the result is written back.
     "save_nTOp":                  False, # If True, the computed n<->p rates are saved to rates/weak/ with a fingerprint header (see weak_rates.RecomputeWeakRates for why this defaults to False).
     "sampling_nTOp":              200,   # total points in the single n<->p rate grid
-    "include_nTOp_thermal":       True,  # If True the thermal corrections are used in the rate computation (see weak_rates._L_CCRTh_interpolants for the cache rules).
-    "save_nTOp_thermal":          False, #If True, the computed thermal n<->p rates are saved to rates/weak/ with a fingerprint header.
-    "sampling_nTOp_thermal":      100,
-    "nTOp_Born_approximation":    False, #If True the crude Born rate is used (off by a few percents, hence should be used only for debugging or fair comparison with other codes). 
-    "tau_n_flag":                 True, # Use neutron lifetime to normalize weak rates (instead of absolute normalization from GF, Vud, gA, etc.)
+    "radiative_corrections":      True,  # True: Coulomb + T=0 resummed radiative corrections (CCR); False: Born approximation.
+    "finite_mass_corrections":    True,  # True: add Fokker-Planck finite-nucleon-mass correction (FMCCR or FMNoCCR).
+    "thermal_corrections":        True,  # True: add finite-temperature radiative corrections (CCRTh; Brown & Sawyer 2001).
+    "save_nTOp_thermal":          False, # If True, the computed thermal n<->p rates are saved to rates/weak/ with a fingerprint header.
+    "sampling_nTOp_thermal":      100,   # grid points for the thermal-correction table
+    "tau_n_flag":                 True,  # Use neutron lifetime to normalize weak rates (instead of absolute normalization from GF, Vud, gA, etc.)
     "tau_n":                      878.4,  # neutron lifetime [s]; overrides the class-level constant when tau_n_flag=True
     "std_tau_n":                  0.5,    # 1σ uncertainty on tau_n [s], used for MC sampling
-        
+
     # ---- finite-temperature weak-rate radiative corrections ----------------
     # Accuracy knobs for the thermal n<->p radiative correction integral, used
     # only when the thermal-correction cache must be recomputed (see

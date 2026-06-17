@@ -166,20 +166,20 @@ def test_default_run_matches_cli_reference():
         md for md in at.markdown if "| Quantity | Value |" in md.value
     ]
     ratios = _markdown_table_rows(ratios_md.value)
-    # These pins were last refreshed for the Be7->Li7+e+ / t->He3+e- decay
-    # reactions added since the previous pin (commit 6221e43), which shift
-    # YPBBN/DoH at the ~1e-7/~6e-9 level -- see tests/test_cli.py.
+    # These pins were last refreshed after the SD correction was upgraded to
+    # _L_SD_CCR (Coulomb + resummed radiative) when radiative_corrections=True;
+    # the ~3e-6 shift in YPBBN is within the CLAUDE.md tolerance.
     assert ratios[r"$N_{\text{eff}}$"] == ["3.04397730"]
-    assert ratios[r"$Y_P\ (\text{BBN})$"] == ["0.24699500"]
-    assert ratios[r"$\text{D}/\text{H}$"] == ["2.4349549e-05"]
+    assert ratios[r"$Y_P\ (\text{BBN})$"] == ["0.24699785"]
+    assert ratios[r"$\text{D}/\text{H}$"] == ["2.4349708e-05"]
 
     # Per-nuclide final-abundance Markdown table (render_results_panel).
     [abundances_md] = [
         md for md in at.markdown if "| Nuclide | A | Z | Y |" in md.value
     ]
     by_nuclide = _markdown_table_rows(abundances_md.value)
-    assert float(by_nuclide[nuclide_latex("p")][-1]) == pytest.approx(7.529446e-01, rel=1e-5)
-    assert float(by_nuclide[nuclide_latex("He4")][-1]) == pytest.approx(0.24699519831027555 / 4., rel=1e-5)
+    assert float(by_nuclide[nuclide_latex("p")][-1]) == pytest.approx(7.529420e-01, rel=1e-5)
+    assert float(by_nuclide[nuclide_latex("He4")][-1]) == pytest.approx(0.061749462499009214, rel=1e-5)
 
 
 def test_evolution_panel_renders_with_default_selection():

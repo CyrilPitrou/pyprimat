@@ -59,8 +59,10 @@ def test_ComputeFn_positive(cfg):
 
 
 def test_ComputeFn_Born_smaller_than_full(cfg):
-    """Born-level Fn (no radiative corrections) should be smaller than the full Fn."""
-    cfg_born = PyPRConfig({"numba_installed": False, "nTOp_Born_approximation": True})
+    """Born-level Fn (no radiative/finite-mass corrections) should be smaller than the full Fn."""
+    cfg_born = PyPRConfig({"numba_installed": False,
+                           "radiative_corrections": False,
+                           "finite_mass_corrections": False})
     Fn_full = wr.ComputeFn(cfg)
     Fn_born = wr.ComputeFn(cfg_born)
     assert Fn_born < Fn_full
@@ -164,13 +166,13 @@ def test_gauss_legendre_converged():
 
     The test calls ComputeWeakRates directly (which never writes to the
     rates/weak/ cache -- only RecomputeWeakRates does), with
-    include_nTOp_thermal=False so it exercises purely the vectorised CCR+FMCCR
+    thermal_corrections=False so it exercises purely the vectorised CCR+FMCCR
     quadrature and needs no on-disk thermal table.
     """
     import numpy as np
     import pyprimat.plasma as plasma
 
-    cfg = PyPRConfig({"include_nTOp_thermal": False})
+    cfg = PyPRConfig({"thermal_corrections": False})
     plasma.initialise(cfg)
 
     # Representative photon-temperature grid [MeV] over the BBN range, with a

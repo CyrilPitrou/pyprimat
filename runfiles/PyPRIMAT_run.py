@@ -50,8 +50,9 @@ MyOptions = {
     "numerical_precision":       1e-7,
     "output_final_result":       True,
     "sampling_nTOp":             200,
-    "nTOp_Born_approximation":             False,
     "sampling_nTOp_thermal":     100,
+    # radiative_corrections / finite_mass_corrections / thermal_corrections:
+    # left at their PyPRConfig defaults (all True) -- full PRIMAT weak rates.
     # spectral_distortions: left at its PyPRConfig default (True) -- the
     # CLAUDE.md reference values include the NEVO spectral-distortion
     # correction to the n<->p weak rates.
