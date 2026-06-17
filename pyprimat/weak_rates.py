@@ -1304,7 +1304,7 @@ def _L_CCRTh_interpolants(ctx):
                     + _L_Thermal_2_3(T, sgnq))
 
         #if cfg.verbose:
-        print("[weak]     Re-evaluating n <--> p thermal corrections. This may take a while ...")
+        print("[weak]   Re-evaluating n <--> p thermal corrections. This may take a while ...")
 
         _n_th_pts  = n_points_per_decade(cfg.sampling_nTOp_thermal_per_decade, cfg.T_end, cfg.T_start)
         _T_th      = np.logspace(np.log10(cfg.T_end), np.log10(cfg.T_start), _n_th_pts)
