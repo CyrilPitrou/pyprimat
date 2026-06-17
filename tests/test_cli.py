@@ -21,17 +21,16 @@ def test_cli_default_summary(capsys):
     rc = main([])
     assert rc == 0
     out = capsys.readouterr().out
-    # Default small-network run, loading the shipped fingerprinted weak-rate
-    # cache (rates/weak/nTOp_*.txt).  Within the CLAUDE.md tolerances
+    # Default small-network run, loading the hash-named weak-rate cache
+    # rates/weak/nTOp_<hash>.txt.  Within the CLAUDE.md tolerances
     # (YP 0.2469983 +/-1e-5, D/H 2.43490e-5 +/-3e-9), with
     # spectral_distortions=True (IDEAS2.md item 2) and
-    # nuclear_qed_corrections=True (the default).  These pins were last
-    # refreshed after the SD correction was upgraded to _L_SD_CCR (Coulomb +
-    # resummed radiative) when radiative_corrections=True; the ~3e-6 shift in
-    # YPBBN is within tolerance.
+    # nuclear_qed_corrections=True (the default).  Pins refreshed with
+    # format_version=1, hash-in-filename scheme, rates in units of 1/tau_n.
     assert "Neff     = 3.04397730" in out
-    assert "YP (BBN) = 0.24699785" in out
-    assert "D/H      = 2.4349708e-05" in out
+    assert "YP (BBN) = 0.24699760" in out
+    assert "D/H      = 2.4349726e-05" in out
+    assert "Li6/Li7" not in out
 
 
 def test_cli_json_matches_default_summary(capsys):
@@ -40,8 +39,9 @@ def test_cli_json_matches_default_summary(capsys):
     assert rc == 0
     results = json.loads(capsys.readouterr().out)
     assert results["Neff"]   == pytest.approx(3.0439772986, rel=1e-8)
-    assert results["YPBBN"]  == pytest.approx(0.2469978500, rel=1e-8)
-    assert results["DoH"]    == pytest.approx(2.4349708124e-05, rel=1e-8)
+    assert results["YPBBN"]  == pytest.approx(0.2469976024, rel=1e-8)
+    assert results["DoH"]    == pytest.approx(2.4349726419e-05, rel=1e-8)
+    assert "Li6oLi7" not in results
 
 
 def test_cli_omegabh2_override_changes_doh(capsys):

@@ -205,6 +205,21 @@ class PyPR:
             "Li7oH":   (YLi7_f + YBe7_f) / Yp_f,
         }
 
+        # Li6/Li7: observable ratio after Be7→Li7 decay (medium/large networks).
+        # SPECIES_MD ensures Li6 is always in finL (padded with 0 for small
+        # network which has no Li6 production reactions), so check Y>0.
+        if finL.get("Li6", 0.0) > 0:
+            results["Li6oLi7"] = finL["Li6"] / (YLi7_f + YBe7_f)
+
+        # YCNO (mass fraction): total baryon mass fraction in C, N, O isotopes
+        # (large net). YCNO = sum_i A_i Y_i for all C (Z=6), N (Z=7), O (Z=8)
+        # isotopes.
+        cno = sum(self.A[s] * finL[s]
+                  for s in finL
+                  if len(s) >= 2 and s[0] in "CNO" and s[1:].isdigit())
+        if cno > 0:
+            results["YCNO"] = cno
+
         # Neff = rho_nu_tot / rho_g(Tg) / ((7/8)(4/11)^(4/3)) (generic formula,
         # Background.N_eff), evaluated at the final Tg and total neutrino
         # energy density -- only if the background tracks a neutrino sector.
@@ -444,22 +459,20 @@ def _mc_run_batch(base_params, rate_keys, quantities, seeds):
     ``Generator`` (after the rate offsets, so the RNG stream order does not
     depend on ``len(rate_keys)``) and uses it to perturb the neutron lifetime:
     ``tau_n_sample = tau_n_central + std_tau_n * randn()``.  When
-    ``cfg.tau_n_flag`` is True this rescales the weak-rate normalisation
-    ``background.NormWeakRates = 1/(Fn * tau_n)``
-    (``StandardBackground._setup_weak_rates``) without recomputing the ``Fn``
-    integral -- ``Fn`` does not depend on ``tau_n``, so
-    ``background.NormWeakRates * tau_n`` is invariant and is precomputed once
-    before the loop.  When ``cfg.tau_n_flag`` is False, ``tau_n`` does not
-    enter the normalisation and the draw is a harmless no-op (kept so the RNG
-    stream is identical either way).
+    ``cfg.tau_n_normalization`` is True this rescales the weak-rate
+    normalisation ``background.NormWeakRates = 1/tau_n``
+    (``StandardBackground._setup_weak_rates``) without recomputing anything:
+    the stored rates are in units of 1/tau_n, so only tau_n itself changes.
+    When ``cfg.tau_n_normalization`` is False, ``tau_n`` does not enter the
+    normalisation and the draw is a harmless no-op (kept so the RNG stream is
+    identical either way).
     """
     inst = PyPR(params=base_params)
     cfg  = inst.cfg
     tau_n_central = cfg.tau_n
-    # background.NormWeakRates = 1/(Fn * tau_n) (cfg.tau_n_flag=True case of
-    # StandardBackground._setup_weak_rates), so this product is the
-    # tau_n-independent 1/Fn -- rescaling by it for each sampled tau_n avoids
-    # recomputing Fn.
+    # NormWeakRates = 1/tau_n (cfg.tau_n_normalization=True), so the product
+    # is 1.0 -- scaling by tau_n_central and dividing by tau_n_sample gives
+    # 1/tau_n_sample without any extra computation.
     norm_times_tau_n = inst.background.NormWeakRates * tau_n_central
     results = []
     for seed in seeds:
@@ -468,7 +481,7 @@ def _mc_run_batch(base_params, rate_keys, quantities, seeds):
         for k, v in zip(rate_keys, p_vals):
             setattr(cfg, k, float(v))
         tau_n_sample = tau_n_central + cfg.std_tau_n * rng.standard_normal()
-        if cfg.tau_n_flag:
+        if cfg.tau_n_normalization:
             cfg.tau_n = tau_n_sample
             inst.background.NormWeakRates = norm_times_tau_n / tau_n_sample
         inst.solve()

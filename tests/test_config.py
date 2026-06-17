@@ -64,7 +64,7 @@ def test_p_rate_keys_count():
     cfg_medium = PyPRConfig({"network": "medium"})
     bare_names = [re.split(r'[, ]+', entry, maxsplit=1)[0]
                    for entry in load_reaction_names(cfg_medium, "medium")]
-    assert len(cfg_medium.p_rxn) == len(bare_names) == len(_REACTIONS_MEDIUM) == 62
+    assert len(cfg_medium.p_rxn) == len(bare_names) == len(_REACTIONS_MEDIUM) == 67
 
 
 def test_physical_constants_positive():

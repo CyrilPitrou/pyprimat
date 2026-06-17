@@ -120,19 +120,21 @@ DEFAULT_PARAMS: dict = {
     #
     # Born (crude) mode = radiative_corrections=False, finite_mass_corrections=False,
     #                     thermal_corrections=False.  All True = full PRIMAT rate.
-    "weak_rate_cache":            True,  # If False, never load the cache (always recompute); save_nTOp still controls whether the result is written back.
-    "save_nTOp":                  False, # If True, the computed n<->p rates are saved to rates/weak/ with a fingerprint header (see weak_rates.RecomputeWeakRates for why this defaults to False).
-    "sampling_nTOp":              200,   # total points in the single n<->p rate grid
     "radiative_corrections":      True,  # True: Coulomb + T=0 resummed radiative corrections (CCR); False: Born approximation.
     "finite_mass_corrections":    True,  # True: add Fokker-Planck finite-nucleon-mass correction (FMCCR or FMNoCCR).
     "thermal_corrections":        True,  # True: add finite-temperature radiative corrections (CCRTh; Brown & Sawyer 2001).
-    "save_nTOp_thermal":          False, # If True, the computed thermal n<->p rates are saved to rates/weak/ with a fingerprint header.
+    ##################### caching/saving options
+    "weak_rate_cache":            True,  # If False, never load the cache (always recompute); save_nTOp still controls whether the result is written back.
+    "save_nTOp":                  True,  # If True, the computed n<->p rates are saved to rates/weak/ as nTOp_<hash>.txt (forward and backward columns together).
+    "sampling_nTOp":              200,   # total points in the single n<->p rate grid
+    
+    "save_nTOp_thermal":          True,  # If True, the computed thermal n<->p rates are saved to rates/weak/ as nTOp_thermal_<hash>.txt (both directions in one file).
     "sampling_nTOp_thermal":      100,   # grid points for the thermal-correction table
-    "tau_n_flag":                 True,  # Use neutron lifetime to normalize weak rates (instead of absolute normalization from GF, Vud, gA, etc.)
-    "tau_n":                      878.4,  # neutron lifetime [s]; overrides the class-level constant when tau_n_flag=True
+    ##################### Normalization of weak rates
+    "tau_n_normalization":        True,  # Use neutron lifetime to normalize weak rates (instead of absolute normalization from GF, Vud, gA, etc.)
+    "tau_n":                      878.4,  # neutron lifetime [s]; overrides the class-level constant when tau_n_normalization=True
     "std_tau_n":                  0.5,    # 1σ uncertainty on tau_n [s], used for MC sampling
 
-    # ---- finite-temperature weak-rate radiative corrections ----------------
     # Accuracy knobs for the thermal n<->p radiative correction integral, used
     # only when the thermal-correction cache must be recomputed (see
     # weak_rates._L_CCRTh_interpolants).  Evaluated with the `vegas`

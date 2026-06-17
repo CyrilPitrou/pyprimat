@@ -176,12 +176,12 @@ def test_tau_n_alone_gives_nonzero_spread_in_YPBBN():
     assert 0 < std < 1e-3
 
 
-def test_tau_n_flag_false_disables_tau_n_effect():
-    """With cfg.tau_n_flag=False, tau_n does not enter background.NormWeakRates
+def test_tau_n_normalization_false_disables_tau_n_effect():
+    """With cfg.tau_n_normalization=False, tau_n does not enter background.NormWeakRates
     (see StandardBackground._setup_weak_rates), so the extra per-sample tau_n
     draw must be a no-op:
     with no rate offsets either, every sample reproduces the central value."""
     res = np.array(_mc_run_batch(
-        {"network": "small", "verbose": False, "tau_n_flag": False},
+        {"network": "small", "verbose": False, "tau_n_normalization": False},
         rate_keys=[], quantities=["YPBBN"], seeds=list(range(8))))
     assert np.all(res[:, 0] == res[0, 0])

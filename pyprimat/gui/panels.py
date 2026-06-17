@@ -45,6 +45,8 @@ _RATIO_FORMAT = {
     "He3oH":   ".7e",
     "He3oHe4": ".6e",
     "Li7oH":   ".6e",
+    "Li6oLi7": ".6e",
+    "YCNO":    ".6e",
 }
 
 # LaTeX labels (rendered by st.markdown's KaTeX support) for the "Standard
@@ -57,6 +59,8 @@ _RATIO_LABELS = {
     "He3oH":   r"$({}^{3}\text{He}+\text{T})/\text{H}$",
     "He3oHe4": r"$({}^{3}\text{He}+\text{T})/{}^{4}\text{He}$",
     "Li7oH":   r"$({}^{7}\text{Li}+{}^{7}\text{Be})/\text{H}$",
+    "Li6oLi7": r"${}^{6}\text{Li}/({}^{7}\text{Li}+{}^{7}\text{Be})$",
+    "YCNO":    r"$Y_{\text{CNO}}$",
 }
 
 
@@ -103,6 +107,7 @@ def render_results_panel(run, mc=None):
         lines += [
             f"| {_RATIO_LABELS[key]} | {format(results[key], fmt)} |"
             for key, fmt in _RATIO_FORMAT.items()
+            if key in results
         ]
     else:
         # Sample count is read back from the result so the header matches the
@@ -114,6 +119,7 @@ def render_results_panel(run, mc=None):
             f"| {_RATIO_LABELS[key]} | {format(results[key], fmt)} "
             f"| {format(mc[key].std, fmt)} |"
             for key, fmt in _RATIO_FORMAT.items()
+            if key in results
         ]
     st.markdown("\n".join(lines))
     if mc is not None:

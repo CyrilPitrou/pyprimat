@@ -157,7 +157,7 @@ _CONSTANTS_METADATA = {
     "tau_n": (
         r"$\tau_n$  (neutron lifetime) [s]",
         "Neutron lifetime, used to normalise the n<->p weak rates "
-        "(when tau_n_flag=True, the default).",
+        "(when tau_n_normalization=True, the default).",
     ),
 }
 

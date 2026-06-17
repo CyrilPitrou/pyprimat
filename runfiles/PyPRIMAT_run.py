@@ -35,12 +35,9 @@ omegabh2 = 0.022425
 MyOptions = {
     "verbose":              True,
     "debug":                True,
-    # save_nTOp=True: this script's options are exactly the *default*
-    # n<->p weak-rate fingerprint (see pyprimat.weak_rates), so running it
-    # regenerates rates/weak/nTOp_{frwrd,bkwrd}.txt with a fresh fingerprint
-    # header for the default configuration. Other configurations should
-    # leave save_nTOp at its default (False) to avoid overwriting this
-    # shared cache with a non-default fingerprint.
+    # save_nTOp: True is now the default; listed here explicitly for clarity.
+    # Each configuration saves to rates/weak/nTOp_<hash>.txt so different
+    # configurations coexist without overwriting each other.
     "save_nTOp":            True,
     "Omegabh2":                  omegabh2,
     # "eta0b": computed automatically from Omegabh2

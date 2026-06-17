@@ -963,13 +963,17 @@ class StandardBackground(Background):
             print((f"[weak]  n <--> p weak rates ready in "
                    f"{time.time()-_t_weak0:.2f} s"), flush=True)
 
-        # Normalisation factor
-        if cfg.tau_n_flag:
-            Fn = PyPRnTOp.ComputeFn(cfg)
-            self._norm_weak_rates = 1. / (Fn * cfg.tau_n)   # [s^-1]
+        # Normalisation factor: the stored rates are already in units of 1/tau_n
+        # (ComputeFn was applied inside ComputeWeakRates), so multiplying by
+        # 1/tau_n gives the actual rate in s^-1.  The absolute-normalisation
+        # path (tau_n_normalization=False) still requires Fn to convert from
+        # the 1/tau_n storage units to the GF-based normalisation.
+        if cfg.tau_n_normalization:
+            self._norm_weak_rates = 1. / cfg.tau_n   # [s^-1]
         else:
+            Fn       = PyPRnTOp.ComputeFn(cfg)
             GFtilde2 = (cfg.GF * cfg.Vud)**2 * (1. + 3. * cfg.gA**2) / (2. * np.pi**3)
-            self._norm_weak_rates = cfg.MeV_to_secm1 * (GFtilde2 * cfg.me**5)
+            self._norm_weak_rates = cfg.MeV_to_secm1 * (GFtilde2 * cfg.me**5) * Fn
 
     @property
     def NormWeakRates(self):
@@ -1196,12 +1200,12 @@ class CustomBackground(Background):
             print(f"[weak]  n <--> p weak rates ready in "
                   f"{time.time()-_t0:.2f} s", flush=True)
 
-        if cfg.tau_n_flag:
-            Fn = PyPRnTOp.ComputeFn(cfg)
-            self._norm_weak_rates = 1. / (Fn * cfg.tau_n)
+        if cfg.tau_n_normalization:
+            self._norm_weak_rates = 1. / cfg.tau_n
         else:
+            Fn       = PyPRnTOp.ComputeFn(cfg)
             GFtilde2 = (cfg.GF * cfg.Vud)**2 * (1. + 3. * cfg.gA**2) / (2. * np.pi**3)
-            self._norm_weak_rates = cfg.MeV_to_secm1 * (GFtilde2 * cfg.me**5)
+            self._norm_weak_rates = cfg.MeV_to_secm1 * (GFtilde2 * cfg.me**5) * Fn
 
     @property
     def NormWeakRates(self):
