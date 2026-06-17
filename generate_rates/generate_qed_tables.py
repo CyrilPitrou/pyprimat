@@ -4,7 +4,7 @@
 generate_qed_tables.py
 ======================
 Standalone script to recompute the QED plasma-pressure correction tables
-and write them to ``Rates/plasma/``.
+and write them to ``pyprimat/rates/plasma/``.
 
 These tables store δP(T), dδP/dT, and d²δP/dT² — the finite-temperature
 QED corrections to the EM plasma pressure that enter the background
@@ -24,15 +24,15 @@ but is not included in the standard files.)
 Usage::
 
     # From the repository root:
-    python generate_from_primat/generate_qed_tables.py
+    python generate_rates/generate_qed_tables.py
 
     # Higher-resolution grid:
-    python generate_from_primat/generate_qed_tables.py --n-pts 1000
+    python generate_rates/generate_qed_tables.py --n-pts 1000
 
     # Also compute the O(e^4) two-loop exchange term (very slow):
-    python generate_from_primat/generate_qed_tables.py --include-dPb
+    python generate_rates/generate_qed_tables.py --include-dPb
 
-The output files are written to ``Rates/plasma/``:
+The output files are written to ``pyprimat/rates/plasma/``:
   - ``QED_P_int.txt``     — δP columns: [T, δP_a, δP_{e3}]
   - ``QED_dP_intdT.txt``  — dδP/dT
   - ``QED_d2P_intdT2.txt`` — d²δP/dT²

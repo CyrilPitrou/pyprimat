@@ -36,7 +36,7 @@ pip install -e ".[recommended]"
 
 | Package | Role |
 |---------|------|
-| `numpy`, `scipy` | **Mandatory** |
+| `numpy`, `scipy`, `joblib`, `plotly` | **Mandatory** (installed by `pip install -e .`) |
 | `numba` | Recommended — JIT compilation gives ~5× speedup on rate kernels |
 | `vegas` | Recommended — Monte Carlo integration for thermal weak-rate corrections |
 
@@ -49,8 +49,18 @@ pip install -e ".[gui]"
 | Package | Role |
 |---------|------|
 | `streamlit` | **Required for `pyprimat-gui`** — the web app framework |
-| `plotly` | **Required for `pyprimat-gui`** — interactive abundance-evolution plot |
 | `pandas` | **Required for `pyprimat-gui`** — final-abundance table |
+
+For the example notebooks under `notebooks/`, install the `notebooks` extra:
+
+```bash
+pip install -e ".[notebooks]"
+```
+
+| Package | Role |
+|---------|------|
+| `matplotlib`, `pandas` | Plotting and tabular display in the notebooks |
+| `papermill` | Headless notebook execution |
 
 ## Quick start
 
@@ -163,43 +173,48 @@ the full design.
 | `sampling_temperature_per_decade` | 400 | Background grid points per decade of T |
 | `sampling_nTOp_per_decade` | 80 | n↔p rate grid points per decade of T |
 | `weak_rate_cache` | True | If False, never load n↔p rates from `rates/weak/` (always recompute) |
-| `save_nTOp` | False | Save recomputed n↔p rates to `rates/weak/` with a fingerprint header |
-| `include_nTOp_thermal` | True | Include thermal radiative corrections to the n↔p rates |
-| `save_nTOp_thermal` | False | Save recomputed thermal corrections to `rates/weak/` with a fingerprint header |
+| `save_nTOp` | True | Save recomputed n↔p rates to `rates/weak/` with a fingerprint header |
+| `thermal_corrections` | True | Include thermal radiative corrections (CCRTh) to the n↔p rates |
+| `save_nTOp_thermal` | True | Save recomputed thermal corrections to `rates/weak/` with a fingerprint header |
 | `output_time_evolution` | False | Write time-evolution table to `output_file` |
 | `output_file` | `results/output_tables.tsv` | Output file path (relative paths resolve against the current working directory) |
 | `output_n_points` | 500 | Number of interpolated rows in output file |
 
 ### n↔p weak rate workflow
 
-The n↔p weak rates are the most expensive part of initialisation (~1.8 s). They are
-cached in `rates/weak/nTOp_frwrd.txt` and `rates/weak/nTOp_bkwrd.txt`, each tagged
-with a *fingerprint* header: a hash of every config field that affects its numeric
-content (background thermodynamics, `sampling_nTOp_per_decade`, `nTOp_Born_approximation`,
-`include_nTOp_thermal`, etc. — see `pyprimat.weak_rates`). At every run:
+The n↔p weak rates are the most expensive part of initialisation (~1.8 s). The
+non-thermal rate (Born+FM+CCR+SD) is cached in `rates/weak/nTOp_<hash>.txt`
+(forward and backward columns together); the finite-temperature radiative
+correction (CCRTh) is cached separately in `rates/weak/nTOp_thermal_<hash>.txt`.
+Each file is tagged with a *fingerprint* header: a hash of every config field
+that affects its numeric content (background thermodynamics,
+`sampling_nTOp_per_decade`/`sampling_nTOp_thermal_per_decade`,
+`radiative_corrections`, `finite_mass_corrections`, `thermal_corrections`, etc.
+— see `pyprimat.weak_rates`). At every run:
 
-- If `weak_rate_cache=True` (default) and the cache file's fingerprint matches the
-  current configuration, the rates are loaded directly — initialisation is
-  effectively instantaneous.
+- If `weak_rate_cache=True` (default) and a cache file's fingerprint matches the
+  current configuration, the corresponding rates are loaded directly —
+  initialisation is effectively instantaneous.
 - Otherwise (fingerprint mismatch, missing file, or `weak_rate_cache=False`), the
   rates are recomputed from scratch by numerical integration (~1.8 s).
-- Set **`save_nTOp=True`** to write the (re)computed rates back to `rates/weak/`
-  with a fresh fingerprint header, so future runs with the same configuration load
-  the cache. `save_nTOp` defaults to `False` so that ad-hoc runs with non-default
-  settings do not overwrite the shared cache used by the standard configuration.
+- `save_nTOp` and `save_nTOp_thermal` (both default **`True`**) write the
+  (re)computed rates back to `rates/weak/` with a fresh fingerprint header, so
+  future runs with the same configuration load the cache. The hash is part of
+  the filename, so different configurations coexist without overwriting each
+  other — set either flag to `False` only to avoid littering `rates/weak/`
+  during throwaway experiments.
 
-The thermal radiative corrections follow an analogous pattern via
-`include_nTOp_thermal` and `save_nTOp_thermal`, but with a more lenient staleness
-policy: recomputing them requires a `vegas` Monte Carlo integration that can take
-minutes to hours, so an existing `rates/weak/{nTOp,pTOn}_thermal_corrections.txt`
-is always loaded as-is (a fingerprint mismatch only prints a warning in verbose
-mode); only a *missing* file triggers recomputation.
+Recomputing the thermal correction (`thermal_corrections=True`) requires a
+`vegas` Monte Carlo integration that can take minutes to hours; the
+fingerprint mechanism above is what makes this avoidable across runs that
+share the same configuration.
 
 **Typical workflow for a high-precision study:**
 ```python
 # Step 1 – compute and save high-precision rates once (non-default
 # sampling_nTOp_per_decade gives a fingerprint that the shipped cache won't
-# match, so this recomputes)
+# match, so this recomputes; save_nTOp=True is the default but spelled out
+# here for clarity)
 PyPR({"save_nTOp": True, "sampling_nTOp_per_decade": 160}).solve()
 
 # Step 2 – all subsequent runs with the same sampling_nTOp_per_decade reuse the saved tables
