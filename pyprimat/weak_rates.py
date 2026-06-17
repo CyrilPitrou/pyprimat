@@ -109,42 +109,54 @@ exp_cutoff = 3e+2
 # v2: sampling_nTOp/sampling_nTOp_thermal (total grid points) replaced by
 # sampling_nTOp_per_decade/sampling_nTOp_thermal_per_decade (points per decade
 # of T), so the grid density now stays fixed when T_end_MeV changes the span.
-WEAK_RATE_FORMAT_VERSION = 2
+# v3: the n<->p rate table nTOp_<hash>.txt now stores ONLY the non-thermal
+# rate (Born + finite-mass + CCR + spectral-distortion); the finite-temperature
+# radiative correction (CCRTh) is kept in its own nTOp_thermal_<hash>.txt and
+# recombined at point of use (RecomputeWeakRates), matching the fingerprint
+# which never included thermal_corrections.  The CCRTh table content also
+# changed: the n->p direction is now clamped to 0 below ~10^8.2 K (see
+# _L_CCRTh_compute) to remove a spurious infrared-divergent bremsstrahlung
+# residual.  Both changes invalidate every v2 cache file.
+WEAK_RATE_FORMAT_VERSION = 1
 
 # Config fields entering the weak-rate fingerprint (nTOp_<hash>.txt).
 # DeltaNeff is deliberately NOT listed: it only shifts the time-temperature
-# relation Tg(t) and does not affect the rate integrand at fixed Tg.
-# sampling_temperature_per_decade, external_scale_factor and nevo_grid_file do not
-# enter the integrand either (grid resolution / scale-factor mode / spectral
-# y-grid are all negligible effects on the rates) and are omitted to keep the
-# fingerprint minimal.
+# relation Tg(t) and does not affect the rate integrand at fixed Tg (in decoupling approximation).
+# In principle if we consider a DeltaNeff with incomplete decoupling we must also consider the associated NEVO file.
+# We need to review the interplay between NEVO and PyPRIMAT.
+# Note  that spectral distortions and incomplete decoupling effects are expected to have a small effect on weak rates.
 _WEAK_RATE_BG_FIELDS = [
-    "incomplete_decoupling",
-    "QED_corrections",
+    "radiative_corrections",
+    "finite_mass_corrections",
     "munuOverTnu",
+    "QED_corrections",
+    "incomplete_decoupling",
     "spectral_distortions",
     "analytic_distortions",
     "delta_xi_nu",
     "y_SZ",
     "T_start_cosmo_MeV",
     "T_end_MeV",
+    "sampling_nTOp_per_decade",
     "nevo_file",
     "nevo_spectral_file",
     "nevo_file_prefix",
 ]
 
 # Config fields entering the thermal-correction fingerprint
-# (nTOp_thermal_<hash>.txt).  Only the temperature range, the neutrino
-# decoupling mode, and the NEVO thermo/spectral table selection matter for
+# (nTOp_thermal_<hash>.txt).  Only the temperature range and sampling, the neutrino
+# decoupling mode (with or without QED corrections), and the NEVO thermo/spectral table selection matter for
 # the double-integral over (E, k) that defines the finite-temperature
 # radiative correction.
+# When improving the interpolay with NEVO this could be improved. 
 _THERMAL_BG_FIELDS = [
     "T_end_MeV",
     "T_start_cosmo_MeV",
+    "sampling_nTOp_thermal_per_decade",
+    "QED_corrections",
     "incomplete_decoupling",
     "nevo_file",
-    "nevo_file_prefix",
-    "nevo_spectral_file",
+    "nevo_file_prefix"
 ]
 
 
@@ -894,8 +906,7 @@ def _L_FMCCR(ctx, T_arr, sgnq):
 def _L_FMNoCCR(ctx, T_arr, sgnq):
     """Finite-nucleon-mass correction WITHOUT Coulomb or radiative factors.
 
-    Mirrors PRIMAT-Main.m ``λFMNoCCR`` (``IPENdpFrom\[Chi]NoCCR`` applied to
-    ``\[Chi]FM``).  Used when cfg.finite_mass_corrections=True and
+    Mirrors PRIMAT-Main.m ``λFMNoCCR``.  Used when cfg.finite_mass_corrections=True and
     cfg.radiative_corrections=False, so that the finite-mass correction is
     self-consistently computed at the same (Born) level as the base rate.
 
@@ -917,7 +928,7 @@ def _L_FMNoCCR(ctx, T_arr, sgnq):
 def _L_SD(ctx, T_arr, sgnq, dFDneu_func):
     """Born-level spectral-distortion contribution to the n<->p rate.
 
-    Mirrors PRIMAT-Main.m ``λSD`` (``IPENdpFrom\[Chi]NoCCR`` with ``δ\[Chi]``).
+    Mirrors PRIMAT-Main.m ``λSD``.
     Used when cfg.spectral_distortions=True and cfg.radiative_corrections=False.
     See also :func:`_L_SD_CCR` for the version with Coulomb/radiative factors.
 
@@ -949,7 +960,7 @@ def _L_SD(ctx, T_arr, sgnq, dFDneu_func):
 def _L_SD_CCR(ctx, T_arr, sgnq, dFDneu_func):
     """Spectral-distortion correction with Coulomb × T=0 resummed radiative factor.
 
-    Mirrors PRIMAT-Main.m ``λSDCCR`` (``IPENdpFrom\[Chi]CCR`` with ``δ\[Chi]``).
+    Mirrors PRIMAT-Main.m ``λSDCCR``.
     Used when cfg.spectral_distortions=True and cfg.radiative_corrections=True.
     Identical algebra to :func:`_L_CCR` but with the SD delta-chi function in
     place of the Born chi: the FermiCoulomb and RadCorrResum factors are applied
@@ -1265,15 +1276,35 @@ def _L_CCRTh_interpolants(ctx):
             return res_2 + res_3
 
         def _L_CCRTh_compute(T, sgnq):
-            if sgnq == -1 and T < 10**(8.2):
+            # Clamp the finite-temperature correction to 0 below ~10^8.2 K in
+            # BOTH directions.  Two independent reasons coincide there:
+            #  (i) Physics: the e+/e-/photon bath is exp(-m_e/kB T)-dilute, so
+            #      the thermal radiative correction is negligible (the
+            #      well-behaved sub-terms are already <1e-7 by ~7e7 K).
+            #  (ii) Numerics: the differential-bremsstrahlung sub-term
+            #      (IPENCCRDiffBremsstrahlung) carries an alpha/(2 pi k) infrared
+            #      pole that is meant to cancel against its soft subtraction.
+            #      That cancellation breaks once the neutrino Fermi-Dirac
+            #      threshold width 1/znu (= kB T Tnu/(me T)) shrinks toward the
+            #      hard-coded lower photon-momentum cutoff k_min=1e-3, leaving an
+            #      uncancelled ln(k_min) residual that the n->p integral
+            #      converges to (~ -1.2e-2 at 1.16e7 K, growing logarithmically
+            #      as k_min is lowered).  Below ~10^8.2 K this residual would
+            #      otherwise spuriously pull the n->p rate ~0.7% below the free
+            #      neutron-decay value it must approach as T -> 0.
+            # PRIMAT-Main.m already applies this clamp to p->n (sgnq=-1) only
+            # (lines 1639/1644/1650); here it is extended to n->p because
+            # PyPRIMAT now tabulates the rates down to T_end ~ 1.16e7 K, well
+            # into the regime where the unclamped n->p bremsstrahlung misbehaves.
+            if T < 10**(8.2):
                 return 0.
             return (_L_ThermalTruePhoton(T, sgnq)
                     + _L_ThermalDiffBremsstrahlung(T, sgnq)
                     + _L_Thermal_1(T, sgnq)
                     + _L_Thermal_2_3(T, sgnq))
 
-        if cfg.verbose:
-            print("[weak]     Re-evaluating n <--> p thermal corrections. This may take a while ...")
+        #if cfg.verbose:
+        print("[weak]     Re-evaluating n <--> p thermal corrections. This may take a while ...")
 
         _n_th_pts  = n_points_per_decade(cfg.sampling_nTOp_thermal_per_decade, cfg.T_end, cfg.T_start)
         _T_th      = np.logspace(np.log10(cfg.T_end), np.log10(cfg.T_start), _n_th_pts)
@@ -1306,18 +1337,27 @@ def _L_CCRTh_interpolants(ctx):
 # Ordered list of named correction terms and main driver
 # ---------------------------------------------------------------------------
 
-def _correction_terms(ctx, T_arr, sgnq, dFDneu_func, thermal_interp):
+def _correction_terms(ctx, T_arr, sgnq, dFDneu_func):
     """Ordered list of (name, value) additive corrections to Gamma_{n<->p}.
 
-    Mirrors PRIMAT-Main.m §IV.B and Table 1 of the Phys. Rep.  The four cfg
-    flags control which terms are active:
+    Mirrors PRIMAT-Main.m §IV.B and Table 1 of the Phys. Rep.  These are the
+    terms that make up the *non-thermal* n<->p rate stored on disk; the cfg
+    flags control which are active:
 
       radiative_corrections=True  → CCR (replaces Born)
       radiative_corrections=False → Born
       finite_mass_corrections=True + radiative_corrections=True  → FMCCR
       finite_mass_corrections=True + radiative_corrections=False → FMNoCCR
-      thermal_corrections=True    → CCRTh
       spectral_distortions=True   → SD_CCR (if radiative_corrections) or SD
+
+    The finite-temperature radiative correction (CCRTh) is deliberately NOT in
+    this list: it is computed and cached separately (``nTOp_thermal_<hash>.txt``
+    via :func:`_L_CCRTh_interpolants`) and recombined with the stored
+    Born+FM+CCR+SD rate only at point of use, in :func:`RecomputeWeakRates`.
+    Keeping it out here is what lets the stored ``nTOp_<hash>.txt`` rate
+    correctly approach the free neutron-decay value (1 in units of 1/tau_n) as
+    T -> 0, and matches :func:`_weak_rate_fingerprint`, which never depended on
+    ``thermal_corrections``.
 
     ``ComputeWeakRates`` sums these terms; the same list lets the test suite
     (or a notebook) inspect or pin each term's contribution individually.
@@ -1334,8 +1374,6 @@ def _correction_terms(ctx, T_arr, sgnq, dFDneu_func, thermal_interp):
         +1 for n->p, -1 for p->n.
     dFDneu_func : callable or None
         Spectral-distortion function, see ComputeWeakRates.
-    thermal_interp : (L_nTOpCCRTh, L_pTOnCCRTh)
-        Interpolants returned by :func:`_L_CCRTh_interpolants`.
 
     Returns
     -------
@@ -1351,10 +1389,6 @@ def _correction_terms(ctx, T_arr, sgnq, dFDneu_func, thermal_interp):
         terms.append(("Born", _L_BORN(ctx, T_arr, sgnq)))
         if cfg.finite_mass_corrections:
             terms.append(("FMNoCCR", _L_FMNoCCR(ctx, T_arr, sgnq)))
-    if cfg.thermal_corrections:
-        L_nTOpCCRTh, L_pTOnCCRTh = thermal_interp
-        L_CCRTh = L_nTOpCCRTh(T_arr) if sgnq == 1 else L_pTOnCCRTh(T_arr)
-        terms.append(("CCRTh", np.asarray(L_CCRTh, dtype=float)))
     if dFDneu_func is not None:
         if cfg.radiative_corrections:
             terms.append(("SD", _L_SD_CCR(ctx, T_arr, sgnq, dFDneu_func)))
@@ -1363,14 +1397,85 @@ def _correction_terms(ctx, T_arr, sgnq, dFDneu_func, thermal_interp):
     return terms
 
 
+def _build_rate_context(Tvec, cfg):
+    """Build the :class:`_RateContext` shared by the n<->p rate integrands.
+
+    Factored out of :func:`ComputeWeakRates` so that the thermal-correction
+    interpolants (:func:`_thermal_correction_interpolants`) can be rebuilt on a
+    cache hit -- when the non-thermal rate is loaded from disk and
+    ComputeWeakRates is never called -- without duplicating the masses /
+    T_nu(T_gamma) interpolant / numba setup.
+
+    Args:
+        Tvec: [Tg_vec, Tnu_vec], both float arrays in Kelvin (photon and
+              neutrino temperatures from PyPR._setup_background_and_cosmo).
+        cfg : PyPRConfig instance.
+
+    Returns:
+        _RateContext instance.
+    """
+    me = cfg.me * cfg.MeV
+    mn = cfg.mn * cfg.MeV
+    mp = cfg.mp * cfg.MeV
+    Q  = mn - mp
+
+    Tg_vec, Tnu_vec = Tvec
+    T_nuOverT = interp1d(Tg_vec * cfg.MeV_to_Kelvin, Tnu_vec / Tg_vec,
+                         bounds_error=False, fill_value="extrapolate", kind='linear')
+
+    _setup_fd_impls(cfg.numba_installed)
+
+    return _RateContext(cfg=cfg, me=me, mn=mn, mp=mp, Q=Q, xi_nu=cfg.munuOverTnu,
+                        T_nuOverT=T_nuOverT, gA=cfg.gA, deltakappa=cfg.deltakappa,
+                        my_dir=cfg.data_dir)
+
+
+def _thermal_correction_interpolants(Tvec, cfg):
+    """Finite-temperature radiative correction (CCRTh) as rate interpolants.
+
+    Returns ``(Ln, Lp)``, two callables T[K] -> additive correction to the
+    n->p / p->n rate in units of 1/tau_n (i.e. the raw L_CCRTh of
+    :func:`_L_CCRTh_interpolants`, divided by the same neutron-decay
+    phase-space factor Fn that normalises the stored non-thermal rate, so the
+    two are directly addable).  When ``cfg.thermal_corrections`` is False both
+    are the zero function.
+
+    This is the "handled separately" half of the n<->p rate: the stored
+    ``nTOp_<hash>.txt`` holds Born+FM+CCR+SD, the cached
+    ``nTOp_thermal_<hash>.txt`` holds CCRTh, and :func:`RecomputeWeakRates`
+    sums the two.  Keeping them apart on disk lets the non-thermal table
+    converge cleanly to the free neutron-decay value at low T and lets the
+    (slow, vegas-based) thermal table be reused across configurations that
+    differ only in non-thermal flags.
+
+    Args:
+        Tvec: [Tg_vec, Tnu_vec], both arrays in Kelvin (for the T_nu(T_gamma)
+              interpolant inside the thermal integrand).
+        cfg : PyPRConfig instance.
+
+    Returns:
+        (Ln, Lp): two callables T[K] -> float (rate correction in 1/tau_n).
+    """
+    if not cfg.thermal_corrections:
+        return (lambda T: 0.0), (lambda T: 0.0)
+    ctx = _build_rate_context(Tvec, cfg)
+    L_nTOpCCRTh, L_pTOnCCRTh = _L_CCRTh_interpolants(ctx)
+    Fn = ComputeFn(cfg)
+    return (lambda T: L_nTOpCCRTh(T) / Fn), (lambda T: L_pTOnCCRTh(T) / Fn)
+
+
 def ComputeWeakRates(Tvec, cfg, dFDneu_func=None):
-    """Compute n↔p weak rate tables over the BBN temperature range.
+    """Compute the non-thermal n↔p weak rate tables over the BBN T range.
 
     Evaluates the forward rate Γ_{n→p}(T) and backward rate Γ_{p→n}(T) on the
-    photon-temperature grid Tg_vec, by summing additive correction terms
-    (controlled by four cfg flags) returned by :func:`_correction_terms`:
+    photon-temperature grid Tg_vec, by summing the additive correction terms
+    (controlled by the cfg flags) returned by :func:`_correction_terms`:
 
-    Γ_{n→p} = K × (CCR or Born) × (+ FMCCR/FMNoCCR) + CCRTh + SD_CCR/SD
+    Γ_{n→p} = K × [ (CCR or Born) (+ FMCCR/FMNoCCR) (+ SD_CCR/SD) ]
+
+    The finite-temperature CCRTh correction is NOT included here — it is stored
+    separately (``nTOp_thermal_<hash>.txt``) and recombined at point of use in
+    :func:`RecomputeWeakRates` via :func:`_thermal_correction_interpolants`.
 
     where:
       _L_BORN    — Born rate ∫ p² [χ₊(E)+χ₊(−E)] dp  (Phys. Rep. Eqs. 77–78).
@@ -1385,11 +1490,10 @@ def ComputeWeakRates(Tvec, cfg, dFDneu_func=None):
       _L_FMNoCCR — Finite-nucleon-mass correction without Coulomb/radiative.
                    Active when cfg.finite_mass_corrections=True and
                    cfg.radiative_corrections=False.
-      _L_CCRTh   — Finite-temperature radiative corrections (Brown & Sawyer 2001;
-                   Phys. Rep. §III.H, Eqs. 107–113).  Active when
-                   cfg.thermal_corrections=True; loaded from the fingerprinted
-                   cache in rates/weak/ when valid, otherwise recomputed (slow,
-                   uses vegas if available).  See _L_CCRTh_interpolants.
+      (_L_CCRTh  — Finite-temperature radiative corrections (Brown & Sawyer 2001;
+                   Phys. Rep. §III.H, Eqs. 107–113) are NOT summed here; they are
+                   built separately by _thermal_correction_interpolants and added
+                   in RecomputeWeakRates.)
       _L_SD      — Born-level spectral-distortion correction (deviation of f_ν
                    from Fermi–Dirac, passed in via dFDneu_func).  Active when
                    dFDneu_func is supplied and cfg.radiative_corrections=False.
@@ -1416,34 +1520,14 @@ def ComputeWeakRates(Tvec, cfg, dFDneu_func=None):
     -------
     [T_all, frwrd, bkwrd] : list
         T_all  — 1-D float array, photon temperatures in Kelvin.
-        frwrd  — 1-D float array, Γ_{n→p}(T) in s⁻¹.
-        bkwrd  — 1-D float array, Γ_{p→n}(T) in s⁻¹.
+        frwrd  — 1-D float array, non-thermal Γ_{n→p}(T) in units of 1/τ_n.
+        bkwrd  — 1-D float array, non-thermal Γ_{p→n}(T) in units of 1/τ_n.
 
     Example:
         >>> rates = ComputeWeakRates([Tg_vec, Tnu_vec], cfg)
         >>> T_K, lam_nTOp, lam_pTOn = rates
     """
-    me = cfg.me * cfg.MeV
-    mn = cfg.mn * cfg.MeV
-    mp = cfg.mp * cfg.MeV
-    Q  = mn - mp
-
-    xi_nu  = cfg.munuOverTnu
-    my_dir = cfg.data_dir
-
-    Tg_vec, Tnu_vec = Tvec
-    T_nuOverT = interp1d(Tg_vec * cfg.MeV_to_Kelvin, Tnu_vec / Tg_vec,
-                         bounds_error=False, fill_value="extrapolate", kind='linear')
-
-    _setup_fd_impls(cfg.numba_installed)
-
-    ctx = _RateContext(cfg=cfg, me=me, mn=mn, mp=mp, Q=Q, xi_nu=xi_nu,
-                        T_nuOverT=T_nuOverT, gA=cfg.gA, deltakappa=cfg.deltakappa,
-                        my_dir=my_dir)
-
-    # Built once: the thermal-correction interpolants are independent of T
-    # and reused at every grid point below.
-    thermal_interp = _L_CCRTh_interpolants(ctx)
+    ctx = _build_rate_context(Tvec, cfg)
 
     # Single grid spanning the whole BBN temperature range (T_end -> T_start).
     # cfg.sampling_nTOp_per_decade is points per decade of T (formerly
@@ -1454,10 +1538,12 @@ def ComputeWeakRates(Tvec, cfg, dFDneu_func=None):
 
     # Each correction term is already vectorised over T_all, so
     # the forward / backward rates are just the element-wise sum of the term
-    # arrays -- no Python loop over the grid.
+    # arrays -- no Python loop over the grid.  The finite-temperature CCRTh
+    # term is intentionally absent here (see _correction_terms): it is stored
+    # separately and recombined in RecomputeWeakRates.
     def nTOp_rate_(sgnq):
         return sum(value for _, value in
-                   _correction_terms(ctx, T_all, sgnq, dFDneu_func, thermal_interp))
+                   _correction_terms(ctx, T_all, sgnq, dFDneu_func))
 
     frwrd = nTOp_rate_(+1)
     bkwrd = nTOp_rate_(-1)
@@ -1508,17 +1594,21 @@ def InterpolateWeakRates(cfg):
 def RecomputeWeakRates(Tvec, cfg, dFDneu_func=None):
     """Load the n<->p weak-rate tables from the fingerprinted cache, or recompute.
 
-    Implements the cache-loading logic:
+    Implements the cache-loading logic for the *non-thermal* rate (the
+    thermal CCRTh correction is always handled separately, see step 5):
 
     1. Compute the fingerprint hash of the current configuration
        (:func:`_weak_rate_fingerprint`).
-    2. If `cfg.weak_rate_cache` is True and both
-       rates/weak/nTOp_{frwrd,bkwrd}.txt exist with a matching
-       `fingerprint_hash` header, load and interpolate them directly
-       (cheap: no integration at all).
+    2. If `cfg.weak_rate_cache` is True and `rates/weak/nTOp_<hash>.txt`
+       exists with a matching `fingerprint_hash` header, load and interpolate
+       it directly (cheap: no integration at all).
     3. Otherwise call :func:`ComputeWeakRates` to recompute from scratch
-       (~2 s).  If `cfg.save_nTOp` is True, overwrite the cache files with
-       the new data and the current fingerprint header.
+       (~2 s).  If `cfg.save_nTOp` is True, save the new data and the current
+       fingerprint header to that file.
+    5. Build the finite-temperature CCRTh correction with
+       :func:`_thermal_correction_interpolants` (its own
+       ``nTOp_thermal_<hash>.txt`` cache) and add it to the non-thermal
+       interpolant from step 2/3.  The returned rate is the sum of the two.
     4. **Forced recompute**: if `cfg.spectral_distortions and
        cfg.analytic_distortions`, the cache is bypassed entirely (never
        loaded, never written).  Analytic distortions are continuous knobs
@@ -1546,8 +1636,11 @@ def RecomputeWeakRates(Tvec, cfg, dFDneu_func=None):
 
     Returns
     -------
-    [frwrd, bkwrd] : two interp1d objects (n->p and p->n) covering the whole
-    BBN temperature range.
+    [frwrd, bkwrd] : two callables (n->p and p->n) T[K] -> rate in units of
+    1/τ_n, covering the whole BBN temperature range.  Each is the sum of the
+    stored non-thermal interpolant (Born+FM+CCR+SD) and the separately-cached
+    finite-temperature correction (CCRTh), so multiplying by 1/τ_n gives the
+    full physical rate in s⁻¹.
     """
     forced_recompute = cfg.spectral_distortions and cfg.analytic_distortions
 
@@ -1556,22 +1649,34 @@ def RecomputeWeakRates(Tvec, cfg, dFDneu_func=None):
     fp_hash  = fingerprint_hash(fp)
     path     = nd + "nTOp_" + fp_hash + ".txt"
 
-    if not forced_recompute and cfg.weak_rate_cache:
-        if os.path.exists(path):
-            return InterpolateWeakRates(cfg)
-        if cfg.verbose:
+    # ---- Non-thermal rate (Born+FM+CCR+SD): load from cache or recompute. ----
+    nonthermal = None
+    if not forced_recompute and cfg.weak_rate_cache and os.path.exists(path):
+        nonthermal = InterpolateWeakRates(cfg)
+
+    if nonthermal is None:
+        if cfg.verbose and not forced_recompute and cfg.weak_rate_cache:
             print("[weak]     Recomputing n<->p weak rates (no cache for this configuration).")
+        T_all, frwrd, bkwrd = ComputeWeakRates(Tvec, cfg, dFDneu_func=dFDneu_func)
 
-    T_all, frwrd, bkwrd = ComputeWeakRates(Tvec, cfg, dFDneu_func=dFDneu_func)
+        if not forced_recompute and cfg.save_nTOp:
+            os.makedirs(nd, exist_ok=True)
+            write_cache_with_fingerprint(
+                path, fp, [T_all, frwrd, bkwrd],
+                col_header="T[K] Gamma_nTOp[1/tau_n] Gamma_pTOn[1/tau_n]")
 
-    if not forced_recompute and cfg.save_nTOp:
-        os.makedirs(nd, exist_ok=True)
-        write_cache_with_fingerprint(
-            path, fp, [T_all, frwrd, bkwrd],
-            col_header="T[K] Gamma_nTOp[1/tau_n] Gamma_pTOn[1/tau_n]")
+        def _interp(v):
+            return interp1d(T_all, v, bounds_error=False,
+                            fill_value="extrapolate", kind='quadratic')
 
-    def _interp(v):
-        return interp1d(T_all, v, bounds_error=False,
-                        fill_value="extrapolate", kind='quadratic')
+        nonthermal = [_interp(frwrd), _interp(bkwrd)]
 
-    return [_interp(frwrd), _interp(bkwrd)]
+    # ---- Thermal correction (CCRTh): cached separately, recombined here. ----
+    # Both halves are in units of 1/τ_n, so the physical rate the solver uses
+    # is simply their sum.  Returning thin closures (rather than re-tabulating)
+    # keeps the two caches independent: a config that differs only in a
+    # non-thermal flag reuses the same thermal table, and vice versa.
+    nTOp_thermal, pTOn_thermal = _thermal_correction_interpolants(Tvec, cfg)
+    frwrd_nt, bkwrd_nt = nonthermal
+    return [lambda T: frwrd_nt(T) + nTOp_thermal(T),
+            lambda T: bkwrd_nt(T) + pTOn_thermal(T)]

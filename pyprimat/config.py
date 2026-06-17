@@ -129,7 +129,7 @@ DEFAULT_PARAMS: dict = {
     "sampling_nTOp_per_decade":   80,    # points per decade of T (T_end -> T_start) in the single n<->p rate grid
 
     "save_nTOp_thermal":          True,  # If True, the computed thermal n<->p rates are saved to rates/weak/ as nTOp_thermal_<hash>.txt (both directions in one file).
-    "sampling_nTOp_thermal_per_decade": 40,   # points per decade of T (T_end -> T_start) for the thermal-correction table
+    "sampling_nTOp_thermal_per_decade": 20,   # points per decade of T (T_end -> T_start) for the thermal-correction table
     ##################### Normalization of weak rates
     "tau_n_normalization":        True,  # Use neutron lifetime to normalize weak rates (instead of absolute normalization from GF, Vud, gA, etc.)
     "tau_n":                      878.4,  # neutron lifetime [s]; overrides the class-level constant when tau_n_normalization=True

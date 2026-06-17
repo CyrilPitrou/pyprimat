@@ -21,7 +21,7 @@ import json
 import sys
 import time
 
-from . import PyPR
+from . import PyPR, __version__
 
 
 def _build_parser():
@@ -37,6 +37,14 @@ def _build_parser():
         prog="pyprimat",
         description="Run a Big Bang Nucleosynthesis computation with "
                      "PyPRIMAT and print the resulting Neff/abundances.",
+    )
+    # `version` action prints the string and exits before any computation;
+    # the version itself comes from the installed distribution metadata via
+    # pyprimat.__version__ (single source of truth in pyproject.toml).
+    parser.add_argument(
+        "--version", action="version",
+        version=f"%(prog)s {__version__}",
+        help="Print the PyPRIMAT version and exit.",
     )
     parser.add_argument(
         "--Omegabh2", type=float, default=None, metavar="VALUE",
