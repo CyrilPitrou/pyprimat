@@ -497,10 +497,42 @@ def ComputeFn(cfg):
     deltakappa = cfg.deltakappa
 
     def ChiFMnDec(en, pe):
+        """T=0 (vacuum) limit of the general finite-mass chi function _chi_func_fm_v.
+
+        Mass convention -- why mp, not mn
+        ----------------------------------
+        The general (T>0, both directions) finite-mass correction uses, for a
+        given sign sgnq (+1: n->p, -1: p->n), the recoil mass
+            M_sgnq = (mp + mn - sgnq*Q) / (2*me)
+        (see _chi_func_fm_v).  At sgnq=+1 this collapses algebraically to the
+        *daughter* nucleon mass:
+            M_sgnq(+1) = (mp + mn - (mn-mp)) / (2me) = (2*mp) / (2me) = mp/me,
+        i.e. the proton, not the neutron, even though this is "neutron decay".
+        ChiFMnDec is, by construction, supposed to BE the en, pe -> vacuum
+        (x, znu -> infinity) limit of _chi_func_fm_v(..., sgnq=+1) -- that is
+        the entire point of Fn: it normalises K = 1/(tau_n * Fn) so that the
+        T -> 0 forward rate reproduces 1/tau_n exactly.  Taking that limit
+        term-by-term (using the explicit x->infinity limits of the
+        _FD_nu_e{2,3,4}p{1,2} helper functions: every term carrying an
+        explicit 1/x prefactor vanishes -- those are the genuinely thermal
+        pieces -- while the terms without a 1/x prefactor have finite limits,
+        e.g. FD_nu_e4p1(enu,0,znu) -> 4*enu**3, FD_nu_e2p1 -> 2*enu,
+        FD_nu_e3p1 -> 3*enu**2) reproduces exactly the four terms below, with
+        M equal to whatever mass _chi_func_fm_v uses at sgnq=+1, i.e. mp, not
+        mn.  Using mn/me here (an earlier, inconsistent choice) introduced a
+        ~2.85e-6 mismatch between this vacuum normalisation and the T->0
+        limit actually reached by ComputeWeakRates, since the finite-mass
+        correction is itself only an O(Q/mp) ~ 1.4e-3 effect: an O(1)
+        relative error in M (mn vs mp differ by Q/mp ~ 1.4e-3) inside an
+        already-suppressed ~1.4e-3 term produces a second-order, ~2e-6
+        absolute error in the total normalised rate -- exactly the size
+        observed.
+        """
         f1n = ((1. + gA)**2. + 2. * deltakappa * gA) / (1. + 3. * gA**2)
         f2n = ((1. - gA)**2. - 2. * deltakappa * gA) / (1. + 3. * gA**2)
         f3n = (gA**2 - 1.) / (1. + 3. * gA**2)
-        mnOme = mn / me
+        # M_sgnq(+1) = (mp + mn - Q)/(2me) = mp/me (see docstring above).
+        mnOme = mp / me
         return (f1n * (en - Q / me)**2 * (pe**2 / (mnOme * en))
                 - f2n / mnOme * (en - Q / me)**3
                 + (f1n + f2n + f3n) / (2. * mnOme) * (4. * (en - Q / me)**3 + 2 * (en - Q / me) * pe**2)
@@ -555,11 +587,23 @@ def ComputeFn(cfg):
 # (n_temperature, n_node) grid in a handful of numpy array operations instead of
 # one Python `quad` call per grid point per correction (the old ~1.8 s cost).
 #
+# One subtlety: the radiative-correction factor (RadCorrResum) has a
+# log(2y)-type term that is singular-but-integrable exactly at the neutron
+# beta-decay kinematic endpoint E = Q/me (p = p_edge, see _quad_grid).  A
+# single GL rule spanning that point in the interior of its domain cannot
+# resolve it (GL's fast convergence needs the integrand analytic over the
+# *whole* panel) -- as T -> 0 this left a ~1-3e-6 floor in Gamma_{n->p}/tau_n^-1
+# that did not shrink, and could even grow, with more nodes.  _quad_grid
+# therefore places a panel boundary exactly at p_edge and runs two
+# independent GL rules on either side, which restores normal fast convergence
+# (the Born/CCR vacuum limit then matches the analytic Fn from ComputeFn to
+# ~1e-11, see tests/test_weak_rates.py).
+#
 # _N_GL is pinned by tests/test_weak_rates.py::test_gauss_legendre_converged,
 # which checks that doubling the node count moves the rates by <1e-6 over the
-# full BBN temperature range.  160 nodes give that margin comfortably (the
-# integrand peak sits near p_max/15, where Gauss-Legendre is sparsest, so we
-# deliberately oversample rather than tune to the edge).
+# full BBN temperature range.  160 nodes per panel give that margin comfortably
+# (the integrand peak sits near p_max/15, where Gauss-Legendre is sparsest, so
+# we deliberately oversample rather than tune to the edge).
 _N_GL = 160
 _GL_NODES, _GL_WEIGHTS = np.polynomial.legendre.leggauss(_N_GL)
 
@@ -775,28 +819,112 @@ def _chi_func_v(ctx, E, x, znu, sgnq):
 
 
 def _quad_grid(ctx, T_arr):
-    """Build the (n_T, _N_GL) Gauss-Legendre momentum grid for ComputeWeakRates.
+    """Build the (n_T, 2*_N_GL) Gauss-Legendre momentum grid for ComputeWeakRates.
 
-    For each photon temperature T in ``T_arr`` (Kelvin), the integration runs
-    over electron momentum p in [0, p_max(T)] with p_max = max(7, 30/x),
-    x = m_e/(kB T) -- the same upper limit the old scalar `quad` calls used.
-    The fixed Gauss-Legendre nodes/weights on [-1, 1] are affine-mapped onto
-    [0, p_max(T)] per temperature.
+    Physical picture
+    -----------------
+    The rate integrals are nominally over p in [0, +inf): the electron/positron
+    momentum can in principle be arbitrarily large.  We never integrate to
+    actual infinity -- instead we truncate at a finite p_max(T) and rely on
+    Gauss-Legendre (GL) on the *finite* interval [0, p_max(T)].  This is valid
+    only because the integrand is forced to underflow well before p_max: every
+    term carries a Fermi-Dirac factor FD2(-E,x) / FD_nu3(...) that decays like
+    exp(-x p) at large p for T > 0 (x = m_e/(kB T)).  Choosing
+    p_max = max(7, 30/x) keeps exp(-x p_max) <~ exp(-30) ~ 1e-13 at low T,
+    i.e. the tail beyond p_max is below double-precision noise, so replacing
+    [0, +inf) by [0, p_max] introduces no measurable truncation error -- this
+    is the same heuristic the old scalar ``quad`` calls used.  The "max(7, ...)"
+    floor matters at LOW T: there 30/x -> 0 (the thermal cutoff would want to
+    shrink p_max to 0), but the T=0 vacuum-decay phase space itself extends out
+    to p_edge ~ 2.33 (see below) regardless of T, so p_max must never shrink
+    below that physical support; 7 is a safe margin above it.
+
+    Why GL needs to be split at p_edge
+    -----------------------------------
+    A *single* Gauss-Legendre rule on [0, p_max] approximates the integrand by
+    one polynomial of degree ~2*_N_GL over the whole interval.  GL's famous
+    spectral (exponentially fast) convergence relies on the integrand being
+    analytic (smooth, no kinks) in a neighbourhood of the *whole* interval --
+    if it has a non-analytic point strictly inside the interval, a single
+    global polynomial cannot track it well no matter how many nodes you add
+    (you may even get WORSE as N grows, since GL nodes then sample closer to
+    the bad point without resolving it, similar in spirit to Runge's
+    phenomenon for naive high-order interpolation).
+
+    Such a non-analytic point exists here: the radiative-correction factor
+    RadCorrResum (the "Sirlin function", Phys. Rep. Eq. 101) contains a
+    log(2*y) term with y = |sgnq*Q/me -+ E|, which is *exactly* zero when the
+    electron energy E crosses the neutron-decay kinematic endpoint
+    E = Q/me, i.e. p = p_edge = sqrt((Q/me)^2 - 1).  The full integrand stays
+    finite there (the chi function itself vanishes like y^2, faster than
+    log(y) diverges, so the *product* -> 0 and the singularity is integrable),
+    but the function is not analytic across that point: it has a y^2*log(y)
+    profile, which is C^0 but not C^infinity (its higher derivatives blow up
+    as y -> 0).  A 160-node GL rule spanning [0, 7] sees this point sitting in
+    the *middle* of its domain and, empirically, converges to a value that is
+    biased low by O(1e-6) relative to tau_n^-1 in the T -> 0 limit, and does
+    NOT improve monotonically with more nodes (it can get *worse*, then
+    eventually overflow, because nodes start landing pathologically close to
+    the singular point and to the unrelated Coulomb/Gamow singularity at
+    p -> 0, where FermiCoulomb ~ exp(+pi*alpha/b) blows up for b = p/E -> 0).
+
+    The standard remedy for a known non-analytic interior point is to split
+    the integration domain into sub-intervals with a panel boundary placed
+    exactly AT that point, and run an independent GL rule on each panel.
+    Inside each panel the integrand is then analytic right up to (but not
+    across) the shared boundary, so each panel recovers GL's normal fast
+    convergence; only the panel that has p_edge as one of its *endpoints*
+    still feels the residual log-type endpoint singularity, which is a much
+    milder (algebraic, not interior-blind) source of error that the
+    reference normalisation Fn (see ComputeFn) already handles correctly,
+    since Fn's adaptive `quad` is given the very same edge as an explicit
+    integration bound (E from 1 to Q/me).  Splitting here simply makes the
+    rate integral structurally match what Fn already does.
+
+    This is conceptually the same fix you would apply to integrate, say,
+    |x| over [-1, 1] with a polynomial rule: a single global polynomial rule
+    struggles with the kink at x=0, but two rules on [-1,0] and [0,1] each see
+    a perfectly smooth (here: linear) integrand and reproduce the exact answer.
 
     Returns
     -------
-    p   : (n_T, _N_GL) momentum nodes [dimensionless, p/m_e].
-    w   : (n_T, _N_GL) quadrature weights already including the dp/du Jacobian
-          p_max/2, so the integral is simply ``np.sum(w * integrand, axis=1)``.
+    p   : (n_T, 2*_N_GL) momentum nodes [dimensionless, p/m_e], the first
+          _N_GL columns covering panel A = [0, p_edge] and the next _N_GL
+          covering panel B = [p_edge, p_max(T)].
+    w   : (n_T, 2*_N_GL) quadrature weights (each panel's own dp/du Jacobian
+          already folded in), so the integral is still simply
+          ``np.sum(w * integrand, axis=1)`` over all 2*_N_GL points.
     x   : (n_T, 1) inverse photon-temperature ratio m_e/(kB T).
     xnu : (n_T, 1) inverse neutrino-temperature ratio m_e/(kB T_nu).
     """
-    cfg, me = ctx.cfg, ctx.me
+    cfg, me, Q = ctx.cfg, ctx.me, ctx.Q
     x   = (me / (cfg.kB * T_arr))[:, None]
     xnu = (me / (cfg.kB * T_arr * ctx.T_nuOverT(T_arr)))[:, None]
     pmax  = np.maximum(7., 30. / x)                  # (n_T, 1)
-    p = 0.5 * pmax * (_GL_NODES[None, :] + 1.)       # (n_T, _N_GL)
-    w = (0.5 * pmax) * _GL_WEIGHTS[None, :]          # (n_T, _N_GL)
+
+    # Kinematic endpoint of neutron decay: E = Q/me <=> p_edge = sqrt((Q/me)^2-1).
+    # This is T-independent (fixed by particle masses only), unlike p_max(T).
+    p_edge = np.sqrt((Q / me)**2 - 1.)
+
+    # Panel A: [0, p_edge], fixed across all T (the vacuum-decay support).
+    # Use the node array's own length rather than the module-level _N_GL
+    # constant: tests/test_weak_rates.py::test_gauss_legendre_converged swaps
+    # _GL_NODES/_GL_WEIGHTS for a higher-order rule without also touching
+    # _N_GL, so deriving the count from the array keeps that test's
+    # node-doubling check meaningful for the split grid too.
+    n_gl = _GL_NODES.shape[0]
+    pA = 0.5 * p_edge * (_GL_NODES[None, :] + 1.)        # (1, n_gl) broadcastable
+    wA = (0.5 * p_edge) * _GL_WEIGHTS[None, :]
+    pA = np.broadcast_to(pA, (T_arr.shape[0], n_gl))
+    wA = np.broadcast_to(wA, (T_arr.shape[0], n_gl))
+
+    # Panel B: [p_edge, p_max(T)], width depends on T through p_max only.
+    halfwidth_B = 0.5 * (pmax - p_edge)               # (n_T, 1)
+    pB = p_edge + halfwidth_B * (_GL_NODES[None, :] + 1.)   # (n_T, n_gl)
+    wB = halfwidth_B * _GL_WEIGHTS[None, :]                 # (n_T, n_gl)
+
+    p = np.concatenate([pA, pB], axis=1)              # (n_T, 2*_N_GL)
+    w = np.concatenate([wA, wB], axis=1)
     return p, w, x, xnu
 
 
