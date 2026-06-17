@@ -18,6 +18,7 @@ All three take an already-solved ``pyprimat.PyPR`` instance (see
 result).
 """
 import html
+import io
 import os
 import re
 
@@ -28,6 +29,7 @@ import streamlit as st
 from pyprimat.constants import CONST
 from pyprimat.network_data import nuclide_latex
 from pyprimat.plotting import nuclide_styles
+from pyprimat.gui import custom_rates
 
 
 # ---------------------------------------------------------------------------
@@ -203,7 +205,7 @@ def render_reactions_panel(run):
     Streamlit only typesets ``$...$`` KaTeX inside *Markdown* (not inside
     injected HTML), the equations use Unicode super/subscripts
     (:func:`_equation_unicode`).  The rate tables themselves are downloadable
-    from the **Downloads** tab (:func:`render_downloads_panel`).
+    just above this list (:func:`_render_reaction_downloads`).
 
     Parameters
     ----------
@@ -212,11 +214,14 @@ def render_reactions_panel(run):
         networks.
     """
     reactions = run.nucl.describe_reactions()
+
+    _render_reaction_downloads(run)
+
     st.subheader(f"Reactions ({len(reactions)} in the {run.cfg.network} network)")
     st.caption(
         "Full reaction set of the low-temperature solver. The MT era uses a "
         "fixed 18-reaction subset of these. Sources are the `ref=` labels from "
-        "each rate table header; download the rate tables from the Downloads tab."
+        "each rate table header; download the rate tables above."
     )
 
     # Content-sized HTML table with collapsed borders -> crisp grid lines and no
@@ -247,6 +252,90 @@ def render_reactions_panel(run):
     st.markdown(css + table, unsafe_allow_html=True)
 
 
+def _render_reaction_downloads(run):
+    """Render the "Custom network" export + "Download individual rate tables" sections.
+
+    Placed at the top of the Reactions tab (:func:`render_reactions_panel`),
+    *before* the (potentially long, e.g. ~430-row for the large network)
+    reaction list, so these downloads are visible without scrolling.
+
+    * **Custom network** -- only shown when this run actually used a
+      "Customise Reactions" override (removed/replaced reactions), per the
+      snapshot stashed by ``app.main()`` at "Run BBN" time
+      (``st.session_state["run_custom_network_dict"]``); offers the
+      re-importable zip from :func:`pyprimat.gui.custom_rates.export_zip`.
+    * **Download individual rate tables** -- the ``rates/nuclear/tables/<name>.txt`` rate
+      table for any reaction in the loaded network (read from disk), or, for
+      a reaction with a "custom upload" override, the resampled on-grid table
+      actually fed to the solver
+      (:func:`pyprimat.gui.custom_rates.effective_table_text`) -- so the user
+      can confirm exactly what was used.  An in-table download link is not
+      possible (Streamlit's HTML sanitiser strips ``data:`` hrefs and
+      browsers block ``file://`` ones), and the large network has ~433
+      reactions, so a single "pick a reaction -> download" selectbox is used
+      rather than one button per reaction.
+
+    Parameters
+    ----------
+    run : pyprimat.PyPR
+        An already-solved ``PyPR`` instance.
+    """
+    custom_network = st.session_state.get("run_custom_network_dict")
+    if custom_network and (custom_network.get("removed") or custom_network.get("replaced")):
+        st.markdown("**Custom network**")
+        kept_names = [name for name, equation, source, file
+                      in run.nucl.describe_reactions() if name != "nTOp"]
+        try:
+            zip_bytes = custom_rates.export_zip(run.cfg, custom_network, kept_names)
+        except Exception as exc:
+            st.warning(f"Could not build the custom-network export: {exc}")
+        else:
+            st.download_button(
+                "Export custom network (zip)",
+                data=zip_bytes,
+                file_name="custom_network.zip",
+                mime="application/zip",
+                key="dl_custom_network",
+                help="networks/custom.txt + tables/<name>_custom.txt, "
+                     "re-importable from the sidebar's Customise Reactions panel.",
+            )
+
+    st.markdown("**Download individual rate tables**")
+    replaced_raw = (custom_network or {}).get("replaced", {})
+    downloadable = {}
+    for name, equation, source, file in run.nucl.describe_reactions():
+        if file is not None:
+            downloadable[f"{name}  ({os.path.basename(file)})"] = ("file", file, name)
+        elif source == "custom upload" and name in replaced_raw:
+            downloadable[f"{name}  (custom upload)"] = ("custom", None, name)
+    if not downloadable:
+        st.caption("This network has no downloadable rate tables.")
+        return
+    choice = st.selectbox(
+        "Rate table", list(downloadable), key="ratefile_choice"
+    )
+    kind, path, name = downloadable[choice]
+    if kind == "file":
+        basename = os.path.basename(path)
+        try:
+            with open(path, "rb") as fh:
+                data = fh.read()
+        except OSError:
+            st.warning(f"Rate table `{basename}` is unavailable.")
+            return
+    else:
+        basename = f"{name}_custom.txt"
+        T9, rate, err = custom_rates.parse_rate_upload(io.StringIO(replaced_raw[name]))
+        data = custom_rates.effective_table_text(run.cfg, T9, rate, err, name=name)
+    st.download_button(
+        label=f"Download {basename}",
+        data=data,
+        file_name=basename,
+        mime="text/plain",
+        key="ratefile_download",
+    )
+
+
 def weak_rates_text(run):
     """Return a TSV string (T[K], Gamma_nTOp[1/s], Gamma_pTOn[1/s]) for n↔p rates.
 
@@ -275,7 +364,7 @@ def weak_rates_text(run):
 
 
 def render_downloads_panel(run, time_evolution_tsv, background_tsv):
-    """Render the Downloads tab: standard output files + per-reaction rate tables.
+    """Render the Output tab: the standard, network-independent output files.
 
     Collects every file a user might want to export from a completed run in one
     place (rather than scattering download buttons under the result panels):
@@ -293,12 +382,11 @@ def render_downloads_panel(run, time_evolution_tsv, background_tsv):
     * **decays.txt** (large network only) -- the consolidated beta-decay /
       electron-capture rate table used by the large network
       (``rates/nuclear/tables/decays.txt``).
-    * **Reaction rate tables** -- the ``rates/nuclear/tables/<name>.txt`` rate
-      table for any reaction in the loaded network.  An in-table download link is
-      not possible (Streamlit's HTML sanitiser strips ``data:`` hrefs and
-      browsers block ``file://`` ones), and the large network has ~433
-      reactions, so a single "pick a reaction → download" selectbox is used
-      rather than one button per reaction.
+
+    The per-reaction "Custom network" export and "Reaction rate tables"
+    downloads instead live at the top of the Reactions tab
+    (:func:`_render_reaction_downloads`), visible immediately above the
+    (potentially long) reaction list rather than tucked away in this tab.
 
     Parameters
     ----------
@@ -309,97 +397,51 @@ def render_downloads_panel(run, time_evolution_tsv, background_tsv):
     background_tsv : str
         Contents of the background time-evolution TSV (see ``app._solve``).
     """
-    st.subheader("Downloads")
+    # Each file gets its own subsection title directly above its download
+    # button (rather than a blanket "Output"/"Output files" header), stacked
+    # one below another.
+    def _file_download(title, label, data, file_name, mime, key, help=None):
+        st.markdown(f"**{title}**")
+        st.download_button(
+            label, data=data, file_name=file_name, mime=mime,
+            key=key, help=help,
+        )
 
-    # 1. Standard BBN output files in a 2-column grid (first row: final
-    #    abundances + nuclear time evolution; second row: background evolution
-    #    + decays.txt for the large network).
-    st.markdown("**Output files**")
-    out_cols = st.columns(2)
-    out_cols[0].download_button(
-        "Final abundances (output_final.dat)",
-        data=final_abundances_text(run),
-        file_name="output_final.dat",
-        mime="text/plain",
-        width="stretch",
-        key="dl_final",
+    _file_download(
+        "Final abundances", "output_final.dat",
+        data=final_abundances_text(run), file_name="output_final.dat",
+        mime="text/plain", key="dl_final",
     )
-    out_cols[1].download_button(
-        "Abundances time evolution (output_time_evolution.tsv)",
-        data=time_evolution_tsv,
-        file_name="output_time_evolution.tsv",
-        mime="text/tab-separated-values",
-        width="stretch",
-        key="dl_evolution",
+    _file_download(
+        "Abundances time evolution", "output_time_evolution.tsv",
+        data=time_evolution_tsv, file_name="output_time_evolution.tsv",
+        mime="text/tab-separated-values", key="dl_evolution",
     )
-
-    bg_cols = st.columns(2)
-    bg_cols[0].download_button(
-        "Background evolution (output_background.tsv)",
-        data=background_tsv,
-        file_name="output_background.tsv",
-        mime="text/tab-separated-values",
-        width="stretch",
-        key="dl_background",
+    _file_download(
+        "Background evolution", "output_background.tsv",
+        data=background_tsv, file_name="output_background.tsv",
+        mime="text/tab-separated-values", key="dl_background",
     )
-    bg_cols[1].download_button(
-        "Weak rates (nTOp_total.tsv)",
-        data=weak_rates_text(run),
-        file_name="nTOp_total.tsv",
-        mime="text/tab-separated-values",
-        width="stretch",
-        key="dl_weak_rates",
+    _file_download(
+        "Weak rates", "nTOp_total.tsv",
+        data=weak_rates_text(run), file_name="nTOp_total.tsv",
+        mime="text/tab-separated-values", key="dl_weak_rates",
         help="Total normalised n↔p weak rates: T[K], Γ_{n→p}[s⁻¹], Γ_{p→n}[s⁻¹].",
     )
     if run.cfg.network == "large":
         decays_path = os.path.join(
             run.cfg.data_dir, "rates", "nuclear", "tables", "decays.txt"
         )
-        decays_cols = st.columns(2)
         try:
             with open(decays_path, "rb") as fh:
                 decays_data = fh.read()
-            decays_cols[0].download_button(
-                "Decay rates (decays.txt)",
-                data=decays_data,
-                file_name="decays.txt",
-                mime="text/plain",
-                width="stretch",
-                key="dl_decays",
+            _file_download(
+                "Decay rates", "decays.txt",
+                data=decays_data, file_name="decays.txt",
+                mime="text/plain", key="dl_decays",
             )
         except OSError:
-            decays_cols[0].warning("`decays.txt` is unavailable.")
-
-    # 2. Per-reaction rate tables.  Only reactions with a rate table on disk are
-    # offered (everything but the weak nTOp pseudo-reaction, whose rates are
-    # supplied at solve time).
-    st.markdown("**Reaction rate tables**")
-    downloadable = {
-        f"{name}  ({os.path.basename(file)})": file
-        for name, equation, source, file in run.nucl.describe_reactions()
-        if file is not None
-    }
-    if not downloadable:
-        st.caption("This network has no downloadable rate tables.")
-        return
-    choice = st.selectbox(
-        "Rate table", list(downloadable), key="ratefile_choice"
-    )
-    path = downloadable[choice]
-    basename = os.path.basename(path)
-    try:
-        with open(path, "rb") as fh:
-            data = fh.read()
-    except OSError:
-        st.warning(f"Rate table `{basename}` is unavailable.")
-        return
-    st.download_button(
-        label=f"Download {basename}",
-        data=data,
-        file_name=basename,
-        mime="text/plain",
-        key="ratefile_download",
-    )
+            st.warning("`decays.txt` is unavailable.")
 
 
 # ---------------------------------------------------------------------------

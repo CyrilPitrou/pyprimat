@@ -17,6 +17,7 @@ button; the main area shows the two result panels from
 PyPR -> results" contract is identical to ``runfiles/PyPRIMAT_run.py`` and
 the ``pyprimat`` console script (``pyprimat/cli.py``).
 """
+import json
 import os
 import tempfile
 import time
@@ -47,7 +48,11 @@ def _solve(params_items):
         A hashable, order-independent-by-construction encoding of a
         ``params`` dict (see ``app.main``, which sorts the items before
         calling this function), required because ``st.cache_resource`` keys
-        its cache on the function arguments.
+        its cache on the function arguments.  May include a ``"custom_network"``
+        entry (JSON text from ``params_form._render_custom_reactions``); it is
+        popped out and decoded before building ``PyPR`` (it is not a
+        ``PyPRConfig``/``DEFAULT_PARAMS`` field) but stays part of the tuple so
+        a different customisation still produces a different cache key.
 
     Returns
     -------
@@ -81,6 +86,8 @@ def _solve(params_items):
     later, differently-parametrised solve could overwrite.
     """
     params = dict(params_items)
+    custom_network_json = params.pop("custom_network", None)
+    custom_network = json.loads(custom_network_json) if custom_network_json else None
 
     # For the large network, always integrate the "decay-time" (DT) era so the
     # evolution panel can optionally show abundances past the end of BBN, out to
@@ -111,7 +118,8 @@ def _solve(params_items):
                                output_file=tmp_evo,
                                output_background_evolution=True,
                                output_background_file=tmp_bg,
-                               **decay_extras))
+                               **decay_extras),
+                   custom_network=custom_network)
         run.solve()
         with open(tmp_evo) as f:
             time_evolution_tsv = f.read()
@@ -123,7 +131,7 @@ def _solve(params_items):
     return run, time_evolution_tsv, background_tsv
 
 
-def _quick_mc(params_items, num_mc):
+def _quick_mc(params_items, num_mc, run):
     """Run a quick :func:`pyprimat.main.mc_uncertainty` for the standard ratios.
 
     Parameters
@@ -132,12 +140,21 @@ def _quick_mc(params_items, num_mc):
         Same hashable encoding of ``params`` as :func:`_solve`.
     num_mc : int
         Number of Monte Carlo samples requested (the GUI caps this at 100).
+    run : pyprimat.main.PyPR
+        The already-solved reference run (see ``app.main``), used only to
+        determine which ``_RATIO_FORMAT`` keys are actually present in
+        ``run.results`` -- e.g. ``Li6oLi7`` requires a network producing Li6
+        (medium/large) and ``YCNO`` requires CNO species (large), so for the
+        default small network neither key exists and requesting them from
+        ``get_quantity`` would raise ``ValueError`` (see ``main.py``'s
+        conditional ``results["Li6oLi7"] = ...`` / ``results["YCNO"] = ...``).
 
     Returns
     -------
     pyprimat.main.MCResult
-        Indexed by the 7 ``_RATIO_FORMAT`` keys (Neff, YPBBN, YPCMB, DoH,
-        He3oH, He3oHe4, Li7oH); each entry has ``.mean`` and ``.std``.
+        Indexed by whichever ``_RATIO_FORMAT`` keys are valid for this run's
+        network (Neff, YPBBN, YPCMB, DoH, He3oH, He3oHe4, Li7oH, and
+        Li6oLi7/YCNO when applicable); each entry has ``.mean`` and ``.std``.
 
     Notes
     -----
@@ -160,8 +177,15 @@ def _quick_mc(params_items, num_mc):
     # for exactly these parameters; mc_uncertainty itself re-checks seed and
     # quantities before trusting ``prev``.
     prev = cache[1] if (cache is not None and cache[0] == params_items) else None
-    mc = mc_uncertainty(num_mc, list(_RATIO_FORMAT),
-                        params=dict(params_items), seed=0, prev=prev)
+    # mc_uncertainty/PyPR(params=...) has no custom_network kwarg path, so a
+    # "custom_network" entry would just be ignored by PyPRConfig (unknown key,
+    # logged but harmless) -- strip it explicitly so quick MC's "varies every
+    # nuclear-rate p_*" docstring claim isn't silently wrong for a removed
+    # reaction.  Quick MC therefore reflects the *uncustomised* network only.
+    mc_params = {k: v for k, v in params_items if k != "custom_network"}
+    quantities = [q for q in _RATIO_FORMAT if q in run.results]
+    mc = mc_uncertainty(num_mc, quantities,
+                        params=mc_params, seed=0, prev=prev)
     st.session_state["_quick_mc_cache"] = (params_items, mc)
     return mc
 
@@ -185,6 +209,10 @@ def main():
         st.session_state["params"] = dict(params)
         st.session_state["quick_mc"] = quick_mc
         st.session_state["mc_samples"] = mc_samples
+        # Snapshot the customisation dict too (params_form stashed it in
+        # custom_network_dict), so the Reactions tab's export button reflects
+        # what was actually run rather than whatever the sidebar shows now.
+        st.session_state["run_custom_network_dict"] = st.session_state.get("custom_network_dict")
 
     stored_params = st.session_state.get("params")
     if stored_params is None:
@@ -220,10 +248,10 @@ def main():
     if st.session_state.get("quick_mc", False):
         num_mc = st.session_state.get("mc_samples", 30)
         with st.spinner(f"Running {num_mc}-sample quick MC uncertainty…"):
-            mc = _quick_mc(params_items, num_mc)
+            mc = _quick_mc(params_items, num_mc, run)
 
     tab_results, tab_evolution, tab_reactions, tab_downloads = st.tabs(
-        ["Final abundances", "Abundance evolution", "Reactions", "Downloads"])
+        ["Final abundances", "Abundance evolution", "Reactions", "Output"])
     with tab_results:
         panels.render_results_panel(run, mc=mc)
     with tab_evolution:

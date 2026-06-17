@@ -31,10 +31,21 @@ dict containing only the entries whose value differs from
 defaults.
 """
 import importlib.resources
+import io
+import json
+import re
 
 import streamlit as st
 
-from pyprimat.config import DEFAULT_PARAMS
+from pyprimat.config import DEFAULT_PARAMS, PyPRConfig
+from pyprimat.network_data import load_network, load_reaction_names
+from pyprimat.gui import custom_rates
+from pyprimat.gui.panels import _equation_unicode
+
+# Networks small enough that unfolding every reaction into a checkbox +
+# uploader row is practical in the sidebar.  'large' (~428 reactions) is
+# excluded per the GUI design (see README/plan: "Large network excluded").
+_CUSTOMISABLE_MAX_REACTIONS = 120
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +182,28 @@ _CONDITIONAL = {
 }
 
 
+@st.cache_data(show_spinner=False)
+def _reaction_equations(network):
+    """Return ``{bare_reaction_name: "a + b <-> c + d"}`` for ``network``.
+
+    Loads the full LT ``NetworkDefinition`` (rate tables and all) just to read
+    off :meth:`NetworkDefinition.reaction_equation` -- the same source used by
+    the Reactions tab (``pyprimat.gui.panels``) after a run.  Cached per
+    ``network`` name (``st.cache_data``) so this cost (reading every rate
+    table on disk) is paid once per network selection rather than on every
+    sidebar widget interaction/rerun.
+    """
+    cfg = PyPRConfig({"network": network})
+    names = load_reaction_names(cfg, network)
+    net = load_network(cfg, era="LT", reaction_names=names)
+    # net.names[0] is the prepended weak "nTOp", absent from the network text
+    # file/``names`` list -- skip it so the mapping is keyed by bare names.
+    return {
+        name: _equation_unicode(net.reaction_equation(i))
+        for i, name in enumerate(net.names) if i > 0
+    }
+
+
 def _available_networks():
     """Return the selectable values for the ``network`` parameter.
 
@@ -219,6 +252,193 @@ def _widget_for(key, label, help_text):
 
     # Fallback for string-valued parameters (e.g. output_file paths).
     return st.text_input(label, value=str(default), help=help_text, key=key)
+
+
+def _render_custom_reactions(params):
+    """Render the "Customise Reactions" panel, in the Nuclear reactions group.
+
+    Lets the user drop reactions from the selected network and/or substitute a
+    rate table for any kept reaction, entirely in-memory (``st.session_state``
+    / uploaded-file buffers -- nothing is written to disk, see the module's
+    plan/README). Excluded for ``network="large"`` (~428 reactions is too many
+    to unfold into checkboxes).
+
+    Side effect: when active, sets ``params["custom_network"]`` to a
+    JSON-encoded ``{"removed": [...], "replaced": {name: raw_text, ...}}``
+    dict (consumed by ``pyprimat.gui.app._solve`` / ``PyPR(custom_network=...)``
+    via ``pyprimat.network_data.UpdateNuclearRates``), and stores the decoded
+    dict in ``st.session_state["custom_network_dict"]`` for the Reactions
+    tab's export button.
+    """
+    network = params.get("network", DEFAULT_PARAMS["network"])
+    cfg = PyPRConfig({"network": network})
+    try:
+        reaction_entries = load_reaction_names(cfg, network)
+    except Exception:
+        return
+    bare_names = [re.split(r'[, ]+', e, maxsplit=1)[0].strip() for e in reaction_entries]
+
+    if len(bare_names) > _CUSTOMISABLE_MAX_REACTIONS:
+        st.caption(
+            "Customise Reactions is not available for the large network "
+            f"({len(bare_names)} reactions)."
+        )
+        return
+
+    def _reset_customisation_state():
+        """Drop every uploaded file and removed/kept choice from memory."""
+        for key in list(st.session_state):
+            if (key.startswith("keep_") or key.startswith("upload_")
+                    or key in ("custom_import", "custom_import_target",
+                               "_customise_imported_id")):
+                del st.session_state[key]
+        st.session_state["_customise_replaced"] = {}
+        st.session_state["_customise_upload_version"] = {}
+        st.session_state["custom_network_dict"] = None
+
+    # Reset per-reaction widget state when the selected network changes, so
+    # removed/replaced choices from a previous network don't leak in.
+    if st.session_state.get("_customise_network") != network:
+        _reset_customisation_state()
+        st.session_state["_customise_network"] = network
+
+    customise = st.checkbox(
+        "Customise Reactions", value=False, key="customise_reactions",
+        help="Drop reactions and/or upload a custom rate table for any kept "
+             "reaction in this network. Nothing is written to disk.",
+    )
+    if not customise:
+        # Untoggling forgets everything: uploaded files, removed/kept
+        # choices, and the imported-zip tracker, so re-enabling later starts
+        # from a clean slate rather than restoring the previous session.
+        if st.session_state.get("_customise_was_on"):
+            _reset_customisation_state()
+        st.session_state["_customise_was_on"] = False
+        return
+    st.session_state["_customise_was_on"] = True
+
+    replaced_text = st.session_state.setdefault("_customise_replaced", {})
+
+    # ---- Import a previously exported customisation (zip). Per-reaction
+    # table replacement is done directly on each reaction's own uploader
+    # below, not here. ---------------------------------------------------
+    import_file = st.file_uploader(
+        "Either import previous customization", type=["zip"], key="custom_import",
+        help="Re-apply a customisation previously exported from the "
+             "Reactions tab of the results (`networks/custom.txt` + "
+             "`tables/*_custom.txt`). "
+             "It carries its own removed/kept reaction list and replacement "
+             "tables, so it is applied directly -- no extra input needed. "
+             "To replace a single reaction's table, use that reaction's own "
+             "uploader below instead.",
+    )
+    if import_file is not None:
+        # Auto-applied once per upload (gated on file_id): a zip carries its
+        # own reaction selection, so there is no further user input to wait
+        # for before applying it.
+        last_imported = st.session_state.get("_customise_imported_id")
+        if import_file.file_id != last_imported:
+            st.session_state["_customise_imported_id"] = import_file.file_id
+            try:
+                result = custom_rates.import_zip(import_file)
+            except Exception as exc:
+                st.error(f"Could not import zip: {exc}")
+            else:
+                kept = set(result["kept"])
+                for name in bare_names:
+                    st.session_state[f"keep_{name}"] = name in kept
+                st.session_state["_customise_replaced"] = dict(result["replaced"])
+                replaced_text = st.session_state["_customise_replaced"]
+                st.rerun()
+
+    # The per-reaction uploaders are deliberately compact: hide the dropzone's
+    # icon, "Drag and drop file here" text and "Limit 200MB per file..."
+    # caption -- all noise in a one-row-per-reaction list with KB-sized rate
+    # tables -- leaving just the "Browse files" button, and trim the
+    # dropzone's own padding so it doesn't render as an oversized white box.
+    st.markdown(
+        "<style>"
+        "[data-testid='stFileUploaderDropzoneInstructions'] {display: none;}"
+        "[data-testid='stFileUploaderDropzone'] {padding: 0.25rem; min-height: 0;}"
+        "</style>",
+        unsafe_allow_html=True,
+    )
+
+    equations = _reaction_equations(network)
+    # Streamlit ties a file_uploader's value to its widget *key*: deleting
+    # st.session_state[key] alone does not clear an already-uploaded file,
+    # since the browser-held upload is resubmitted on rerun as long as the
+    # key is unchanged. So each reaction's uploader key carries a version
+    # counter that the reset button bumps, forcing a fresh (empty) widget
+    # instance instead of the stale one.
+    upload_versions = st.session_state.setdefault("_customise_upload_version", {})
+
+    st.markdown(
+        "Or modify reactions below",
+        help="Uploaded rate tables must have three whitespace-separated "
+             "columns: temperature [GK], rate, and an uncertainty factor. "
+             "Lines that are not data (e.g. comments) should start with `#` "
+             "so they are ignored. After running, the customization details "
+             "can be downloaded from the Reactions tab.",
+    )
+
+    removed = []
+    for name in bare_names:
+        # Checkbox + reset button share a line; the uploader gets its own
+        # full-width line below so it has room to render without squeezing
+        # against (or overlapping) the reset button.  The checkbox column is
+        # widened (vs. the [4, 1] split used before the equation was added)
+        # to fit "name  a + b <-> c + d" without wrapping.
+        head_cols = st.columns([7, 1])
+        # Flag a reaction whose rate table is no longer the shipped default
+        # right on the checkbox label -- this is the only place a table that
+        # arrived via a *zip* import (rather than this row's own uploader,
+        # which would show its own "uploaded file" chip) is visible at all.
+        # Show the equation alone (e.g. "n + p ↔ ²H") rather than the bare
+        # PRIMAT name (e.g. "npTOdg") -- the equation is self-explanatory and
+        # matches the Reactions tab; fall back to the bare name only if no
+        # equation could be derived (shouldn't normally happen).
+        label = equations.get(name, name)
+        if name in replaced_text:
+            label += "  *(custom table)*"
+        keep = head_cols[0].checkbox(label, value=True, key=f"keep_{name}")
+        if not keep:
+            removed.append(name)
+            replaced_text.pop(name, None)
+        has_override = name in replaced_text
+        if head_cols[1].button(
+            "↺", key=f"clear_{name}", disabled=not has_override,
+            help="Remove the uploaded table and revert to the default rate "
+                 "table for this reaction." if has_override
+                 else "No custom table uploaded for this reaction.",
+        ):
+            replaced_text.pop(name, None)
+            # Bump this reaction's uploader version so it gets a brand-new
+            # widget key next run -- the only reliable way to make a
+            # file_uploader forget a previously uploaded file (see comment
+            # above the upload_versions assignment).
+            upload_versions[name] = upload_versions.get(name, 0) + 1
+            st.rerun()
+
+        upload = st.file_uploader(
+            "rate table", key=f"upload_{name}_{upload_versions.get(name, 0)}",
+            disabled=not keep, label_visibility="collapsed",
+        )
+        if keep and upload is not None:
+            raw_bytes = upload.getvalue()
+            raw_text = raw_bytes.decode()
+            try:
+                custom_rates.parse_rate_upload(io.StringIO(raw_text))
+            except Exception as exc:
+                st.error(f"`{name}`: {exc}")
+            else:
+                replaced_text[name] = raw_text
+
+    replaced = {n: t for n, t in replaced_text.items() if n not in removed}
+    custom_network = {"removed": removed, "replaced": replaced}
+    st.session_state["custom_network_dict"] = custom_network
+    if removed or replaced:
+        params["custom_network"] = json.dumps(custom_network, sort_keys=True)
 
 
 def render_sidebar_form():
@@ -278,6 +498,9 @@ def render_sidebar_form():
                 value = _widget_for(key, label, help_text)
                 if value != DEFAULT_PARAMS[key]:
                     params[key] = value
+
+            if group == "Nuclear reactions":
+                _render_custom_reactions(params)
 
     # ---- Constants: GN and tau_n only ----------------------------------------
     with st.sidebar.expander("Constants", expanded=False):

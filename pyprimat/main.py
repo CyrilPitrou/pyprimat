@@ -69,9 +69,23 @@ class PyPR:
 
         Example: a constant extra radiation density of dRho [MeV^4],
             >>> PyPR({"network": "small"}, extra_rho=[lambda Tg: dRho])
+    custom_network : dict, optional
+        GUI/scripting "Customise Reactions" override, forwarded verbatim to
+        :class:`pyprimat.network_data.UpdateNuclearRates` (see its docstring
+        for the ``{"removed": [...], "replaced": {...}}`` schema). ``None``
+        (default) uses the standard ``cfg.network`` reaction list unchanged.
+        Not a ``PyPRConfig`` field: it carries bulk table data rather than a
+        fingerprintable scalar, so it does not participate in any rate cache
+        fingerprint.
+
+        Example: drop one reaction and override another's rate table,
+            >>> PyPR({"network": "small"}, custom_network={
+            ...     "removed": ["ddTOtp"],
+            ...     "replaced": {"npTOdg": "0.001 1.2e3\\n10.0 4.5e1\\n"},
+            ... })
     """
 
-    def __init__(self, params=None, extra_rho=None):
+    def __init__(self, params=None, extra_rho=None, custom_network=None):
 
         # ------------------------------------------------------------------
         # 1. Build configuration
@@ -102,7 +116,7 @@ class PyPR:
         # 3. Initialize nuclear network (MT/LT eras)
         # ------------------------------------------------------------------
         from .network_data import UpdateNuclearRates
-        self.nucl = UpdateNuclearRates(cfg)
+        self.nucl = UpdateNuclearRates(cfg, custom_network=custom_network)
 
         # ------------------------------------------------------------------
         # 4. Build the cosmological background (Class 1): a<->t<->T relations,

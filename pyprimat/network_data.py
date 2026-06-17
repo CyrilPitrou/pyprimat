@@ -23,6 +23,7 @@ from __future__ import annotations
 import os
 import re
 import csv
+import io
 from dataclasses import dataclass
 from functools import lru_cache
 from math import factorial
@@ -1113,7 +1114,8 @@ def _load_decay_table(tables_dir):
     return table
 
 
-def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None):
+def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
+                  custom_tables=None):
     """Build the selected network from its text reaction list.
 
     Parameters
@@ -1127,7 +1129,18 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None):
         ``"MT"`` keeps only the intersection with :data:`ORDER_MT`; ``"LT"``
         keeps the full selected list.
     reaction_names : sequence[str], optional
-        Direct reaction list, mainly for tests.
+        Direct reaction list, mainly for tests.  Also the mechanism used to
+        *remove* a reaction for a GUI "custom network": simply omit its entry
+        from the list passed here (no separate removal parameter is needed).
+    custom_tables : dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]], optional
+        Per-reaction rate-table override: ``name -> (T9_src, rate_src, err_src)``
+        raw arrays (not yet resampled onto the master grid).  When a reaction's
+        bare name is a key of this dict, its forward-rate table is taken from
+        these arrays (run through the same :func:`_resample_rate_table` log-log
+        cubic interpolation as the on-disk tables) instead of from
+        ``rates/nuclear/tables/<name>.txt``.  Used by the GUI's "Customise
+        Reactions" panel to substitute a user-uploaded rate table without
+        writing anything to disk.
 
     Returns
     -------
@@ -1141,6 +1154,8 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None):
     >>> len(net.names)  # nTOp + 423 thermonuclear reactions
     424
     """
+    if custom_tables is None:
+        custom_tables = {}
     if reaction_names is None:
         reaction_names = load_reaction_names(cfg, subset_file or cfg.network)
     # Reject literal duplicate entries (e.g. the same line twice in a network
@@ -1296,6 +1311,17 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None):
             # the rate column is just the constant rate_s repeated on the grid.
             fwd_median.append(np.full(grid.shape, rate_s))
             fwd_expsigma.append(np.full(grid.shape, f))
+        elif name in custom_tables:
+            # GUI-uploaded rate table override: raw (T9, rate, err) arrays on
+            # the uploader's own grid, resampled with the exact same
+            # log-log cubic interpolation as the on-disk tables so that
+            # "custom upload" and "shipped table" are interchangeable inputs
+            # to the solver.
+            T9_src, rate_src, err_src = custom_tables[name]
+            sources.append("custom upload")
+            files.append(None)
+            fwd_median.append(_resample_rate_table(T9_src, rate_src, grid))
+            fwd_expsigma.append(_resample_rate_table(T9_src, err_src, grid))
         else:
             table_path = os.path.join(tables_dir, filename)
             sources.append(_read_reaction_source(table_path))
@@ -1390,13 +1416,45 @@ class UpdateNuclearRates:
     fast, vectorised rate-buffer filling.
     """
 
-    def __init__(self, cfg):
+    def __init__(self, cfg, custom_network=None):
+        """
+        Parameters
+        ----------
+        custom_network : dict, optional
+            GUI "Customise Reactions" override, with two keys:
+
+            - ``"removed"``: list of bare reaction names to drop entirely from
+              ``cfg.network``'s reaction list (e.g. ``["ddTOtp"]``).
+            - ``"replaced"``: dict ``name -> raw_table_text``, where
+              ``raw_table_text`` is the verbatim contents of a 2- or 3-column
+              uploaded rate file (``T9  rate  [err]``) for a *kept* reaction,
+              parsed here with :func:`numpy.loadtxt` on an in-memory buffer (no
+              file is written to disk) and fed to :func:`load_network` as
+              ``custom_tables`` so it is resampled with the exact same
+              log-log cubic interpolation as the shipped tables.
+
+            ``None`` (default) reproduces the standard, uncustomised network.
+            Never applies to the weak ``nTOp`` reaction (handled by a separate
+            cache, see :mod:`pyprimat.weak_rates`).
+        """
         if cfg.verbose:
             print(f"[rates] Building {cfg.network!r} network from text lists.")
 
-        self._selected_names = load_reaction_names(cfg, cfg.network)
-        self._mt_net = load_network(cfg, era="MT", reaction_names=self._selected_names)
-        self._lt_net = load_network(cfg, era="LT", reaction_names=self._selected_names)
+        removed = set(custom_network.get("removed", [])) if custom_network else set()
+        custom_tables = {}
+        if custom_network:
+            for name, raw_text in custom_network.get("replaced", {}).items():
+                data = np.loadtxt(io.StringIO(raw_text), unpack=True)
+                T9_src, rate_src = data[0], data[1]
+                err_src = data[2] if data.shape[0] > 2 else np.zeros_like(rate_src)
+                custom_tables[name] = (T9_src, rate_src, err_src)
+
+        self._selected_names = [n for n in load_reaction_names(cfg, cfg.network)
+                                 if re.split(r'[, ]+', n, maxsplit=1)[0].strip() not in removed]
+        self._mt_net = load_network(cfg, era="MT", reaction_names=self._selected_names,
+                                     custom_tables=custom_tables)
+        self._lt_net = load_network(cfg, era="LT", reaction_names=self._selected_names,
+                                     custom_tables=custom_tables)
 
         # Apply initial variations
         self.apply_variations(cfg)
