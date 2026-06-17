@@ -283,11 +283,21 @@ def test_nevo_file_with_custom_copy_reproduces_default(tmp_path):
         # grid and re-interpolates them, which differs from a fresh
         # ComputeWeakRates integration at the ~1e-3 level
         # (test_recomputed_rates_match_cached) -- comparing a cache hit to a
-        # cache miss would spuriously fail at rel=1e-12 even for identical
-        # physics. Forcing both through ComputeWeakRates with the same
+        # cache miss would spuriously fail even for identical physics.
+        # Forcing both through ComputeWeakRates with the same
         # [T_gamma_vec, T_nue_vec] and dFDneu_func (built from the
         # nevo_spectral_file/nevo_grid_file defaults, untouched by nevo_file)
-        # makes them bit-identical.
+        # makes the *non-thermal* part bit-identical. The *thermal* part
+        # (CCRTh, see _thermal_fingerprint) is cached on disk separately and
+        # keyed by its own fingerprint, which nevo_file also enters; the
+        # custom-copy run therefore cannot hit the shipped
+        # nTOp_thermal_<hash>.txt cache and must re-run the vegas Monte Carlo
+        # integration from scratch, which is not bit-reproducible run to run
+        # (no fixed RNG seed) -- so the two YPBBN/DoH/Neff values agree only
+        # to vegas's intrinsic noise level (~1e-6 relative), not to full
+        # precision. rel=1e-4 is generous against that noise while still
+        # catching a real regression (e.g. accidentally loading the wrong
+        # file content, which would shift results at the percent level).
         r_default = PyPR({"network": "small", "verbose": False,
                            "weak_rate_cache": False}).PyPRresults()
         r_custom = PyPR({"network": "small", "verbose": False,
@@ -296,9 +306,9 @@ def test_nevo_file_with_custom_copy_reproduces_default(tmp_path):
     finally:
         os.remove(dst)
 
-    assert r_custom["Neff"] == pytest.approx(r_default["Neff"], rel=1e-12)
-    assert r_custom["YPBBN"] == pytest.approx(r_default["YPBBN"], rel=1e-12)
-    assert r_custom["DoH"] == pytest.approx(r_default["DoH"], rel=1e-12)
+    assert r_custom["Neff"] == pytest.approx(r_default["Neff"], rel=1e-4)
+    assert r_custom["YPBBN"] == pytest.approx(r_default["YPBBN"], rel=1e-4)
+    assert r_custom["DoH"] == pytest.approx(r_default["DoH"], rel=1e-4)
 
 
 # ---------------------------------------------------------------------------
@@ -316,8 +326,16 @@ def test_nevo_file_prefix_missing_raises_value_error():
 @pytest.mark.solve
 def test_nevo_file_prefix_reproduces_default(tmp_path):
     """A renamed copy of the shipped NEVO thermo + spectral tables under a
-    custom nevo_file_prefix reproduces the default results exactly (same
-    content, different path), while changing the fingerprint (cache miss)."""
+    custom nevo_file_prefix reproduces the default results up to vegas's
+    intrinsic Monte Carlo noise (same content, different path), while
+    changing the fingerprint (cache miss). The shipped thermal-correction
+    cache (nTOp_thermal_<hash>.txt) is keyed on a fingerprint that includes
+    nevo_file_prefix, so the custom-prefix run misses it and re-runs the
+    vegas integration from scratch instead of loading the bit-identical
+    cached table the default run uses -- see
+    test_nevo_file_with_custom_copy_reproduces_default for the same
+    reasoning and the resulting rel=1e-4 tolerance (~1e-6 vegas noise level,
+    generous margin)."""
     import shutil
     from pyprimat.main import PyPR
 
@@ -346,24 +364,29 @@ def test_nevo_file_prefix_reproduces_default(tmp_path):
         for _, dst_name in pairs:
             os.remove(os.path.join(nevo_dir, dst_name))
 
-    assert r_custom["Neff"] == pytest.approx(r_default["Neff"], rel=1e-12)
-    assert r_custom["YPBBN"] == pytest.approx(r_default["YPBBN"], rel=1e-12)
-    assert r_custom["DoH"] == pytest.approx(r_default["DoH"], rel=1e-12)
+    assert r_custom["Neff"] == pytest.approx(r_default["Neff"], rel=1e-4)
+    assert r_custom["YPBBN"] == pytest.approx(r_default["YPBBN"], rel=1e-4)
+    assert r_custom["DoH"] == pytest.approx(r_default["DoH"], rel=1e-4)
 
 
 # ---------------------------------------------------------------------------
 # external_scale_factor (NEUTRINOS.md Part 2)
 # ---------------------------------------------------------------------------
 
-def test_fingerprint_changes_with_external_scale_factor():
-    """external_scale_factor changes how a(T_gamma) is obtained, hence the
-    T_gamma(a)/Hubble history fed into the weak-rate integration -- the
-    fingerprint must change."""
+def test_fingerprint_unaffected_by_external_scale_factor():
+    """external_scale_factor only changes how a(T_gamma) is obtained (entropy
+    ODE vs. reading the NEVO table's x column, see CLAUDE.md "Advanced:
+    custom NEVO tables") -- it does not change the rate(T) integrand itself
+    (ComputeWeakRates takes a T grid directly, with no dependence on a(T)).
+    _WEAK_RATE_BG_FIELDS (weak_rates.py) deliberately excludes
+    external_scale_factor for exactly this reason (see the module's "v1"
+    format-version note), so the weak-rate cache fingerprint -- unlike the
+    physical a(T)/t(T) history -- must NOT change."""
     cfg0 = PyPRConfig({"network": "small"})
     cfg1 = PyPRConfig({"network": "small", "external_scale_factor": True})
     fp0 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg0))
     fp1 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg1))
-    assert fp0 != fp1
+    assert fp0 == fp1
 
 
 def test_external_scale_factor_requires_incomplete_decoupling():

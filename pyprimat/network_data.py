@@ -580,8 +580,14 @@ def phase_network(order, species):
     net = []
     for name in order:
         react, prod = reaction_stoichiometry(name)
-        net.append(({idx[s]: c for s, c in react.items()},
-                    {idx[s]: c for s, c in prod.items()}))
+        # Bm/Bp (emitted electron/positron) are lepton bookkeeping tokens, not
+        # part of the ODE state vector (see reaction_stoichiometry's "nTOp"
+        # special case docstring) -- decay reactions such as "Be7TOLi7Bp" carry
+        # one in their stoichiometry dict, so it must be dropped here too,
+        # exactly as the production path (_side_counts, used by load_network)
+        # already does.
+        net.append(({idx[s]: c for s, c in react.items() if s not in _LEPTONS},
+                    {idx[s]: c for s, c in prod.items() if s not in _LEPTONS}))
     return net
 
 

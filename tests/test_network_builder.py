@@ -58,8 +58,15 @@ def test_formal_conservation_passes(label, order, species):
     cnet = compile_network(phase_network(order, species), len(species))
     N = [PyPRConfig().Nuclides[s][0] for s in species]
     Z = [PyPRConfig().Nuclides[s][1] for s in species]
-    # order[0] is the weak n<->p rate (conserves A only); rest are nuclear.
-    check_conservation(cnet, N, Z, weak_indices={0})        # raises on violation
+    # order[0] (nTOp) and any reaction whose compact name ends in "Bm"/"Bp"
+    # (an analytic beta-decay/electron-capture reaction, e.g. "Be7TOLi7Bp")
+    # carry a lepton charge that phase_network's stripped-down stoichiometry
+    # (see phase_network's _LEPTONS filtering) does not see -- mark them weak
+    # so check_conservation only requires A (not Z) to balance for them,
+    # mirroring the lepton_dZ=None "legacy" fallback.
+    weak_indices = {i for i, name in enumerate(order)
+                     if name == "nTOp" or name.endswith(("Bm", "Bp"))}
+    check_conservation(cnet, N, Z, weak_indices=weak_indices)  # raises on violation
 
 
 def test_formal_conservation_catches_violation():
@@ -144,11 +151,12 @@ def test_buffer_orders_have_expected_lengths():
 
     ORDER_SMALL includes nTOp + 12 nuclear reactions = 13 entries.
     ORDER_MT has 18 entries (nTOp + 17).
-    ORDER_LT has 63 entries (nTOp + 62 medium reactions).
+    ORDER_LT has 68 entries (nTOp + 67 medium reactions, including the
+    B8/Be7/He6/Li8/H3 analytic beta-decay/electron-capture reactions).
     """
     assert len(ORDER_SMALL) == 13, f"Expected 13, got {len(ORDER_SMALL)}"
     assert len(ORDER_MT) == 18,    f"Expected 18, got {len(ORDER_MT)}"
-    assert len(ORDER_LT) == 63,    f"Expected 63, got {len(ORDER_LT)}"
+    assert len(ORDER_LT) == 68,    f"Expected 68, got {len(ORDER_LT)}"
 
 
 def test_stoichiometry_conserves_baryon_and_charge():
@@ -157,17 +165,26 @@ def test_stoichiometry_conserves_baryon_and_charge():
     nTOp is excluded: it is the weak n↔p rate whose lepton charge is
     tracked separately via ``lepton_dZ`` (see test_formal_conservation_passes
     which uses the full uniform-Q check including the lepton contribution).
+
+    A handful of medium-network reactions (e.g. ``Be7TOLi7Bp``) are
+    beta-decay/electron-capture reactions whose stoichiometry includes a
+    ``Bm``/``Bp`` lepton bookkeeping token (A=0, Z=∓1, see
+    ``network_data._LEPTON_Z``) on top of the nuclide tokens -- include their
+    charge here too so dZ is checked over the *whole* reaction, not just its
+    nuclide part.
     """
-    from pyprimat.network_data import reaction_stoichiometry
+    from pyprimat.network_data import reaction_stoichiometry, _LEPTON_Z
     nz = PyPRConfig().Nuclides
     A = {s: nz[s][0] + nz[s][1] for s in nz}
     Z = {s: nz[s][1] for s in nz}
     for name in sorted(set(ORDER_LT) - {"nTOp"}):
         react, prod = reaction_stoichiometry(name)
-        dA = (sum(c * A[s] for s, c in prod.items())
-              - sum(c * A[s] for s, c in react.items()))
-        dZ = (sum(c * Z[s] for s, c in prod.items())
-              - sum(c * Z[s] for s, c in react.items()))
+        dA = (sum(c * A[s] for s, c in prod.items() if s not in _LEPTON_Z)
+              - sum(c * A[s] for s, c in react.items() if s not in _LEPTON_Z))
+        dZ = (sum(c * (Z[s] if s not in _LEPTON_Z else _LEPTON_Z[s])
+                   for s, c in prod.items())
+              - sum(c * (Z[s] if s not in _LEPTON_Z else _LEPTON_Z[s])
+                     for s, c in react.items()))
         assert dA == 0, f"{name}: baryon number not conserved (dA={dA})"
         assert dZ == 0, f"{name}: charge not conserved (dZ={dZ})"
 

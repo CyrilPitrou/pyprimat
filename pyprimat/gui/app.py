@@ -171,21 +171,30 @@ def _quick_mc(params_items, num_mc, run):
     anything.  We deliberately do *not* use ``st.cache_resource`` here so that a
     larger request can extend the smaller cached one instead of being a plain
     cache miss that recomputes everything.
+
+    **Customised networks.** ``params_items`` may include a JSON-encoded
+    "custom_network" entry (the "Customise Reactions" override, see
+    :class:`pyprimat.main.PyPR`'s docstring).  It is decoded here and passed
+    through to :func:`mc_uncertainty` as its own ``custom_network`` kwarg
+    (and stripped from ``params`` so ``PyPRConfig`` never sees an unknown
+    key): removed reactions are excluded from the varied rate set and
+    replaced reactions are sampled using their own (possibly custom) error
+    column, so quick MC's ± 1σ band reflects the same customisation as the
+    central-value run, including any inflated/deflated rate uncertainty
+    uploaded for a replaced reaction.
     """
     cache = st.session_state.get("_quick_mc_cache")
     # Reuse the cached MCResult as a starting point only when it was computed
-    # for exactly these parameters; mc_uncertainty itself re-checks seed and
-    # quantities before trusting ``prev``.
+    # for exactly these parameters; mc_uncertainty itself re-checks seed,
+    # quantities, params and custom_network before trusting ``prev``.
     prev = cache[1] if (cache is not None and cache[0] == params_items) else None
-    # mc_uncertainty/PyPR(params=...) has no custom_network kwarg path, so a
-    # "custom_network" entry would just be ignored by PyPRConfig (unknown key,
-    # logged but harmless) -- strip it explicitly so quick MC's "varies every
-    # nuclear-rate p_*" docstring claim isn't silently wrong for a removed
-    # reaction.  Quick MC therefore reflects the *uncustomised* network only.
+    cn_json = dict(params_items).get("custom_network")
+    custom_network = json.loads(cn_json) if cn_json else None
     mc_params = {k: v for k, v in params_items if k != "custom_network"}
     quantities = [q for q in _RATIO_FORMAT if q in run.results]
     mc = mc_uncertainty(num_mc, quantities,
-                        params=mc_params, seed=0, prev=prev)
+                        params=mc_params, seed=0, prev=prev,
+                        custom_network=custom_network)
     st.session_state["_quick_mc_cache"] = (params_items, mc)
     return mc
 
@@ -195,6 +204,13 @@ def main():
     st.caption(
         "Big Bang Nucleosynthesis abundances — interactive front end for "
         "`pyprimat.PyPR`"
+    )
+    st.markdown(
+        "PyPRIMAT computes primordial light-element abundances (D, He3, He4, "
+        "Li7, ...) and the effective number of neutrinos N_eff by integrating "
+        "the coupled cosmological-background and nuclear-reaction-network "
+        "equations of Big Bang Nucleosynthesis. "
+        "[Source code on GitHub](https://github.com/CyrilPitrou/pyprimat)."
     )
 
     params, quick_mc, mc_samples = render_sidebar_form()

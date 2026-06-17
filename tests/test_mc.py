@@ -1,4 +1,5 @@
 """Tests for mc_uncertainty, MCResult, and MCQuantityResult."""
+import os
 import pytest
 import numpy as np
 from pyprimat.main import mc_uncertainty, MCResult, MCQuantityResult, _mc_run_batch
@@ -185,3 +186,98 @@ def test_tau_n_normalization_false_disables_tau_n_effect():
         {"network": "small", "verbose": False, "tau_n_normalization": False},
         rate_keys=[], quantities=["YPBBN"], seeds=list(range(8))))
     assert np.all(res[:, 0] == res[0, 0])
+
+
+# ---------------------------------------------------------------------------
+# custom_network support in mc_uncertainty / _mc_run_batch
+# ---------------------------------------------------------------------------
+
+import pyprimat
+_TABLES_DIR = os.path.join(os.path.dirname(pyprimat.__file__),
+                            "rates", "nuclear", "tables")
+
+
+def _table_text(T9, rate, err):
+    """Build a 3-column rate-table text buffer (T9, rate, err), one row per
+    sample point -- the format expected by custom_network["replaced"]."""
+    lines = [f"{t:.6e} {r:.6e} {e:.6e}" for t, r, e in zip(T9, rate, err)]
+    return "\n".join(lines) + "\n"
+
+
+def test_removed_reaction_changes_central_value():
+    """Removing a reaction alters the solved network, so DoH's central value
+    (computed with custom_network) must differ from the default-network one."""
+    default = mc_uncertainty(2, "DoH", params=_BASE, n_jobs=1, seed=0)
+    removed = mc_uncertainty(2, "DoH", params=_BASE, n_jobs=1, seed=0,
+                              custom_network={"removed": ["ddTOtp"]})
+    assert removed["DoH"].central != pytest.approx(default["DoH"].central)
+
+
+def test_custom_error_column_drives_spread():
+    """The core of the user's question: a reaction's MC spread should track
+    its *custom* error column, not the shipped default. Same median rate,
+    two different uncertainty factors -- low spread vs high spread."""
+    T9, rate, _err = np.loadtxt(
+        os.path.join(_TABLES_DIR, "ddTOHe3n.txt"), unpack=True)
+
+    noerr_table  = _table_text(T9, rate, np.full_like(rate, 1.0))
+    bigerr_table = _table_text(T9, rate, np.full_like(rate, 3.0))
+
+    base_params = {"network": "small", "verbose": False, "debug": False}
+    seeds = list(range(8))
+
+    res_noerr = np.array(_mc_run_batch(
+        base_params, rate_keys=["p_ddTOHe3n"], quantities=["DoH"], seeds=seeds,
+        custom_network={"replaced": {"ddTOHe3n": noerr_table}}))
+    res_bigerr = np.array(_mc_run_batch(
+        base_params, rate_keys=["p_ddTOHe3n"], quantities=["DoH"], seeds=seeds,
+        custom_network={"replaced": {"ddTOHe3n": bigerr_table}}))
+
+    std_noerr  = res_noerr[:, 0].std()
+    std_bigerr = res_bigerr[:, 0].std()
+    # expsigma=1 means p_ddTOHe3n no longer perturbs the rate (median *
+    # exp(p*log(1)) = median); the residual std_noerr is from the unrelated
+    # per-sample tau_n draw (_mc_run_batch), so it should be tiny compared to
+    # the big-error case rather than exactly zero.
+    assert std_bigerr > 100 * std_noerr
+
+
+def test_replaced_table_std_via_public_api():
+    """Same as above, but through the public mc_uncertainty() entry point,
+    proving the custom_network plumbing works end-to-end (not just via the
+    internal _mc_run_batch worker)."""
+    T9, rate, _err = np.loadtxt(
+        os.path.join(_TABLES_DIR, "ddTOHe3n.txt"), unpack=True)
+    bigerr_table = _table_text(T9, rate, np.full_like(rate, 5.0))
+
+    default = mc_uncertainty(8, "DoH", params=_BASE, n_jobs=1, seed=0)
+    replaced = mc_uncertainty(
+        8, "DoH", params=_BASE, n_jobs=1, seed=0,
+        custom_network={"replaced": {"ddTOHe3n": bigerr_table}})
+
+    assert replaced["DoH"].std > default["DoH"].std
+
+
+def test_prev_ignored_when_custom_network_differs():
+    """A prev computed under one custom_network must not be silently reused
+    for a different one -- mirrors test_prev_ignored_when_seed_differs."""
+    T9, rate, _err = np.loadtxt(
+        os.path.join(_TABLES_DIR, "ddTOHe3n.txt"), unpack=True)
+    bigerr_table = _table_text(T9, rate, np.full_like(rate, 5.0))
+    cn = {"replaced": {"ddTOHe3n": bigerr_table}}
+
+    prev = mc_uncertainty(3, "DoH", params=_BASE, n_jobs=1, seed=0)
+    ref  = mc_uncertainty(3, "DoH", params=_BASE, n_jobs=1, seed=0, custom_network=cn)
+    got  = mc_uncertainty(3, "DoH", params=_BASE, n_jobs=1, seed=0, custom_network=cn,
+                          prev=prev)
+    np.testing.assert_array_equal(ref["DoH"].values, got["DoH"].values)
+
+
+def test_prev_ignored_when_params_differ():
+    """A prev computed under different params (here: network) must not be
+    silently reused -- closes the pre-existing blind spot in the reuse guard."""
+    prev = mc_uncertainty(3, "DoH", params={"network": "small"}, n_jobs=1, seed=0)
+    ref  = mc_uncertainty(3, "DoH", params={"network": "medium"}, n_jobs=1, seed=0)
+    got  = mc_uncertainty(3, "DoH", params={"network": "medium"}, n_jobs=1, seed=0,
+                          prev=prev)
+    np.testing.assert_array_equal(ref["DoH"].values, got["DoH"].values)

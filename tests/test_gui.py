@@ -166,20 +166,20 @@ def test_default_run_matches_cli_reference():
         md for md in at.markdown if "| Quantity | Value |" in md.value
     ]
     ratios = _markdown_table_rows(ratios_md.value)
-    # These pins were last refreshed after the SD correction was upgraded to
-    # _L_SD_CCR (Coulomb + resummed radiative) when radiative_corrections=True;
-    # the ~3e-6 shift in YPBBN is within the CLAUDE.md tolerance.
+    # These pins were last refreshed after the weak-rates update (commits
+    # 4c5b8e0/d8bd969/78c9572); the shifts are within the CLAUDE.md tolerance
+    # (mirrors test_cli.py::test_cli_default_summary).
     assert ratios[r"$N_{\text{eff}}$"] == ["3.04397730"]
-    assert ratios[r"$Y_P\ (\text{BBN})$"] == ["0.24699785"]
-    assert ratios[r"$\text{D}/\text{H}$"] == ["2.4349708e-05"]
+    assert ratios[r"$Y_P\ (\text{BBN})$"] == ["0.24699767"]
+    assert ratios[r"$\text{D}/\text{H}$"] == ["2.4349902e-05"]
 
     # Per-nuclide final-abundance Markdown table (render_results_panel).
     [abundances_md] = [
         md for md in at.markdown if "| Nuclide | A | Z | Y |" in md.value
     ]
     by_nuclide = _markdown_table_rows(abundances_md.value)
-    assert float(by_nuclide[nuclide_latex("p")][-1]) == pytest.approx(7.529420e-01, rel=1e-5)
-    assert float(by_nuclide[nuclide_latex("He4")][-1]) == pytest.approx(0.061749462499009214, rel=1e-5)
+    assert float(by_nuclide[nuclide_latex("p")][-1]) == pytest.approx(7.529422e-01, rel=1e-5)
+    assert float(by_nuclide[nuclide_latex("He4")][-1]) == pytest.approx(0.06174942, rel=1e-5)
 
 
 def test_evolution_panel_renders_with_default_selection():
@@ -223,8 +223,10 @@ def test_amax_widget_only_shown_for_large_network():
 
 @_needs_ac2024
 def test_time_evolution_download_available_for_large_network():
-    """The "Time evolution (output_time_evolution.tsv)" download button is
-    offered for ``network="large"`` too, not just small/medium.
+    """The "output_time_evolution.tsv" download button (under the "Abundances
+    time evolution" subsection of the Output tab, see
+    ``panels.render_downloads_panel``) is offered for ``network="large"``
+    too, not just small/medium.
 
     ``NuclearNetwork._write_time_evolution`` (nuclear_network.py) derives its
     ``Y<species>`` columns from ``self.abundance_names``, which already
@@ -243,12 +245,16 @@ def test_time_evolution_download_available_for_large_network():
     _run_bbn(at)
     assert not at.exception
 
-    button = _download_button(at, "Time evolution (output_time_evolution.tsv)")
+    button = _download_button(at, "output_time_evolution.tsv")
     assert button is not None
     assert button.proto.url.endswith(".tsv")
 
-    # The old "not available for the large network" fallback caption is gone.
-    assert not any("not available" in c.value for c in at.caption)
+    # The old "not available for the large network" fallback caption for the
+    # *time-evolution* download is gone (a different, unrelated caption with
+    # the same wording now exists for "Customise Reactions", which the large
+    # network does legitimately disable -- see params_form.py).
+    assert not any("not available" in c.value and "time evolution" in c.value.lower()
+                   for c in at.caption)
 
 
 def test_quick_mc_uncertainty_adds_sigma_column():
@@ -270,6 +276,41 @@ def test_quick_mc_uncertainty_adds_sigma_column():
     ]
     assert "± 1σ (quick MC, 30 samples)" in ratios_md.value
     assert "$Y_P\\ (\\text{BBN})$" in ratios_md.value
+
+
+def test_quick_mc_uncertainty_with_customised_network():
+    """Quick MC must keep working (no exception, sigma column still renders)
+    when "Customise Reactions" is active and a reaction has been removed --
+    guards app._quick_mc's decode/forward of the JSON custom_network entry."""
+    at = AppTest.from_file(APP_PATH)
+    at.run(timeout=60)
+
+    [customise] = [c for c in at.sidebar.checkbox if c.key == "customise_reactions"]
+    customise.set_value(True)
+    at.run(timeout=60)
+
+    [keep] = [c for c in at.sidebar.checkbox if c.key == "keep_ddTOtp"]
+    keep.set_value(False)
+    at.run(timeout=60)
+
+    [toggle] = [t for t in at.sidebar.toggle if t.key == "quick_mc_uncertainty"]
+    toggle.set_value(True)
+    at.run(timeout=60)
+
+    # The "Customise Reactions" panel adds its own per-reaction "↺" reset
+    # buttons to the sidebar (see params_form._render_custom_reactions), so
+    # _run_bbn's sidebar.button[0] no longer reliably points at "Run BBN" --
+    # find it by label instead.
+    [run_button] = [b for b in at.sidebar.button if b.label == "Run BBN"]
+    run_button.click()
+    at.run(timeout=120)
+    assert not at.exception
+
+    [ratios_md] = [
+        md for md in at.markdown if "Standard ratios" not in md.value
+        and "quick MC" in md.value and "|" in md.value
+    ]
+    assert "± 1σ (quick MC, 30 samples)" in ratios_md.value
 
 
 def test_invalid_flag_combination_surfaces_as_error_not_traceback():

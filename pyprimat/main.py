@@ -430,12 +430,22 @@ class MCResult:
         The base random seed used to generate the samples (sample ``i`` used
         ``seed + i``).  Stored so that :func:`mc_uncertainty` can *extend* an
         existing result with more samples without recomputing the ones it
-        already has: a previous result is only reused when its ``seed`` and its
-        set/order of quantities match the new request (see ``prev`` there).
+        already has: a previous result is only reused when its ``seed``, its
+        set/order of quantities, its ``params`` and its ``custom_network`` all
+        match the new request (see ``prev`` there).
+    params : dict or None
+        The ``base_params`` used to compute this result (after the
+        ``verbose``/``debug`` defaults were applied), stored purely for the
+        ``prev`` reuse-guard comparison above.
+    custom_network : dict or None
+        The "Customise Reactions" override used to compute this result (see
+        :class:`PyPR`'s docstring), stored for the same reuse-guard comparison.
     """
-    def __init__(self, data, seed=None):
+    def __init__(self, data, seed=None, params=None, custom_network=None):
         self._data = data   # dict: str -> MCQuantityResult
         self.seed = seed
+        self.params = params
+        self.custom_network = custom_network
 
     def __getitem__(self, quantity):
         return self._data[quantity]
@@ -455,7 +465,7 @@ class MCResult:
 # Module-level MC worker (must be at module level for joblib pickling)
 # ---------------------------------------------------------------------------
 
-def _mc_run_batch(base_params, rate_keys, quantities, seeds):
+def _mc_run_batch(base_params, rate_keys, quantities, seeds, custom_network=None):
     """Run a batch of MC samples in one process, reusing a single PyPR.
 
     The cosmological background and n<->p weak rates depend only on
@@ -480,8 +490,15 @@ def _mc_run_batch(base_params, rate_keys, quantities, seeds):
     When ``cfg.tau_n_normalization`` is False, ``tau_n`` does not enter the
     normalisation and the draw is a harmless no-op (kept so the RNG stream is
     identical either way).
+
+    ``custom_network``, when given, is forwarded verbatim to ``PyPR`` (see its
+    docstring): removed reactions are excluded from ``rate_keys`` by the
+    caller (:func:`mc_uncertainty`), and replaced reactions are varied using
+    the *custom* table's error column (``UpdateNuclearRates`` builds
+    ``expsigma`` from it), so a custom rate's uncertainty flows through
+    automatically.
     """
-    inst = PyPR(params=base_params)
+    inst = PyPR(params=base_params, custom_network=custom_network)
     cfg  = inst.cfg
     tau_n_central = cfg.tau_n
     # NormWeakRates = 1/tau_n (cfg.tau_n_normalization=True), so the product
@@ -503,7 +520,8 @@ def _mc_run_batch(base_params, rate_keys, quantities, seeds):
     return results
 
 
-def _mc_collect_samples(base_params, rate_keys, quantities, seeds, n_jobs):
+def _mc_collect_samples(base_params, rate_keys, quantities, seeds, n_jobs,
+                         custom_network=None):
     """Run :func:`_mc_run_batch` for a list of seeds and stack the results.
 
     Splits ``seeds`` into one chunk per worker so the expensive cosmological
@@ -519,6 +537,9 @@ def _mc_collect_samples(base_params, rate_keys, quantities, seeds, n_jobs):
 
     An empty ``seeds`` list returns an empty ``(0, len(quantities))`` array so
     the result can always be ``np.vstack``-ed with an existing sample block.
+
+    ``custom_network`` is forwarded to every :func:`_mc_run_batch` call; it is
+    a plain JSON-serialisable dict, so it pickles fine for joblib workers.
     """
     from joblib import Parallel, delayed, effective_n_jobs
 
@@ -527,13 +548,15 @@ def _mc_collect_samples(base_params, rate_keys, quantities, seeds, n_jobs):
     n_chunks = max(1, min(len(seeds), effective_n_jobs(n_jobs)))
     chunks   = [list(c) for c in np.array_split(seeds, n_chunks)]
     raw = Parallel(n_jobs=n_jobs)(
-        delayed(_mc_run_batch)(base_params, rate_keys, quantities, chunk)
+        delayed(_mc_run_batch)(base_params, rate_keys, quantities, chunk,
+                               custom_network=custom_network)
         for chunk in chunks
     )
     return np.array([row for chunk in raw for row in chunk])
 
 
-def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None):
+def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
+                    custom_network=None):
     """Estimate nuclear-rate and neutron-lifetime uncertainties on BBN
     observables via Monte Carlo.
 
@@ -566,13 +589,26 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None):
         A previously computed result to *extend* rather than recompute from
         scratch.  Because sample ``i`` is fully determined by ``seed + i``, the
         first ``min(len(prev), num_mc)`` samples are identical to ``prev`` as
-        long as the seed and the set/order of quantities match, so only the
-        missing samples (``seed + n_prev .. seed + num_mc - 1``) are actually
-        solved.  This makes it cheap to refine an estimate -- e.g. going from 30
-        to 50 samples only runs the 20 new ones.  ``prev`` is silently ignored
-        (full recompute) if its ``seed`` or its quantities differ from this
-        call; if ``num_mc`` is *smaller* than ``len(prev)``, the result is just
-        ``prev`` truncated to ``num_mc`` samples (nothing is solved).
+        long as the seed, the set/order of quantities, ``params`` and
+        ``custom_network`` all match, so only the missing samples
+        (``seed + n_prev .. seed + num_mc - 1``) are actually solved.  This
+        makes it cheap to refine an estimate -- e.g. going from 30 to 50
+        samples only runs the 20 new ones.  ``prev`` is silently ignored (full
+        recompute) if its ``seed``, quantities, ``params`` or
+        ``custom_network`` differ from this call; if ``num_mc`` is *smaller*
+        than ``len(prev)``, the result is just ``prev`` truncated to
+        ``num_mc`` samples (nothing is solved).
+    custom_network : dict, optional
+        "Customise Reactions" override, forwarded to every ``PyPR`` instance
+        built here (see :class:`PyPR`'s docstring for the
+        ``{"removed": [...], "replaced": {...}}`` schema).  Reactions listed
+        under ``"removed"`` are also excluded from the set of varied rate
+        offsets (``rate_keys``) below, since they no longer exist in the
+        network; reactions listed under ``"replaced"`` stay in ``rate_keys``
+        and are varied using the *replacement* table's own error column
+        (``UpdateNuclearRates`` builds ``expsigma`` from it), so a custom
+        rate's uncertainty is honoured automatically.  ``None`` (default)
+        uses the standard, uncustomised network.
 
     Returns
     -------
@@ -604,20 +640,30 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None):
     
     # Each entry is "bare_name" or "bare_name, filename.txt".
     # Extract only the bare_name for rate variation.
+    # Reactions dropped by custom_network["removed"] no longer exist in the
+    # network (mirrors the filter UpdateNuclearRates.__init__ applies to
+    # cfg.network's reaction list), so they must not be sampled either.
+    removed = set(custom_network.get("removed", [])) if custom_network else set()
     bare_reactions = []
     for line in reactions:
         parts = re.split(r'[, ]+', line, maxsplit=1)
-        bare_reactions.append(parts[0])
-        
+        bare_name = parts[0]
+        if bare_name not in removed:
+            bare_reactions.append(bare_name)
+
     rate_keys = [f'p_{rxn}' for rxn in bare_reactions]
 
     # Reuse a previous result only when it is sample-for-sample compatible with
-    # this call: same base seed and same quantities (in the same order, so the
-    # stacked sample columns line up).  ``list(prev)`` iterates the quantity
-    # names in their stored order (MCResult wraps an insertion-ordered dict).
+    # this call: same base seed, same quantities (in the same order, so the
+    # stacked sample columns line up), and the same params/custom_network (so
+    # a different network or rate customisation never silently reuses stale
+    # samples).  ``list(prev)`` iterates the quantity names in their stored
+    # order (MCResult wraps an insertion-ordered dict).
     reuse = (prev is not None
              and getattr(prev, 'seed', None) == seed
-             and list(prev) == quantities)
+             and list(prev) == quantities
+             and getattr(prev, 'params', None) == base_params
+             and getattr(prev, 'custom_network', None) == custom_network)
 
     if reuse:
         # The central value (all p_* = 0) does not depend on num_mc, so take it
@@ -631,7 +677,7 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None):
         prev_samples = prev_samples[:n_prev]
     else:
         # Central value (all p_* = 0).
-        central_inst = PyPR(params=base_params)
+        central_inst = PyPR(params=base_params, custom_network=custom_network)
         central_inst.solve()
         centrals = [central_inst.get_quantity(q) for q in quantities]
         prev_samples = np.empty((0, len(quantities)))
@@ -640,10 +686,11 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None):
     # Only the samples beyond the reused prefix need solving.
     new_seeds   = [seed + i for i in range(n_prev, num_mc)]
     new_samples = _mc_collect_samples(base_params, rate_keys, quantities,
-                                      new_seeds, n_jobs)
+                                      new_seeds, n_jobs,
+                                      custom_network=custom_network)
     samples = np.vstack([prev_samples, new_samples])   # (num_mc, n_q)
 
     return MCResult({
         q: MCQuantityResult(centrals[j], samples[:, j])
         for j, q in enumerate(quantities)
-    }, seed=seed)
+    }, seed=seed, params=base_params, custom_network=custom_network)

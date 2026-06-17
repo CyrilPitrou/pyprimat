@@ -25,11 +25,12 @@ def test_cli_default_summary(capsys):
     # rates/weak/nTOp_<hash>.txt.  Within the CLAUDE.md tolerances
     # (YP 0.2469983 +/-1e-5, D/H 2.43490e-5 +/-3e-9), with
     # spectral_distortions=True (IDEAS2.md item 2) and
-    # nuclear_qed_corrections=True (the default).  Pins refreshed with
-    # format_version=1, hash-in-filename scheme, rates in units of 1/tau_n.
-    assert "Neff     = 3.04397730" in out
-    assert "YP (BBN) = 0.24699760" in out
-    assert "D/H      = 2.4349726e-05" in out
+    # nuclear_qed_corrections=True (the default).  Pins refreshed after the
+    # weak-rates update (commits 4c5b8e0/d8bd969/78c9572): both shifts are
+    # within the CLAUDE.md tolerances above.
+    assert "Neff       = 3.04397730" in out
+    assert "YP (BBN)   = 0.24699767" in out
+    assert "D/H        = 2.4349902e-05" in out
     assert "Li6/Li7" not in out
 
 
@@ -39,8 +40,8 @@ def test_cli_json_matches_default_summary(capsys):
     assert rc == 0
     results = json.loads(capsys.readouterr().out)
     assert results["Neff"]   == pytest.approx(3.0439772986, rel=1e-8)
-    assert results["YPBBN"]  == pytest.approx(0.2469976024, rel=1e-8)
-    assert results["DoH"]    == pytest.approx(2.4349726419e-05, rel=1e-8)
+    assert results["YPBBN"]  == pytest.approx(0.2469976726, rel=1e-8)
+    assert results["DoH"]    == pytest.approx(2.4349902187e-05, rel=1e-8)
     assert "Li6oLi7" not in results
 
 
