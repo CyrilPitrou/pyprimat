@@ -45,6 +45,32 @@ from .neutrino_history import make_neutrino_history
 
 __all__ = ["Background", "StandardBackground", "CustomBackground"]
 
+# Noise floor for the n<->p weak rates, in raw (1/tau_n) units -- i.e. the
+# units returned by weak_nTOp_{frwrd,bkwrd}_raw, *before* multiplying by
+# _norm_weak_rates.  Matches the threshold already used inside
+# ComputeWeakRates (weak_rates.py) when it builds the cached tables: below
+# this scale the rate is exp(-Q/T)-suppressed and the sum of phase-space
+# correction terms has lost all significant digits to cancellation,
+# alternating sign around zero.  Re-applied here (rather than trusted to the
+# cache alone) because the quadratic interpolant built by
+# InterpolateWeakRates can overshoot slightly negative between cached nodes
+# even when every node value is >= 0.
+_WEAK_RATE_FLOOR = 1e-28
+
+
+def _clamp_raw_weak_rate(rate):
+    """Zero out negative/sub-noise raw n<->p weak-rate values.
+
+    Args:
+        rate: array-like, raw rate in 1/tau_n units (as returned by
+            weak_nTOp_{frwrd,bkwrd}_raw).
+
+    Returns:
+        Same shape as ``rate``, with any value below :data:`_WEAK_RATE_FLOOR`
+        (this includes all negative values) replaced by 0.0.
+    """
+    return np.where(rate < _WEAK_RATE_FLOOR, 0.0, rate)
+
 
 class Background(object):
     """Minimal interface for the cosmological background consumed by
@@ -990,19 +1016,28 @@ class StandardBackground(Background):
     def weak_nTOp_frwrd(self, T_K):
         """Normalised n -> p weak rate [s^-1] (see
         :meth:`Background.weak_nTOp_frwrd`)."""
-        return self._norm_weak_rates * self.weak_nTOp_frwrd_raw(T_K)
+        # Floor in raw (1/tau_n) units before normalising -- see
+        # weak_nTOp_bkwrd below.  The quadratic interpolation used by
+        # InterpolateWeakRates can overshoot slightly negative between
+        # nodes even when the cached, already-clamped table values are all
+        # >= 0, so the clamp is reapplied here rather than trusted to the
+        # cache alone.
+        return self._norm_weak_rates * _clamp_raw_weak_rate(self.weak_nTOp_frwrd_raw(T_K))
 
     def weak_nTOp_bkwrd(self, T_K):
         """Normalised p -> n weak rate [s^-1] (see
         :meth:`Background.weak_nTOp_bkwrd`)."""
-        # Clamp to >= 0.  At low T (<~0.01 MeV) the tabulated/computed p->n rate
-        # is exp(-Q/T)-suppressed down to ~1e-40 s^-1 and the sum of the
-        # phase-space correction terms in ComputeWeakRates loses all its
-        # significant digits to cancellation, alternating sign around zero
-        # (e.g. -9.3e-47 at 0.005 MeV).  A rate is physically non-negative, so
-        # the floating-point noise is replaced by 0 rather than left to feed a
-        # spurious p->n *sink* of neutrons into the network.
-        return np.maximum(self._norm_weak_rates * self.weak_nTOp_bkwrd_raw(T_K), 0.0)
+        # Clamp to >= 0 and floor below the ~1e-28 (1/tau_n units) noise
+        # level used in ComputeWeakRates (weak_rates.py).  At low T
+        # (<~0.01 MeV) the tabulated/computed p->n rate is exp(-Q/T)-suppressed
+        # down to ~1e-40 s^-1 and the sum of the phase-space correction terms
+        # loses all its significant digits to cancellation, alternating sign
+        # around zero (e.g. -9.3e-47 at 0.005 MeV); the quadratic
+        # InterpolateWeakRates interpolant can also overshoot slightly
+        # negative between cached nodes.  A rate is physically non-negative,
+        # so this noise is replaced by 0 rather than left to feed a spurious
+        # p->n *sink* of neutrons into the network.
+        return self._norm_weak_rates * _clamp_raw_weak_rate(self.weak_nTOp_bkwrd_raw(T_K))
 
     # ======================================================================
     # Baryon sector
@@ -1223,14 +1258,18 @@ class CustomBackground(Background):
 
     def weak_nTOp_frwrd(self, T_K):
         """Normalised n -> p weak rate [s^-1] (see :meth:`Background.weak_nTOp_frwrd`)."""
-        return self._norm_weak_rates * self.weak_nTOp_frwrd_raw(T_K)
+        # Floor in raw (1/tau_n) units before normalising: see the sibling
+        # implementation above for why this is needed even on top of the
+        # clamp already applied inside ComputeWeakRates.
+        return self._norm_weak_rates * _clamp_raw_weak_rate(self.weak_nTOp_frwrd_raw(T_K))
 
     def weak_nTOp_bkwrd(self, T_K):
         """Normalised p -> n weak rate [s^-1] (see :meth:`Background.weak_nTOp_bkwrd`)."""
-        # Clamp to >= 0: see the sibling implementation above -- the low-T p->n
-        # rate is dominated by cancellation noise that can go negative, which is
-        # unphysical for a rate.
-        return np.maximum(self._norm_weak_rates * self.weak_nTOp_bkwrd_raw(T_K), 0.0)
+        # Clamp to >= 0 and floor below the numerical-noise level: see the
+        # sibling implementation above -- the low-T p->n rate is dominated by
+        # cancellation noise that can go negative, which is unphysical for a
+        # rate.
+        return self._norm_weak_rates * _clamp_raw_weak_rate(self.weak_nTOp_bkwrd_raw(T_K))
 
     # ======================================================================
     # Baryon sector
