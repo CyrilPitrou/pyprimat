@@ -95,6 +95,11 @@ def _solve(params_items):
         decay_extras["decay_era"] = True
         if "t_decay_end" not in params:    # respect an explicit user override
             decay_extras["t_decay_end"] = AGE_UNIVERSE_S
+        # Extend the integration to lower temperature so heavy-nuclide tails
+        # are fully resolved (default T_end=0.01 MeV cuts off too early for
+        # some large-network isotopes).
+        if "T_end_MeV" not in params:
+            decay_extras["T_end_MeV"] = 1e-4
 
     fd_evo, tmp_evo = tempfile.mkstemp(suffix=".tsv", prefix="pyprimat_evolution_")
     os.close(fd_evo)

@@ -65,83 +65,85 @@ _FORM_METADATA = {
         "incomplete_decoupling=False, since the NEVO table assumes it vanishes.",
     ),
 
-    # ---- Network ------------------------------------------------------------
+    # ---- Nuclear reactions ---------------------------------------------------
     "network": (
-        "Network", "Reaction network",
+        "Nuclear reactions", "Reaction network",
         "Nuclear reaction network used in the low-temperature (LT) era: "
         "'small' (12 nuclides), 'medium' (62 reactions), 'large' (~433 "
         "reactions, ~59 nuclides), or 'small_parthenope' for comparison runs. "
         "The HT/MT eras are unaffected (always n<->p / fixed 18-reaction set).",
     ),
     "amax": (
-        "Network", "Max mass number A (large only)",
+        "Nuclear reactions", "Max mass number A (large only)",
         "With network='large', drop reactions involving any nuclide with mass "
         "number A > amax (must be an integer > 7). Leave unchecked to keep all "
         "~59 nuclides.",
     ),
+    "nuclear_qed_corrections": (
+        "Nuclear reactions", "Nuclear QED rate corrections",
+        "True (default): apply a T9-dependent QED rescaling (Pitrou & "
+        "Pospelov 2020) to the forward rates of npTOdg, dpTOHe3g, tpTOag, "
+        "taTOLi7g, He3aTOBe7g.",
+    ),
 
-    # ---- Physics toggles -------------------------------------------------------
+    # ---- Plasma physics ------------------------------------------------------
+    "QED_corrections": (
+        "Plasma physics", "QED plasma corrections",
+        "Include QED interaction corrections to the electromagnetic plasma "
+        "equation of state (electron/positron pressure and density).",
+    ),
+
+    # ---- Weak rates ----------------------------------------------------------
     "incomplete_decoupling": (
-        "Physics", "Incomplete neutrino decoupling",
+        "Weak rates", "Incomplete neutrino decoupling",
         "True (default): non-instantaneous decoupling using the precomputed "
         "NEVO table (ν flavour temperatures differ slightly due to "
         "partial reheating by e+e- annihilation). False: instantaneous "
         "decoupling, Tν/Tγ = (4/11)^(1/3).",
     ),
-    "QED_corrections": (
-        "Physics", "QED plasma corrections",
-        "Include QED interaction corrections to the electromagnetic plasma "
-        "equation of state (electron/positron pressure and density).",
-    ),
-    "nuclear_qed_corrections": (
-        "Physics", "Nuclear QED rate corrections",
-        "True (default): apply a T9-dependent QED rescaling (Pitrou & "
-        "Pospelov 2020) to the forward rates of npTOdg, dpTOHe3g, tpTOag, "
-        "taTOLi7g, He3aTOBe7g.",
-    ),
     "radiative_corrections": (
-        "Physics", "Radiative corrections (n↔p)",
+        "Weak rates", "Radiative corrections (n↔p)",
         "Include T=0 Coulomb + resummed radiative corrections (CCR, Phys. Rep. "
         "Eq. 101; Czarnecki et al. 2004).  When False the crude Born approximation "
         "is used instead.",
     ),
     "finite_mass_corrections": (
-        "Physics", "Finite-mass corrections (n↔p)",
+        "Weak rates", "Finite-mass corrections (n↔p)",
         "Include the Fokker-Planck finite-nucleon-mass correction to the n↔p rate "
         "(Phys. Rep. §III.G).  Uses FMCCR when radiative_corrections=True, "
         "FMNoCCR otherwise.",
     ),
     "thermal_corrections": (
-        "Physics", "Thermal radiative corrections (n↔p)",
+        "Weak rates", "Thermal radiative corrections (n↔p)",
         "Include finite-temperature radiative corrections to the n↔p rate "
         "(CCRTh; Brown & Sawyer 2001, Phys. Rep. §III.H).",
     ),
     "spectral_distortions": (
-        "Physics", "Spectral distortions",
+        "Weak rates", "Spectral distortions",
         "Corrections to n<->p weak rates from deviations of the neutrino "
         "phase-space distribution away from a perfect Fermi-Dirac shape.",
     ),
     "analytic_distortions": (
-        "Physics", "→ analytic distortion model",
+        "Weak rates", "→ analytic distortion model",
         "Parameterise the distortion analytically as μ-type "
         "(delta_xi_nu) and/or y-type (y_SZ) instead of reading the full "
         "NEVO spectrum file. Requires incomplete_decoupling=False.",
     ),
     "delta_xi_nu": (
-        "Physics", "→ δξν (μ-type distortion)",
+        "Weak rates", "→ δξν (μ-type distortion)",
         "Shift of the reduced neutrino chemical potential for the μ-type "
         "spectral distortion (applied to all three flavours).",
     ),
     "y_SZ": (
-        "Physics", "→ y_SZ (y-type distortion)",
+        "Weak rates", "→ y_SZ (y-type distortion)",
         "Amplitude of the y-type (Sunyaev-Zel'dovich-like) spectral "
         "distortion.",
     ),
 }
 
 # Order (and default expanded/collapsed state) of the curated sidebar groups.
-GROUP_ORDER = ["Cosmology", "Network", "Physics"]
-_EXPANDED_GROUPS = {"Cosmology", "Network"}
+GROUP_ORDER = ["Cosmology", "Nuclear reactions", "Plasma physics", "Weak rates"]
+_EXPANDED_GROUPS = {"Cosmology", "Nuclear reactions"}
 
 # ---------------------------------------------------------------------------
 # "Constants" section: the only DEFAULT_PARAMS keys outside the curated

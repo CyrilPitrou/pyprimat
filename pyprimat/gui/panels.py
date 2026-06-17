@@ -25,6 +25,7 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
+from pyprimat.constants import CONST
 from pyprimat.network_data import nuclide_latex
 from pyprimat.plotting import nuclide_styles
 
@@ -318,7 +319,7 @@ def render_downloads_panel(run, time_evolution_tsv, background_tsv):
         key="dl_final",
     )
     out_cols[1].download_button(
-        "Time evolution (output_time_evolution.tsv)",
+        "Abundances time evolution (output_time_evolution.tsv)",
         data=time_evolution_tsv,
         file_name="output_time_evolution.tsv",
         mime="text/tab-separated-values",
@@ -484,9 +485,10 @@ def render_evolution_panel(run):
     """
     names = run.abundance_names
     light_default = [n for n in _LIGHT_NUCLIDES if n in names]
+    default_selection = list(names)
 
     if "evolution_selection" not in st.session_state:
-        st.session_state["evolution_selection"] = light_default
+        st.session_state["evolution_selection"] = default_selection
 
     preset_cols = st.columns([1, 1, 1, 3])
     if preset_cols[0].button("Light elements"):
@@ -523,9 +525,9 @@ def render_evolution_panel(run):
 
     use_temperature = st.radio(
         "X axis",
-        ["Cosmic time t [s]", "Photon temperature T_γ [MeV]"],
+        ["Cosmic time t [s]", "Photon temperature T_γ [K]"],
         horizontal=True,
-    ) == "Photon temperature T_γ [MeV]"
+    ) == "Photon temperature T_γ [K]"
 
     # Time grid.  In the decay view, sample at the interpolator's own knots (the
     # exact computed BBN + DT time points): interp1d is piecewise-linear, and
@@ -540,7 +542,8 @@ def render_evolution_panel(run):
 
     fig = go.Figure()
     if selection:
-        x_vals = run.T_of_t(t_grid) if use_temperature else t_grid
+        # T_of_t returns MeV; convert to Kelvin for the x axis.
+        x_vals = run.T_of_t(t_grid) * CONST.MeV_to_Kelvin if use_temperature else t_grid
         for name in selection:
             color, linestyle, _label = styles[name]
             y_vals = run.A[name] * run[name](t_grid)
@@ -553,12 +556,17 @@ def render_evolution_panel(run):
                 line=dict(color=color, dash=_plotly_dash(linestyle)),
             ))
 
-    x_title = "Photon temperature T_γ [MeV]" if use_temperature else "Cosmic time t [s]"
+    x_title = "Photon temperature T_γ [K]" if use_temperature else "Cosmic time t [s]"
+    # Y-axis floor: large network has heavy isotopes with abundances as low as
+    # ~1e-45, so we clip the range at 1e-50 to keep them visible; for the
+    # light small/medium networks 1e-36 is sufficient and avoids blank space.
+    y_floor = -50 if run.cfg.network == "large" else -36
     fig.update_layout(
         xaxis_title=x_title,
         yaxis_title="Aᵢ Yᵢ  (per-baryon abundance)",
         xaxis_type="log",
         yaxis_type="log",
+        yaxis_range=[y_floor, 0],
         legend_title="Nuclide",
         height=600,
         margin=dict(l=10, r=10, t=30, b=10),
