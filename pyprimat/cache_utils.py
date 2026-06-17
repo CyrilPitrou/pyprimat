@@ -20,7 +20,7 @@ astronomically unlikely).  The hash and the JSON dict are written as
 ``#``-comment header lines of the cache file:
 
     # fingerprint_hash: a3f9c1b2e4d5f607
-    # fingerprint: {"format_version":1,"sampling_nTOp":200,...}
+    # fingerprint: {"format_version":1,"sampling_nTOp_per_decade":80,...}
 
 ``np.loadtxt`` ignores ``#`` lines by default, so the data rows are unaffected.
 The JSON line is for humans ("with which flags was this produced?"); only the
@@ -45,7 +45,7 @@ def fingerprint_hash(fingerprint: dict) -> str:
 
     Args:
         fingerprint: dict of config values that determine a cache file's
-            content (e.g. ``{"format_version": 1, "sampling_nTOp": 200, ...}``).
+            content (e.g. ``{"format_version": 1, "sampling_nTOp_per_decade": 80, ...}``).
 
     Returns:
         16-hex-character hash string, e.g. ``"a3f9c1b2e4d5f607"``.
@@ -99,7 +99,7 @@ def write_cache_with_fingerprint(path: str, fingerprint: dict, columns, col_head
     Example:
         >>> write_cache_with_fingerprint(
         ...     "nTOp_frwrd.txt",
-        ...     {"format_version": 1, "sampling_nTOp": 200},
+        ...     {"format_version": 1, "sampling_nTOp_per_decade": 80},
         ...     [T_all, frwrd], col_header="T[K] rate[1/s]")
     """
     fp_hash = fingerprint_hash(fingerprint)

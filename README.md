@@ -160,8 +160,8 @@ the full design.
 | `DeltaNeff` | 0.0 | Extra relativistic degrees of freedom |
 | `network` | `"small"` | `"small"` (12 reactions) / `"medium"` (62) / `"large"` (~433). |
 | `numerical_precision` | 1e-7 | ODE solver rtol |
-| `n_temperature_table` | 2000 | Background grid density |
-| `sampling_nTOp` | 200 | n↔p rate grid size |
+| `sampling_temperature_per_decade` | 400 | Background grid points per decade of T |
+| `sampling_nTOp_per_decade` | 80 | n↔p rate grid points per decade of T |
 | `weak_rate_cache` | True | If False, never load n↔p rates from `rates/weak/` (always recompute) |
 | `save_nTOp` | False | Save recomputed n↔p rates to `rates/weak/` with a fingerprint header |
 | `include_nTOp_thermal` | True | Include thermal radiative corrections to the n↔p rates |
@@ -175,7 +175,7 @@ the full design.
 The n↔p weak rates are the most expensive part of initialisation (~1.8 s). They are
 cached in `rates/weak/nTOp_frwrd.txt` and `rates/weak/nTOp_bkwrd.txt`, each tagged
 with a *fingerprint* header: a hash of every config field that affects its numeric
-content (background thermodynamics, `sampling_nTOp`, `nTOp_Born_approximation`,
+content (background thermodynamics, `sampling_nTOp_per_decade`, `nTOp_Born_approximation`,
 `include_nTOp_thermal`, etc. — see `pyprimat.weak_rates`). At every run:
 
 - If `weak_rate_cache=True` (default) and the cache file's fingerprint matches the
@@ -197,12 +197,13 @@ mode); only a *missing* file triggers recomputation.
 
 **Typical workflow for a high-precision study:**
 ```python
-# Step 1 – compute and save high-precision rates once (non-default sampling_nTOp
-# gives a fingerprint that the shipped cache won't match, so this recomputes)
-PyPR({"save_nTOp": True, "sampling_nTOp": 400}).solve()
+# Step 1 – compute and save high-precision rates once (non-default
+# sampling_nTOp_per_decade gives a fingerprint that the shipped cache won't
+# match, so this recomputes)
+PyPR({"save_nTOp": True, "sampling_nTOp_per_decade": 160}).solve()
 
-# Step 2 – all subsequent runs with the same sampling_nTOp reuse the saved tables
-PyPR({"sampling_nTOp": 400}).solve()
+# Step 2 – all subsequent runs with the same sampling_nTOp_per_decade reuse the saved tables
+PyPR({"sampling_nTOp_per_decade": 160}).solve()
 ```
 
 ### Custom NEVO tables

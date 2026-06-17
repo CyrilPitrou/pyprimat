@@ -103,15 +103,18 @@ exp_cutoff = 3e+2
 # v1: forward and backward rates stored together in nTOp_<hash>.txt (hash in
 # filename, rates in units of 1/tau_n, clamped below 1e-28 to zero).
 # Fingerprints simplified: thermal uses only the T range, incomplete-decoupling
-# flag, and NEVO file selection; weak-rate drops n_temperature_table,
+# flag, and NEVO file selection; weak-rate drops sampling_temperature_per_decade,
 # nevo_grid_file, external_scale_factor, thermal_corrections and
 # thermal_fingerprint_hash.  tau_n_flag renamed to tau_n_normalization.
-WEAK_RATE_FORMAT_VERSION = 1
+# v2: sampling_nTOp/sampling_nTOp_thermal (total grid points) replaced by
+# sampling_nTOp_per_decade/sampling_nTOp_thermal_per_decade (points per decade
+# of T), so the grid density now stays fixed when T_end_MeV changes the span.
+WEAK_RATE_FORMAT_VERSION = 2
 
 # Config fields entering the weak-rate fingerprint (nTOp_<hash>.txt).
 # DeltaNeff is deliberately NOT listed: it only shifts the time-temperature
 # relation Tg(t) and does not affect the rate integrand at fixed Tg.
-# n_temperature_table, external_scale_factor and nevo_grid_file do not
+# sampling_temperature_per_decade, external_scale_factor and nevo_grid_file do not
 # enter the integrand either (grid resolution / scale-factor mode / spectral
 # y-grid are all negligible effects on the rates) and are omitted to keep the
 # fingerprint minimal.
@@ -145,6 +148,26 @@ _THERMAL_BG_FIELDS = [
 ]
 
 
+def n_points_per_decade(per_decade, T_lo, T_hi):
+    """Number of log-spaced grid points spanning [T_lo, T_hi] at a fixed
+    density of ``per_decade`` points per decade of T.
+
+    Used so that ``sampling_nTOp_per_decade``/``sampling_nTOp_thermal_per_decade``
+    keep a constant grid resolution even if ``T_end_MeV`` (and hence the
+    number of decades spanned) changes, unlike the old total-point-count
+    parametrisation.
+
+    Args:
+        per_decade: float, desired points per decade of T.
+        T_lo, T_hi: float, grid endpoints [K], T_hi > T_lo.
+
+    Returns:
+        int, number of points (at least 2).
+    """
+    decades = np.log10(T_hi / T_lo)
+    return max(2, int(round(per_decade * decades)))
+
+
 def _thermal_fingerprint(cfg):
     """Fingerprint dict for the thermal radiative-correction cache file
     ``nTOp_thermal_<hash>.txt``.
@@ -161,7 +184,7 @@ def _thermal_fingerprint(cfg):
         dict, JSON-serialisable.
     """
     fp = {"format_version": WEAK_RATE_FORMAT_VERSION,
-          "sampling_nTOp_thermal": cfg.sampling_nTOp_thermal}
+          "sampling_nTOp_thermal_per_decade": cfg.sampling_nTOp_thermal_per_decade}
     for key in _THERMAL_BG_FIELDS:
         fp[key] = getattr(cfg, key)
     return fp
@@ -186,7 +209,7 @@ def _weak_rate_fingerprint(cfg):
         dict, JSON-serialisable; pass to :func:`fingerprint_hash` for the hash.
     """
     fp = {"format_version":          WEAK_RATE_FORMAT_VERSION,
-          "sampling_nTOp":           cfg.sampling_nTOp,
+          "sampling_nTOp_per_decade": cfg.sampling_nTOp_per_decade,
           "radiative_corrections":   cfg.radiative_corrections,
           "finite_mass_corrections": cfg.finite_mass_corrections}
     for key in _WEAK_RATE_BG_FIELDS:
@@ -1252,7 +1275,8 @@ def _L_CCRTh_interpolants(ctx):
         if cfg.verbose:
             print("[weak]     Re-evaluating n <--> p thermal corrections. This may take a while ...")
 
-        _T_th      = np.logspace(np.log10(cfg.T_end), np.log10(cfg.T_start), cfg.sampling_nTOp_thermal)
+        _n_th_pts  = n_points_per_decade(cfg.sampling_nTOp_thermal_per_decade, cfg.T_end, cfg.T_start)
+        _T_th      = np.logspace(np.log10(cfg.T_end), np.log10(cfg.T_start), _n_th_pts)
         L_nTh_data = np.vectorize(lambda T: _L_CCRTh_compute(T, +1))(_T_th)
         L_pTh_data = np.vectorize(lambda T: _L_CCRTh_compute(T, -1))(_T_th)
 
@@ -1422,9 +1446,11 @@ def ComputeWeakRates(Tvec, cfg, dFDneu_func=None):
     thermal_interp = _L_CCRTh_interpolants(ctx)
 
     # Single grid spanning the whole BBN temperature range (T_end -> T_start).
-    # cfg.sampling_nTOp is the *total* number of points (formerly it was the
-    # per-era count and the network used three separate HT/MT/LT grids).
-    T_all = np.logspace(np.log10(cfg.T_end), np.log10(cfg.T_start), cfg.sampling_nTOp)
+    # cfg.sampling_nTOp_per_decade is points per decade of T (formerly
+    # sampling_nTOp was the *total* point count, and before that the
+    # per-era count when the network used three separate HT/MT/LT grids).
+    n_pts = n_points_per_decade(cfg.sampling_nTOp_per_decade, cfg.T_end, cfg.T_start)
+    T_all = np.logspace(np.log10(cfg.T_end), np.log10(cfg.T_start), n_pts)
 
     # Each correction term is already vectorised over T_all, so
     # the forward / backward rates are just the element-wise sum of the term

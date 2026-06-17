@@ -11,9 +11,9 @@ to their limits.  Expected running time: several minutes.
 Key choices versus the standard run:
   - T_start_cosmo = 100 MeV  (wider background integration range)
   - T_end         = 0.001 MeV (same as standard; already the default)
-  - n_temperature_table    = 10000     (denser background grid)
+  - sampling_temperature_per_decade = 2000  (denser background grid)
   - numerical_precision = 1e-10  (tighter ODE tolerances)
-  - sampling_nTOp = 500       (denser n<->p rate tables)
+  - sampling_nTOp_per_decade = 125  (denser n<->p rate tables)
   - These settings change the n<->p weak-rate fingerprint relative to the
     shipped rates/weak/*.txt cache (see pyprimat.weak_rates), so the rates
     are automatically recomputed from scratch (not loaded from the cache).
@@ -52,14 +52,14 @@ MyOptions = {
 
     # Background thermodynamics
     "T_start_cosmo_MeV":          100.0,   # [MeV]  wider integration range
-    "n_temperature_table":                 10000,   # denser grid for a(T) and t(a)
+    "sampling_temperature_per_decade":     2000,    # denser grid for a(T) and t(a)
 
     # ODE solver
     "numerical_precision":        1e-10,   # rtol for all solve_ivp calls
 
     # n <-> p weak rates
-    "sampling_nTOp":              500,     # points per era for rate tables
-    "sampling_nTOp_thermal":      100,     # kept as is
+    "sampling_nTOp_per_decade":           125,   # points per decade for rate tables
+    "sampling_nTOp_thermal_per_decade":   25,    # kept as is
     "vegas_n_eval":               100000,  # MC evaluations per iteration
     "vegas_n_itn":                50,      # MC iterations
 

@@ -92,7 +92,7 @@ DEFAULT_PARAMS: dict = {
     # ---- background thermodynamics ----------------------------------------
     "T_start_cosmo_MeV":          40.0,
     "T_end_MeV":                  1.e-3,  # end temperature for nuclear integration [MeV]; default 0.001 MeV ≈ 11.6 MK
-    "n_temperature_table":        2000,
+    "sampling_temperature_per_decade": 400,  # points per decade of T for the background a(T)/t(T) grid
 
     # ---- n <--> p weak rates ----------------------------------------------
     # rates/weak/nTOp_*.txt carry a fingerprint header recording the config
@@ -126,10 +126,10 @@ DEFAULT_PARAMS: dict = {
     ##################### caching/saving options
     "weak_rate_cache":            True,  # If False, never load the cache (always recompute); save_nTOp still controls whether the result is written back.
     "save_nTOp":                  True,  # If True, the computed n<->p rates are saved to rates/weak/ as nTOp_<hash>.txt (forward and backward columns together).
-    "sampling_nTOp":              200,   # total points in the single n<->p rate grid
-    
+    "sampling_nTOp_per_decade":   80,    # points per decade of T (T_end -> T_start) in the single n<->p rate grid
+
     "save_nTOp_thermal":          True,  # If True, the computed thermal n<->p rates are saved to rates/weak/ as nTOp_thermal_<hash>.txt (both directions in one file).
-    "sampling_nTOp_thermal":      100,   # grid points for the thermal-correction table
+    "sampling_nTOp_thermal_per_decade": 40,   # points per decade of T (T_end -> T_start) for the thermal-correction table
     ##################### Normalization of weak rates
     "tau_n_normalization":        True,  # Use neutron lifetime to normalize weak rates (instead of absolute normalization from GF, Vud, gA, etc.)
     "tau_n":                      878.4,  # neutron lifetime [s]; overrides the class-level constant when tau_n_normalization=True

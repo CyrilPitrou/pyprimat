@@ -46,8 +46,8 @@ MyOptions = {
     "output_time_evolution":     True,
     "numerical_precision":       1e-7,
     "output_final_result":       True,
-    "sampling_nTOp":             200,
-    "sampling_nTOp_thermal":     100,
+    "sampling_nTOp_per_decade":          50,
+    "sampling_nTOp_thermal_per_decade":  25,
     # radiative_corrections / finite_mass_corrections / thermal_corrections:
     # left at their PyPRConfig defaults (all True) -- full PRIMAT weak rates.
     # spectral_distortions: left at its PyPRConfig default (True) -- the

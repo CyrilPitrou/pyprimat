@@ -43,7 +43,7 @@ Three speed tiers:
 |--------|---------|
 | `slow` | any test excluded from the fast lane: a full PyPRIMAT solve (or a Monte-Carlo loop of solves), a weak-rate recompute (~1.8 s, bypassing the fingerprinted cache), or packaging checks. Deselect with `-m "not slow"`. |
 | `solve` | the "solve" tier: tests that run >=1 full PyPRIMAT solve at *default* (non-reference) precision; always also marked `slow`. `-m "not slow or solve"` selects the fast lane plus this tier. |
-| `reference` | high-precision runs (numerical_precision=1e-10, n_temperature_table=10000, sampling_nTOp=500, T_start_cosmo=100 MeV) that reproduce the CLAUDE.md values to YP ±1e-5, D/H ±3e-9; ~60 s total; always also marked `slow`. |
+| `reference` | high-precision runs (numerical_precision=1e-10, sampling_temperature_per_decade=2000, sampling_nTOp_per_decade=125, T_start_cosmo=100 MeV) that reproduce the CLAUDE.md values to YP ±1e-5, D/H ±3e-9; ~60 s total; always also marked `slow`. |
 | `wheel` | builds a wheel and `pip install`s it into a clean venv before running a smoke solve; always also marked `slow`. |
 | `gui` | drives the optional Streamlit GUI (`pyprimat.gui`) via `AppTest`; skipped if the `gui` extra is not installed; always also marked `slow` and `solve`. |
 

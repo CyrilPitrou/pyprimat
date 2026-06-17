@@ -691,7 +691,8 @@ class StandardBackground(Background):
         # values of Tend (e.g. T_end = 2e-3 MeV fails while 1e-3 MeV happens
         # to roundtrip exactly).  np.linspace guarantees its endpoints equal
         # the span bounds exactly, so the check always passes.
-        lnT_sol = np.linspace(np.log(Tend), np.log(Tstartcosmo), cfg.n_temperature_table)
+        n_T_pts = PyPRnTOp.n_points_per_decade(cfg.sampling_temperature_per_decade, Tend, Tstartcosmo)
+        lnT_sol = np.linspace(np.log(Tend), np.log(Tstartcosmo), n_T_pts)
         T_sol   = np.exp(lnT_sol)
 
         if cfg.external_scale_factor:
@@ -763,7 +764,7 @@ class StandardBackground(Background):
         # the a(T) solve above): feeding linspace endpoints straight to t_eval
         # avoids the log(logspace(...)) roundtrip that could land the last
         # point 1 ULP outside [log(a_ini), log(a_fin)].
-        lna_samp = np.linspace(np.log(a_ini), np.log(a_fin), cfg.n_temperature_table)
+        lna_samp = np.linspace(np.log(a_ini), np.log(a_fin), n_T_pts)
 
         def _dtdlna(lna, t):
             return [1. / Hubble_NEVO(T_of_a(np.exp(lna)))]
@@ -1211,7 +1212,8 @@ class CustomBackground(Background):
         # Tg grid spanning the table's temperature range (low → high).
         T_lo = float(np.min(self._T_by_t))
         T_hi = float(np.max(self._T_by_t))
-        self.Tg_vec   = np.linspace(T_lo, T_hi, cfg.n_temperature_table)
+        n_T_pts = PyPRnTOp.n_points_per_decade(cfg.sampling_temperature_per_decade, T_lo, T_hi)
+        self.Tg_vec   = np.linspace(T_lo, T_hi, n_T_pts)
         self.Tnue_vec = self._Tnue_of_Tg(self.Tg_vec)
 
     # ======================================================================

@@ -7,7 +7,7 @@ Two layers:
   fixtures) with loose tolerances — cheap, catch gross regressions.
 * High-precision *reference* checks (``reference`` marker) that rerun at the
   exact settings used to produce the published numbers
-  (numerical_precision=1e-10, n_temperature_table=10000, sampling_nTOp=500,
+  (numerical_precision=1e-10, sampling_temperature_per_decade=2000, sampling_nTOp_per_decade=125,
   T_start_cosmo=100 MeV) and pin them to the tight CLAUDE.md tolerances
   (YP +/-1e-5, D/H +/-3e-9).  These take ~60 s total and are the real guard
   for changes to the nuclear network.
@@ -77,8 +77,8 @@ def test_He3oH_order_of_magnitude(solved_small):
 # High-precision reference checks (tight) — reproduce the CLAUDE.md numbers
 # ---------------------------------------------------------------------------
 # Settings used to produce the published reference values.
-_REF_PARAMS = dict(numerical_precision=1e-10, n_temperature_table=10000,
-                   sampling_nTOp=500, T_start_cosmo_MeV=100.0,
+_REF_PARAMS = dict(numerical_precision=1e-10, sampling_temperature_per_decade=2000,
+                   sampling_nTOp_per_decade=125, T_start_cosmo_MeV=100.0,
                    Omegabh2=0.022425, verbose=False, debug=False)
 
 
