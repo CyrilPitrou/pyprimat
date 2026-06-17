@@ -291,15 +291,39 @@ def FD_nu_e3p2(E, phi, x):
     return 0.
 
 
-_fd_impls_initialized = False
+# Pristine (pure-Python) implementations, kept aside so _setup_fd_impls can
+# re-wrap from scratch if called again with a different numba_installed value
+# (otherwise a second PyPRConfig with the opposite setting would silently
+# keep reusing whichever variant -- jitted or not -- was installed first).
+_FD_IMPLS_ORIG = dict(
+    FD_nu3=FD_nu3, FD2=FD2, FD_nu_e2p0=FD_nu_e2p0, FD_nu_e3p0=FD_nu_e3p0,
+    FD_nu_e4p2=FD_nu_e4p2, FD_nu_e2p2=FD_nu_e2p2, FD_nu_e4p1=FD_nu_e4p1,
+    FD_nu_e2p1=FD_nu_e2p1, FD_nu_e3p1=FD_nu_e3p1, FD_nu_e3p2=FD_nu_e3p2,
+)
+
+# Remembers which numba_installed value the module-level FD_* names were last
+# wrapped for; None means "not yet set up".
+_fd_impls_numba = None
 
 
 def _setup_fd_impls(numba_installed):
     global FD_nu3, FD2, FD_nu_e2p0, FD_nu_e3p0, FD_nu_e4p2, FD_nu_e2p2, \
-           FD_nu_e4p1, FD_nu_e2p1, FD_nu_e3p1, FD_nu_e3p2, _fd_impls_initialized
-    if _fd_impls_initialized:
+           FD_nu_e4p1, FD_nu_e2p1, FD_nu_e3p1, FD_nu_e3p2, _fd_impls_numba
+    if _fd_impls_numba == numba_installed:
         return
-    _fd_impls_initialized = True
+    _fd_impls_numba = numba_installed
+    # Always start from the pristine pure-Python implementations so this is
+    # idempotent regardless of which way numba_installed flips.
+    FD_nu3      = _FD_IMPLS_ORIG['FD_nu3']
+    FD2         = _FD_IMPLS_ORIG['FD2']
+    FD_nu_e2p0  = _FD_IMPLS_ORIG['FD_nu_e2p0']
+    FD_nu_e3p0  = _FD_IMPLS_ORIG['FD_nu_e3p0']
+    FD_nu_e4p2  = _FD_IMPLS_ORIG['FD_nu_e4p2']
+    FD_nu_e2p2  = _FD_IMPLS_ORIG['FD_nu_e2p2']
+    FD_nu_e4p1  = _FD_IMPLS_ORIG['FD_nu_e4p1']
+    FD_nu_e2p1  = _FD_IMPLS_ORIG['FD_nu_e2p1']
+    FD_nu_e3p1  = _FD_IMPLS_ORIG['FD_nu_e3p1']
+    FD_nu_e3p2  = _FD_IMPLS_ORIG['FD_nu_e3p2']
     if not numba_installed:
         return
     try:

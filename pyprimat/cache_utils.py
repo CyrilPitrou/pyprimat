@@ -109,4 +109,9 @@ def write_cache_with_fingerprint(path: str, fingerprint: dict, columns, col_head
         header_lines.append(col_header)
     header_lines.append("fingerprint_hash: " + fp_hash)
     header_lines.append("fingerprint: " + fp_json)
-    np.savetxt(path, np.column_stack(columns), header="\n".join(header_lines))
+    # Write to a per-process temp file then atomically rename into place
+    # (os.replace), so concurrent MC workers racing to populate a missing
+    # cache never observe a partially-written file.
+    tmp_path = f"{path}.tmp.{os.getpid()}"
+    np.savetxt(tmp_path, np.column_stack(columns), header="\n".join(header_lines))
+    os.replace(tmp_path, path)
