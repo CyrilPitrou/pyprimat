@@ -124,17 +124,17 @@ def main(argv=None):
     if args.json:
         print(json.dumps(results, indent=2))
     else:
-        print(f"Neff     = {results['Neff']:.8f}")
-        print(f"YP (BBN) = {results['YPBBN']:.8f}")
-        print(f"YP (CMB) = {results['YPCMB']:.8f}")
-        print(f"D/H      = {results['DoH']:.7e}")
-        print(f"He3/H    = {results['He3oH']:.7e}")
-        print(f"He3/He4  = {results['He3oHe4']:.7e}")
-        print(f"Li7/H    = {results['Li7oH']:.6e}")
+        print(f"Neff       = {results['Neff']:.8f}")
+        print(f"YP (BBN)   = {results['YPBBN']:.8f}")
+        print(f"YP (CMB)   = {results['YPCMB']:.8f}")
+        print(f"D/H        = {results['DoH']:.7e}")
+        print(f"He3/H      = {results['He3oH']:.7e}")
+        print(f"He3/He4    = {results['He3oHe4']:.7e}")
+        print(f"Li7/H      = {results['Li7oH']:.6e}")
         if "Li6oLi7" in results:
-            print(f"Li6/Li7  = {results['Li6oLi7']:.6e}")
+            print(f"Li6/Li7    = {results['Li6oLi7']:.6e}")
         if "YCNO" in results:
-            print(f"YCNO     = {results['YCNO']:.6e}")
+            print(f"CNO (mass) = {results['YCNO']:.6e}")
         print(f"--- running time: {elapsed:.2f} seconds ---")
 
     return 0

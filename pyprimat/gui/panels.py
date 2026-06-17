@@ -60,7 +60,7 @@ _RATIO_LABELS = {
     "He3oHe4": r"$({}^{3}\text{He}+\text{T})/{}^{4}\text{He}$",
     "Li7oH":   r"$({}^{7}\text{Li}+{}^{7}\text{Be})/\text{H}$",
     "Li6oLi7": r"${}^{6}\text{Li}/({}^{7}\text{Li}+{}^{7}\text{Be})$",
-    "YCNO":    r"$Y_{\text{CNO}}$",
+    "YCNO":    r"$\text{CNO (mass)}$",
 }
 
 
