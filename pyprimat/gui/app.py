@@ -207,10 +207,10 @@ def main():
     )
     st.markdown(
         "PyPRIMAT computes primordial light-element abundances (D, He3, He4, "
-        "Li7, ...) and the effective number of neutrinos N_eff by integrating "
-        "the coupled cosmological-background and nuclear-reaction-network "
-        "equations of Big Bang Nucleosynthesis. "
-        "[Source code on GitHub](https://github.com/CyrilPitrou/pyprimat)."
+        "Li7, ...) and the effective number of neutrinos N_eff. \n\n"
+        " It integrates the coupled cosmological-background and nuclear-reaction-network "
+        "equations of Big Bang Nucleosynthesis. \n\n"
+        "Download the [source code](https://github.com/CyrilPitrou/pyprimat) and cite [publication](https://arxiv.org/abs/1801.08023) if you use it."
     )
 
     params, quick_mc, mc_samples = render_sidebar_form()
