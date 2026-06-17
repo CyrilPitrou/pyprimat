@@ -289,7 +289,7 @@ def test_quick_mc_uncertainty_with_customised_network():
     customise.set_value(True)
     at.run(timeout=60)
 
-    [keep] = [c for c in at.sidebar.checkbox if c.key == "keep_ddTOtp"]
+    [keep] = [c for c in at.sidebar.checkbox if c.key == "keep_d_d__t_p"]
     keep.set_value(False)
     at.run(timeout=60)
 

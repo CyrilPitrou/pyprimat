@@ -209,7 +209,7 @@ def test_removed_reaction_changes_central_value():
     (computed with custom_network) must differ from the default-network one."""
     default = mc_uncertainty(2, "DoH", params=_BASE, n_jobs=1, seed=0)
     removed = mc_uncertainty(2, "DoH", params=_BASE, n_jobs=1, seed=0,
-                              custom_network={"removed": ["ddTOtp"]})
+                              custom_network={"removed": ["d_d__t_p"]})
     assert removed["DoH"].central != pytest.approx(default["DoH"].central)
 
 
@@ -218,7 +218,7 @@ def test_custom_error_column_drives_spread():
     its *custom* error column, not the shipped default. Same median rate,
     two different uncertainty factors -- low spread vs high spread."""
     T9, rate, _err = np.loadtxt(
-        os.path.join(_TABLES_DIR, "ddTOHe3n.txt"), unpack=True)
+        os.path.join(_TABLES_DIR, "d_d__He3_n.txt"), unpack=True)
 
     noerr_table  = _table_text(T9, rate, np.full_like(rate, 1.0))
     bigerr_table = _table_text(T9, rate, np.full_like(rate, 3.0))
@@ -227,15 +227,15 @@ def test_custom_error_column_drives_spread():
     seeds = list(range(8))
 
     res_noerr = np.array(_mc_run_batch(
-        base_params, rate_keys=["p_ddTOHe3n"], quantities=["DoH"], seeds=seeds,
-        custom_network={"replaced": {"ddTOHe3n": noerr_table}}))
+        base_params, rate_keys=["p_d_d__He3_n"], quantities=["DoH"], seeds=seeds,
+        custom_network={"replaced": {"d_d__He3_n": noerr_table}}))
     res_bigerr = np.array(_mc_run_batch(
-        base_params, rate_keys=["p_ddTOHe3n"], quantities=["DoH"], seeds=seeds,
-        custom_network={"replaced": {"ddTOHe3n": bigerr_table}}))
+        base_params, rate_keys=["p_d_d__He3_n"], quantities=["DoH"], seeds=seeds,
+        custom_network={"replaced": {"d_d__He3_n": bigerr_table}}))
 
     std_noerr  = res_noerr[:, 0].std()
     std_bigerr = res_bigerr[:, 0].std()
-    # expsigma=1 means p_ddTOHe3n no longer perturbs the rate (median *
+    # expsigma=1 means p_d_d__He3_n no longer perturbs the rate (median *
     # exp(p*log(1)) = median); the residual std_noerr is from the unrelated
     # per-sample tau_n draw (_mc_run_batch), so it should be tiny compared to
     # the big-error case rather than exactly zero.
@@ -247,13 +247,13 @@ def test_replaced_table_std_via_public_api():
     proving the custom_network plumbing works end-to-end (not just via the
     internal _mc_run_batch worker)."""
     T9, rate, _err = np.loadtxt(
-        os.path.join(_TABLES_DIR, "ddTOHe3n.txt"), unpack=True)
+        os.path.join(_TABLES_DIR, "d_d__He3_n.txt"), unpack=True)
     bigerr_table = _table_text(T9, rate, np.full_like(rate, 5.0))
 
     default = mc_uncertainty(8, "DoH", params=_BASE, n_jobs=1, seed=0)
     replaced = mc_uncertainty(
         8, "DoH", params=_BASE, n_jobs=1, seed=0,
-        custom_network={"replaced": {"ddTOHe3n": bigerr_table}})
+        custom_network={"replaced": {"d_d__He3_n": bigerr_table}})
 
     assert replaced["DoH"].std > default["DoH"].std
 
@@ -262,9 +262,9 @@ def test_prev_ignored_when_custom_network_differs():
     """A prev computed under one custom_network must not be silently reused
     for a different one -- mirrors test_prev_ignored_when_seed_differs."""
     T9, rate, _err = np.loadtxt(
-        os.path.join(_TABLES_DIR, "ddTOHe3n.txt"), unpack=True)
+        os.path.join(_TABLES_DIR, "d_d__He3_n.txt"), unpack=True)
     bigerr_table = _table_text(T9, rate, np.full_like(rate, 5.0))
-    cn = {"replaced": {"ddTOHe3n": bigerr_table}}
+    cn = {"replaced": {"d_d__He3_n": bigerr_table}}
 
     prev = mc_uncertainty(3, "DoH", params=_BASE, n_jobs=1, seed=0)
     ref  = mc_uncertainty(3, "DoH", params=_BASE, n_jobs=1, seed=0, custom_network=cn)

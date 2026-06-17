@@ -93,8 +93,8 @@ _FORM_METADATA = {
     "nuclear_qed_corrections": (
         "Nuclear reactions", "Nuclear QED rate corrections",
         "True (default): apply a T9-dependent QED rescaling (Pitrou & "
-        "Pospelov 2020) to the forward rates of npTOdg, dpTOHe3g, tpTOag, "
-        "taTOLi7g, He3aTOBe7g.",
+        "Pospelov 2020) to the forward rates of n_p__d_g, d_p__He3_g, t_p__a_g, "
+        "t_a__Li7_g, He3_a__Be7_g.",
     ),
 
     # ---- Plasma physics ------------------------------------------------------
@@ -196,7 +196,7 @@ def _reaction_equations(network):
     cfg = PyPRConfig({"network": network})
     names = load_reaction_names(cfg, network)
     net = load_network(cfg, era="LT", reaction_names=names)
-    # net.names[0] is the prepended weak "nTOp", absent from the network text
+    # net.names[0] is the prepended weak "n__p", absent from the network text
     # file/``names`` list -- skip it so the mapping is keyed by bare names.
     return {
         name: _equation_unicode(net.reaction_equation(i))
@@ -395,7 +395,7 @@ def _render_custom_reactions(params):
         # arrived via a *zip* import (rather than this row's own uploader,
         # which would show its own "uploaded file" chip) is visible at all.
         # Show the equation alone (e.g. "n + p ↔ ²H") rather than the bare
-        # PRIMAT name (e.g. "npTOdg") -- the equation is self-explanatory and
+        # PRIMAT name (e.g. "n_p__d_g") -- the equation is self-explanatory and
         # matches the Reactions tab; fall back to the bare name only if no
         # equation could be derived (shouldn't normally happen).
         label = equations.get(name, name)

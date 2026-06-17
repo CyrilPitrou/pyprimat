@@ -78,14 +78,14 @@ def test_config_dynamic_rate_attrs():
     cfg = PyPRConfig()
 
     # p_<reaction> attribute routes to cfg.p_rxn dict
-    cfg.p_npTOdg = 0.5
-    assert cfg.p_rxn["npTOdg"] == 0.5
-    assert cfg.p_npTOdg == 0.5
+    cfg.p_n_p__d_g = 0.5
+    assert cfg.p_rxn["n_p__d_g"] == 0.5
+    assert cfg.p_n_p__d_g == 0.5
 
     # NP_delta_<reaction> routes to cfg.NP_delta_rxn dict
-    cfg.NP_delta_dpTOHe3g = 0.1
-    assert cfg.NP_delta_rxn["dpTOHe3g"] == 0.1
-    assert cfg.NP_delta_dpTOHe3g == 0.1
+    cfg.NP_delta_d_p__He3_g = 0.1
+    assert cfg.NP_delta_rxn["d_p__He3_g"] == 0.1
+    assert cfg.NP_delta_d_p__He3_g == 0.1
 
     # Unknown prefix falls through to object.__setattr__
     cfg.some_random_param = 42

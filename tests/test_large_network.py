@@ -36,8 +36,8 @@ def test_large_network_loads_and_conserves():
     assert ln.species[:2] == ["n", "p"]
     assert len(ln.species) >= 55
     assert ln.n_reac >= 400
-    assert 0 in ln.weak_indices                      # nTOp
-    assert len(ln.weak_indices) >= 30                # nTOp + beta decays
+    assert 0 in ln.weak_indices                      # n__p
+    assert len(ln.weak_indices) >= 30                # n__p + beta decays
     cnet = compile_network(ln.network, len(ln.species))
     check_conservation(cnet, ln.N, ln.Z, weak_indices=ln.weak_indices)  # raises if bad
 
@@ -80,7 +80,7 @@ def test_large_solve_conserves_baryon_and_matches_medium():
 
     # Light-element finals agree with medium (relative, for the non-tiny ones).
     # H3/Li7/Be7 are excluded: the large network alone carries the
-    # tTOHe3Bm/Be7TOLi7Bp analytic decay reactions (commit 6221e43), whose
+    # t__He3_Bm/Be7__Li7_Bp analytic decay reactions (commit 6221e43), whose
     # laboratory decay constants convert ~0.23% of H3->He3 and ~18% of
     # Be7->Li7 over the ~15-day integration window (T_end=0.001 MeV) -- a
     # real large-network-only effect, not a regression (see CLAUDE.md
@@ -131,7 +131,7 @@ def test_large_network_time_evolution_tsv(tmp_path):
     # medium-network's final abundances (same tolerance as the
     # final-abundance comparison in test_large_solve_conserves_baryon_and_matches_medium).
     # Li7 is excluded for the same reason as in that test: the large
-    # network's Be7TOLi7Bp decay reaction (commit 6221e43) converts ~18% of
+    # network's Be7__Li7_Bp decay reaction (commit 6221e43) converts ~18% of
     # Be7 into Li7 over the full integration window, so large Li7 is ~4x
     # medium Li7 by design (see CLAUDE.md "Per-nuclide final abundances").
     for s in ("He4", "H2"):

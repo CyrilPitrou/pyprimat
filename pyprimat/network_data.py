@@ -115,14 +115,35 @@ def _resample_rate_table(T9_src, rate_src, T9_dst):
                  bounds_error=False, fill_value="extrapolate")
     return f(lx_dst)
 
+# Reaction-naming syntax used throughout PyPRIMAT, both for the canonical
+# strings this module builds/parses and for the on-disk file names under
+# rates/nuclear/{tables,networks} and rates/nuclear/data/*.csv:
+#   "spaced"  (default): "<reactants joined by '_'>__<products joined by '_'>",
+#             e.g. "n_p__d_g" for n + p -> d + g.  Every character is a valid
+#             Python identifier character, so e.g. cfg.p_n_p__d_g works.
+#   "compact" (legacy):  "<reactants><products>" joined by the literal "TO",
+#             e.g. "n_p__d_g".  Kept only for parsing backward compatibility
+#             (see _tokenise) -- :func:`reaction_stoichiometry` and
+#             :func:`to_filename` accept either syntax as input regardless of
+#             this flag, auto-detecting which one was used.  This flag only
+#             controls the syntax *generated* by :func:`_format_name` (used
+#             when this module needs to build a new name string itself, e.g.
+#             in :func:`to_filename`'s catalog search).
+_RATE_SYNTAX_ = "spaced"
+
+# The two literal forms of the weak n -> p conversion name, accepted
+# interchangeably wherever a reaction name is parsed (e.g. by
+# reaction_stoichiometry, to_filename, load_network).
+_WEAK_NTOP_NAMES = ("n__p", "n__p")
+
 # Historical MT order from PRIMAT.  MT always integrates the intersection of the
 # selected network with this list, because activating the full network before
 # the deuterium bottleneck opens makes the BDF problem unnecessarily stiff.
 ORDER_MT = [
-    "nTOp", "Be7dTOaap", "Be7nTOLi7p", "Be7nTOaa", "He3aTOBe7g",
-    "He3dTOap", "He3nTOtp", "Li6pTOBe7g", "Li7pTOaa", "Li7pTOaag",
-    "daTOLi6g", "ddTOHe3n", "ddTOtp", "dpTOHe3g", "npTOdg",
-    "taTOLi7g", "tdTOan", "tpTOag",
+    "n__p", "Be7_d__a_a_p", "Be7_n__Li7_p", "Be7_n__a_a", "He3_a__Be7_g",
+    "He3_d__a_p", "He3_n__t_p", "Li6_p__Be7_g", "Li7_p__a_a", "Li7_p__a_a_g",
+    "d_a__Li6_g", "d_d__He3_n", "d_d__t_p", "d_p__He3_g", "n_p__d_g",
+    "t_a__Li7_g", "t_d__a_n", "t_p__a_g",
 ]
 
 # Stable light-nuclide orders used when embedding HT/MT/LT solutions into a
@@ -180,7 +201,7 @@ def nuclide_latex(name):
     symbol, mass_number = m.groups()
     return rf"${{}}^{{{mass_number}}}\mathrm{{{symbol}}}$"
 
-# Token aliases used when parsing compact PRIMAT names such as ``ddTOHe3n``.
+# Token aliases used when parsing compact PRIMAT names such as ``d_d__He3_n``.
 _ALIAS = {"d": "H2", "t": "H3", "a": "He4"}
 # _TOKENS is used for greedy tokenisation. We should include all nuclides we know about.
 _TOKENS = [
@@ -199,9 +220,9 @@ _TOKENS = [
 # first entry is the weak n<->p rate used in MT/LT buffers; the remaining twelve
 # entries are the thermonuclear rate tables.
 ORDER_SMALL = [
-    "nTOp", "npTOdg", "dpTOHe3g", "ddTOHe3n", "ddTOtp", "tpTOag",
-    "tdTOan", "taTOLi7g", "He3nTOtp", "He3dTOap", "He3aTOBe7g",
-    "Be7nTOLi7p", "Li7pTOaa",
+    "n__p", "n_p__d_g", "d_p__He3_g", "d_d__He3_n", "d_d__t_p", "t_p__a_g",
+    "t_d__a_n", "t_a__Li7_g", "He3_n__t_p", "He3_d__a_p", "He3_a__Be7_g",
+    "Be7_n__Li7_p", "Li7_p__a_a",
 ]
 _KEY12_REACTIONS = ORDER_SMALL[1:]
 
@@ -276,7 +297,7 @@ except OSError:
     # Importing documentation tooling outside the repository should still work.
     _REACTIONS_MEDIUM = []
 
-ORDER_LT = ["nTOp"] + _REACTIONS_MEDIUM
+ORDER_LT = ["n__p"] + _REACTIONS_MEDIUM
 
 
 def _read_csv(path):
@@ -418,7 +439,29 @@ def compute_detailed_balance_coefficients(reactants, products, cfg):
 
 
 def _tokenise(name):
-    """Split a compact PRIMAT reaction name into nuclide and separator tokens."""
+    """Split a reaction name into nuclide tokens plus a ``"TO"`` separator.
+
+    Both syntaxes are accepted, auto-detected from the name itself, so callers
+    (:func:`reaction_stoichiometry`, :func:`to_filename`) need no syntax
+    branching of their own:
+
+    * **spaced** (``"a_b__c_d"``): the reactant/product sides are split on the
+      double underscore, each side's tokens on a single underscore, e.g.
+      ``"n_p__d_g"`` -> ``["n", "p", "TO", "d", "g"]``.
+    * **compact** (legacy, ``"abTOcd"``): tokens are concatenated with no
+      separator and greedily matched against :data:`_TOKENS` (which includes
+      the literal ``"TO"`` marking the reactant/product split), e.g.
+      ``"n_p__d_g"`` -> ``["n", "p", "TO", "d", "g"]``.
+
+    The returned token list is the same in both cases, with a literal
+    ``"TO"`` entry standing in for whichever separator was actually used.
+    """
+    if "__" in name:
+        react_part, _, prod_part = name.partition("__")
+        out = list(react_part.split("_")) if react_part else []
+        out.append("TO")
+        out.extend(prod_part.split("_") if prod_part else [])
+        return out
     out, i = [], 0
     while i < len(name):
         for tk in _TOKENS:
@@ -431,11 +474,37 @@ def _tokenise(name):
     return out
 
 
+def _format_name(react_tokens, prod_tokens, syntax=None):
+    """Join reactant/product tokens into a reaction name in the given syntax.
+
+    Parameters
+    ----------
+    react_tokens, prod_tokens : sequence[str]
+        Nuclide tokens (e.g. ``["n", "p"]``, ``["d", "g"]``), in PRIMAT's
+        single-letter alias convention (``d``/``t``/``a`` for H2/H3/He4).
+    syntax : {"spaced", "compact"}, optional
+        Defaults to the module-level :data:`_RATE_SYNTAX_`.
+
+    Example
+    -------
+    >>> _format_name(["n", "p"], ["d", "g"])
+    'n_p__d_g'
+    >>> _format_name(["n", "p"], ["d", "g"], syntax="compact")
+    'n_p__d_g'
+    """
+    syntax = syntax or _RATE_SYNTAX_
+    if syntax == "spaced":
+        return "_".join(react_tokens) + "__" + "_".join(prod_tokens)
+    if syntax == "compact":
+        return "".join(react_tokens) + "TO" + "".join(prod_tokens)
+    raise ValueError(f"_RATE_SYNTAX_ must be 'compact' or 'spaced', got {syntax!r}")
+
+
 def reaction_stoichiometry(name):
     """Return ``(reactants, products)`` as nuclide-multiplicity dictionaries.
 
     The compact PRIMAT names concatenate nuclide tokens.  For example
-    ``ddTOHe3n`` means ``d + d -> He3 + n`` and is returned as
+    ``d_d__He3_n`` means ``d + d -> He3 + n`` and is returned as
     ``({"H2": 2}, {"He3": 1, "n": 1})``.
 
     Two ways of locating the reactant/product split are supported:
@@ -454,13 +523,13 @@ def reaction_stoichiometry(name):
 
     Example
     -------
-    >>> reaction_stoichiometry("npTOdg")
+    >>> reaction_stoichiometry("n_p__d_g")
     ({'n': 1, 'p': 1}, {'H2': 1})
     """
-    if name == "nTOp":
+    if name in _WEAK_NTOP_NAMES:
         # The physical reaction is n → p + e⁻(Bm), but the ODE state vector
         # does not track the emitted electron.  The lepton charge bookkeeping
-        # lives in NetworkDefinition.lepton_dZ (= -1 for nTOp), so the caller
+        # lives in NetworkDefinition.lepton_dZ (= -1 for n__p), so the caller
         # of check_conservation can verify dZ = 0 uniformly.  We return only the
         # nuclear species here so that phase_network / compile_network see the
         # correct ODE stoichiometry.
@@ -522,19 +591,23 @@ def reaction_stoichiometry(name):
 
 
 def to_filename(name):
-    """Map a compact reaction name to the ``<reactants>TO<products>`` file name.
+    """Map a bare reaction name to its fully-separated catalog/file name.
 
-    Some historical code used names without the explicit ``TO`` separator.  This
-    helper keeps that mapping in the same module that owns network construction.
+    Some historical code (and tests) used names without any explicit
+    reactant/product separator, e.g. ``"npdg"``.  This helper finds the
+    matching :data:`_RATE_SYNTAX_`-appropriate separated form by trying every
+    reactant/product split point against ``detailed_balance.csv``.  Names that
+    already carry either separator (``"__"`` or the literal ``"TO"``) are
+    returned unchanged.
 
     Example
     -------
     >>> to_filename("npdg")
-    'npTOdg'
+    'n_p__d_g'
     """
-    if name == "nTOp":
-        return "nTOp"
-    if "TO" in name:
+    if name in _WEAK_NTOP_NAMES:
+        return "n__p" if _RATE_SYNTAX_ == "spaced" else "n__p"
+    if "__" in name or "TO" in name:
         return name
 
     _, _, _, _, db, _ = _reaction_catalog(_default_data_dir())
@@ -543,15 +616,17 @@ def to_filename(name):
 
     tokens = _tokenise(name)
     n_nuclide = len([t for t in tokens if t != "g"])
-    
-    # Try to find the reaction in db by splitting tokens at different points
-    for i in range(1, n_nuclide):
-        candidate = "".join(tokens[:i]) + "TO" + "".join(tokens[i:])
-        # Normalize tokens (d->H2 etc) for matching if needed, but CSV uses PRIMAT tokens
-        if candidate in db:
-            return candidate
 
-    raise ValueError(f"cannot map reaction name {name!r} to a TO-separated filename")
+    # Try to find the reaction in db by splitting tokens at different points,
+    # checking both syntaxes since the catalog may have been generated under
+    # either one.
+    for i in range(1, n_nuclide):
+        for syntax in ("spaced", "compact"):
+            candidate = _format_name(tokens[:i], tokens[i:], syntax=syntax)
+            if candidate in db:
+                return candidate
+
+    raise ValueError(f"cannot map reaction name {name!r} to a separated filename")
 
 
 def phase_network(order, species):
@@ -573,7 +648,7 @@ def phase_network(order, species):
 
     Example
     -------
-    >>> phase_network(["nTOp"], ["n", "p"])
+    >>> phase_network(["n__p"], ["n", "p"])
     [({0: 1}, {1: 1})]
     """
     idx = {s: i for i, s in enumerate(species)}
@@ -581,8 +656,8 @@ def phase_network(order, species):
     for name in order:
         react, prod = reaction_stoichiometry(name)
         # Bm/Bp (emitted electron/positron) are lepton bookkeeping tokens, not
-        # part of the ODE state vector (see reaction_stoichiometry's "nTOp"
-        # special case docstring) -- decay reactions such as "Be7TOLi7Bp" carry
+        # part of the ODE state vector (see reaction_stoichiometry's "n__p"
+        # special case docstring) -- decay reactions such as "Be7__Li7_Bp" carry
         # one in their stoichiometry dict, so it must be dropped here too,
         # exactly as the production path (_side_counts, used by load_network)
         # already does.
@@ -703,7 +778,7 @@ class _LinearRate:
 class NetworkDefinition:
     """A fully assembled reaction network for one solver era.
 
-    ``names`` includes the prepended weak ``nTOp`` entry when present, while the
+    ``names`` includes the prepended weak ``n__p`` entry when present, while the
     text network files name only thermonuclear reactions.  ``network`` is the
     corresponding index-based stoichiometry used by :func:`compile_network`.
 
@@ -712,7 +787,7 @@ class NetworkDefinition:
     >>> cfg = PyPRConfig({"network": "medium"})
     >>> net = load_network(cfg, era="MT")
     >>> net.names[0], len(net.species)
-    ('nTOp', 12)
+    ('n__p', 12)
     """
 
     species: list[str]
@@ -727,15 +802,15 @@ class NetworkDefinition:
     _expsigma: np.ndarray
     _abg: np.ndarray
     _bwd_cap: np.ndarray
-    lepton_dZ: list[int]   # net lepton charge per reaction: e.g. -1 for nTOp (Bm emitted)
+    lepton_dZ: list[int]   # net lepton charge per reaction: e.g. -1 for n__p (Bm emitted)
     # Per-reaction provenance string (aligned with ``names``), read from the
     # first ``#`` header line of each rate table at load time (e.g. "And06" for
-    # npTOdg).  ``None`` when the network was built without source bookkeeping
+    # n_p__d_g).  ``None`` when the network was built without source bookkeeping
     # (e.g. directly from ``reaction_names`` in a test).
     sources: list[str] | None = None
     # Per-reaction rate-table path (aligned with ``names``): the on-disk
     # ``rates/nuclear/tables/<name>.txt`` each forward rate was loaded from.
-    # ``None`` for entries with no rate table (``nTOp``, whose weak rates are
+    # ``None`` for entries with no rate table (``n__p``, whose weak rates are
     # supplied at solve time) and ``None`` for the whole list when the network
     # was built without source bookkeeping. Used by the GUI reactions table to
     # offer a download button per reaction.
@@ -750,10 +825,10 @@ class NetworkDefinition:
         """Human-readable equation for reaction ``i`` as ``a + b <-> c + d``.
 
         Built from the index-based stoichiometry ``self.network[i]`` and the
-        ``self.species`` name list, so a reaction such as ``ddTOHe3n`` (stored
+        ``self.species`` name list, so a reaction such as ``d_d__He3_n`` (stored
         as ``({H2: 2}, {He3: 1, n: 1})``) is rendered ``H2 + H2 <-> He3 + n``.
         Stoichiometric multiplicities are expanded into repeated tokens to
-        mirror the compact PRIMAT reaction name.  The weak entry ``nTOp`` is
+        mirror the compact PRIMAT reaction name.  The weak entry ``n__p`` is
         rendered ``n <-> p``.
 
         Parameters
@@ -784,14 +859,14 @@ class NetworkDefinition:
         and the rate-table path in :attr:`files`.  Used by the verbose console
         output (see :meth:`UpdateNuclearRates.__init__`) and by the GUI
         reactions table to show, e.g.,
-        ``('npTOdg', 'n + p <-> H2', 'And06', '.../tables/npTOdg.txt')``.
+        ``('n_p__d_g', 'n + p <-> H2', 'And06', '.../tables/n_p__d_g.txt')``.
 
         Returns
         -------
         list[tuple[str, str, str, str | None]]
-            One tuple per reaction, in solver/buffer order (``nTOp`` first).
+            One tuple per reaction, in solver/buffer order (``n__p`` first).
             The last element is the rate-table path, or ``None`` for entries
-            with no table (e.g. the weak ``nTOp`` conversion).
+            with no table (e.g. the weak ``n__p`` conversion).
         """
         src = self.sources if self.sources is not None else [""] * len(self.names)
         files = self.files if self.files is not None else [None] * len(self.names)
@@ -808,7 +883,7 @@ class NetworkDefinition:
         refreshing the rates at the start of each solve.
         """
         NP = cfg.rescale_nuclear_rates
-        # Skip names[0] which is always nTOp (handled separately in the solver)
+        # Skip names[0] which is always n__p (handled separately in the solver)
         for i, name in enumerate(self.names[1:]):
             p = getattr(cfg, f"p_{name}")
             NP_delta = getattr(cfg, f"NP_delta_{name}")
@@ -950,7 +1025,7 @@ def _qed_nuclear_rescale(name, T9_grid):
     photon in the final state; QED corrections arise from pair-production processes
     (γ → e⁺e⁻) that open up when the available energy exceeds 2mₑ.
 
-    For ``npTOdg`` the correction is taken from a polynomial fit to a dedicated
+    For ``n_p__d_g`` the correction is taken from a polynomial fit to a dedicated
     Gamow-peak integration (Pitrou & Pospelov 2020); the fit is capped at its
     T9 → 0 limit 1.0009003934476768.
 
@@ -966,7 +1041,7 @@ def _qed_nuclear_rescale(name, T9_grid):
     Parameters
     ----------
     name : str
-        Reaction identifier (e.g. ``"npTOdg"``).
+        Reaction identifier (e.g. ``"n_p__d_g"``).
     T9_grid : np.ndarray
         Master temperature grid in GK.
 
@@ -980,7 +1055,7 @@ def _qed_nuclear_rescale(name, T9_grid):
     -------
     >>> import numpy as np
     >>> T9 = np.array([0.01, 0.1, 1.0])
-    >>> f = _qed_nuclear_rescale("npTOdg", T9)
+    >>> f = _qed_nuclear_rescale("n_p__d_g", T9)
     >>> (f > 1.0).all()
     True
     """
@@ -989,7 +1064,7 @@ def _qed_nuclear_rescale(name, T9_grid):
     # Electron mass [MeV] (PDG)
     ME_MEV = 0.51099895
 
-    if name == "npTOdg":
+    if name in ("n_p__d_g", "n_p__d_g"):
         # Polynomial fit to the QED correction for n + p → d + γ, derived from
         # the Gamow-peak integration with the electric-dipole model in
         # Pitrou & Pospelov 2020.  The polynomial slightly exceeds its T9=0
@@ -1010,10 +1085,10 @@ def _qed_nuclear_rescale(name, T9_grid):
     #   He3:14931.219, He4:2424.916, Li7:14907.105, Be7:15769.000  [all keV]
     _ED_PARAMS = {
         #           Z1  A1  Z2  A2  Q [MeV]
-        "dpTOHe3g":  (1, 2,  1, 1,  (13135.723 + 7288.971 - 14931.219) * 1e-3),
-        "tpTOag":    (1, 3,  1, 1,  (14949.811 + 7288.971 -  2424.916) * 1e-3),
-        "taTOLi7g":  (1, 3,  2, 4,  (14949.811 + 2424.916 - 14907.105) * 1e-3),
-        "He3aTOBe7g":(2, 3,  2, 4,  (14931.219 + 2424.916 - 15769.000) * 1e-3),
+        "d_p__He3_g":  (1, 2,  1, 1,  (13135.723 + 7288.971 - 14931.219) * 1e-3),
+        "t_p__a_g":    (1, 3,  1, 1,  (14949.811 + 7288.971 -  2424.916) * 1e-3),
+        "t_a__Li7_g":  (1, 3,  2, 4,  (14949.811 + 2424.916 - 14907.105) * 1e-3),
+        "He3_a__Be7_g":(2, 3,  2, 4,  (14931.219 + 2424.916 - 15769.000) * 1e-3),
     }
 
     if name not in _ED_PARAMS:
@@ -1045,7 +1120,7 @@ def _read_reaction_source(table_path):
     """Extract the data source label from a rate table's first ``#`` line.
 
     Every rate table under ``rates/nuclear/tables/`` starts with a header such
-    as ``# n + p > d + g   [npTOdg]   ref=And06``.  The ``ref=`` field names the
+    as ``# n + p > d + g   [n_p__d_g]   ref=And06``.  The ``ref=`` field names the
     experimental/theoretical compilation the rate was taken from (here the
     ``And06`` = Ando et al. 2006 evaluation).  This helper returns that label so
     the verbose log and the GUI can show each reaction's provenance.
@@ -1157,7 +1232,7 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
     Example
     -------
     >>> net = load_network(PyPRConfig({"network": "large"}), era="LT")
-    >>> len(net.names)  # nTOp + 423 thermonuclear reactions
+    >>> len(net.names)  # n__p + 423 thermonuclear reactions
     424
     """
     if custom_tables is None:
@@ -1178,7 +1253,7 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
     selected = list(reaction_names)
 
     # Pre-parse entries before the MT intersection: each entry is either a bare
-    # reaction name ("npTOdg") or a "bare_name, filename.txt" pair that points
+    # reaction name ("n_p__d_g") or a "bare_name, filename.txt" pair that points
     # to a non-default rate table.  We extract bare names for the intersection
     # and keep the filename mapping for the rate-table loading loop below.
     bare_to_file = {}
@@ -1196,10 +1271,12 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
     era = era.upper()
     if era == "MT" and getattr(cfg, "network", None) == "small":
         allowed = set(bare_names)
-        selected = [name for name in ORDER_SMALL if name != "nTOp" and name in allowed]
+        selected = [name for name in ORDER_SMALL
+                    if name not in _WEAK_NTOP_NAMES and name in allowed]
     elif era == "MT":
         allowed = set(bare_names)
-        selected = [name for name in ORDER_MT if name != "nTOp" and name in allowed]
+        selected = [name for name in ORDER_MT
+                    if name not in _WEAK_NTOP_NAMES and name in allowed]
     elif era == "LT":
         selected = bare_names
     else:
@@ -1268,23 +1345,23 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
                        np.log10(cfg.rate_grid_T9_max),
                        cfg.rate_grid_npts)
 
-    # nTOp: net lepton dZ = -1 (Bm on products, Z_Bm = -1).
+    # n__p: net lepton dZ = -1 (Bm on products, Z_Bm = -1).
     # This balances the +1 nuclear dZ (n→p converts Z=0 to Z=1), making the
     # reaction electrically neutral to check_conservation.
-    names = ["nTOp"]
+    names = ["n__p" if _RATE_SYNTAX_ == "spaced" else "n__p"]
     network = [({idx["n"]: 1}, {idx["p"]: 1})]
-    lepton_dZ_list = [-1]   # index 0 = nTOp (electron emitted: dZ = -1)
+    lepton_dZ_list = [-1]   # index 0 = n__p (electron emitted: dZ = -1)
     # Provenance label per reaction, read from each table's header (ref= field).
-    # nTOp has no rate table here (its weak rates are supplied at solve time), so
+    # n__p has no rate table here (its weak rates are supplied at solve time), so
     # we label it as the tabulated weak n<->p conversion.
     sources = ["weak n<->p"]
-    # Rate-table path per reaction (aligned with ``names``).  nTOp has no rate
+    # Rate-table path per reaction (aligned with ``names``).  n__p has no rate
     # table (its weak rates are supplied at solve time), hence ``None``.
     files = [None]
     fwd_median, fwd_expsigma, abg = [], [], []
     # decays.txt is loaded lazily (only the `large` network has Bm/Bp decay
     # reactions; `is_weak` among `parsed` entries is exactly the decay flag,
-    # since the only other weak reaction is nTOp, handled separately above).
+    # since the only other weak reaction is n__p, handled separately above).
     decay_table = None
     for name, filename, react_names, prod_names, is_weak, net_lepton_dZ in parsed:
         names.append(name)
@@ -1386,7 +1463,7 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
     # final-state photon.  Multiplying into fwd_median makes the corrected value
     # the new median so that p_* and NP_delta_* variations work relative to it.
     if getattr(cfg, "nuclear_qed_corrections", False):
-        for i, rname in enumerate(names[1:]):   # names[0] is nTOp, handled separately
+        for i, rname in enumerate(names[1:]):   # names[0] is n__p, handled separately
             factor = _qed_nuclear_rescale(rname, grid)
             if factor is not None:
                 fwd_median[i] *= factor
@@ -1430,7 +1507,7 @@ class UpdateNuclearRates:
             GUI "Customise Reactions" override, with two keys:
 
             - ``"removed"``: list of bare reaction names to drop entirely from
-              ``cfg.network``'s reaction list (e.g. ``["ddTOtp"]``).
+              ``cfg.network``'s reaction list (e.g. ``["d_d__t_p"]``).
             - ``"replaced"``: dict ``name -> raw_table_text``, where
               ``raw_table_text`` is the verbatim contents of a 2- or 3-column
               uploaded rate file (``T9  rate  [err]``) for a *kept* reaction,
@@ -1440,7 +1517,7 @@ class UpdateNuclearRates:
               log-log cubic interpolation as the shipped tables.
 
             ``None`` (default) reproduces the standard, uncustomised network.
-            Never applies to the weak ``nTOp`` reaction (handled by a separate
+            Never applies to the weak ``n__p`` reaction (handled by a separate
             cache, see :mod:`pyprimat.weak_rates`).
         """
         if cfg.verbose:
@@ -1496,7 +1573,7 @@ class UpdateNuclearRates:
         Thin delegate to :meth:`NetworkDefinition.describe_reactions` for the LT
         network (the complete selected reaction set; the MT era only uses a fixed
         18-reaction subset).  The fourth element is the rate-table path (``None``
-        for the weak ``nTOp`` entry).  Used by the verbose console listing and by
+        for the weak ``n__p`` entry).  Used by the verbose console listing and by
         the GUI reactions table.
         """
         return self._lt_net.describe_reactions()
@@ -1561,7 +1638,7 @@ def _make_frwrd(rxn):
         T9 = T * 1e-9
         net = self._lt_net
         if rxn not in net.names: return 0.0
-        j = net.names.index(rxn) - 1 # skip nTOp
+        j = net.names.index(rxn) - 1 # skip n__p
         g = net.grid
         i = int(np.searchsorted(g, T9) - 1)
         i = min(max(i, 0), g.size - 2)

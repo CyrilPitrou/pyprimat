@@ -18,7 +18,7 @@ Key choices versus the standard run:
     shipped rates/weak/*.txt cache (see pyprimat.weak_rates), so the rates
     are automatically recomputed from scratch (not loaded from the cache).
     The thermal corrections are loaded from the existing
-    rates/weak/{nTOp,pTOn}_thermal_corrections.txt regardless (their
+    rates/weak/{n__p,pTOn}_thermal_corrections.txt regardless (their
     fingerprint is checked leniently since recomputing them is slow).
   - vegas_n_eval  = 100000, vegas_n_itn = 50  (higher-accuracy MC for
                                                radiative corrections, if used)

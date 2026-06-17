@@ -194,9 +194,9 @@ def render_reactions_panel(run):
     * **Reaction** -- the readable ``a + b <-> c + d`` form with Unicode isotope
       symbols (e.g. ``²H + ²H ↔ ³He + n``);
     * **Source** -- the ``ref=`` provenance from the rate table's header line
-      (e.g. ``And06``), or ``weak n<->p`` for the tabulated ``nTOp`` weak rate.
+      (e.g. ``And06``), or ``weak n<->p`` for the tabulated ``n__p`` weak rate.
     * **File** -- the rate table's filename (``rates/nuclear/tables/<name>.txt``),
-      or ``--`` for the weak ``nTOp`` entry (its rates are supplied at solve time
+      or ``--`` for the weak ``n__p`` entry (its rates are supplied at solve time
       and have no on-disk table).
 
     Rendering uses a plain HTML ``<table>`` (via ``unsafe_allow_html``) rather
@@ -284,7 +284,8 @@ def _render_reaction_downloads(run):
     if custom_network and (custom_network.get("removed") or custom_network.get("replaced")):
         st.markdown("**Custom network**")
         kept_names = [name for name, equation, source, file
-                      in run.nucl.describe_reactions() if name != "nTOp"]
+                      in run.nucl.describe_reactions()
+                      if name not in ("n__p", "n__p")]
         try:
             zip_bytes = custom_rates.export_zip(run.cfg, custom_network, kept_names)
         except Exception as exc:

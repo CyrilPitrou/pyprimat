@@ -198,7 +198,7 @@ DEFAULT_PARAMS: dict = {
 
     # QED correction to select radiative-capture nuclear rates (Pitrou & Pospelov 2020).
     # Applies a T9-dependent multiplicative rescaling to the forward rate tables of
-    # npTOdg, dpTOHe3g, tpTOag, taTOLi7g, He3aTOBe7g at load time.  When True the
+    # n_p__d_g, d_p__He3_g, t_p__a_g, t_a__Li7_g, He3_a__Be7_g at load time.  When True the
     # corrected values become the new medians, so p_* and NP_delta_* variations
     # work relative to the QED-corrected central value.
     "nuclear_qed_corrections":    True,

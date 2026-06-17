@@ -2,11 +2,11 @@
 Tests for the QED corrections to radiative-capture nuclear rates.
 
 When ``nuclear_qed_corrections=True`` the forward rate tables of five reactions
-(npTOdg, dpTOHe3g, tpTOag, taTOLi7g, He3aTOBe7g) are multiplied by a
+(n_p__d_g, d_p__He3_g, t_p__a_g, t_a__Li7_g, He3_a__Be7_g) are multiplied by a
 T9-dependent factor derived in Pitrou & Pospelov 2020.  These tests verify:
 
 1. The correction factors have the expected magnitude (sub-percent, > 1).
-2. The polynomial fit for npTOdg matches the published low-T limit.
+2. The polynomial fit for n_p__d_g matches the published low-T limit.
 3. The electric-dipole Kroll factor increases with T9 (more pair-production
    phase space at higher energy) for the four remaining reactions.
 4. Corrections are applied to the loaded median rate tables and not to reactions
@@ -29,8 +29,8 @@ from pyprimat.network_data import _qed_nuclear_rescale, load_network
 # ---------------------------------------------------------------------------
 
 # The five reactions that receive QED corrections and the reactions that don't.
-QED_REACTIONS = ["npTOdg", "dpTOHe3g", "tpTOag", "taTOLi7g", "He3aTOBe7g"]
-NO_QED_REACTIONS = ["ddTOHe3n", "ddTOtp", "tdTOan", "Be7nTOLi7p", "He3nTOtp"]
+QED_REACTIONS = ["n_p__d_g", "d_p__He3_g", "t_p__a_g", "t_a__Li7_g", "He3_a__Be7_g"]
+NO_QED_REACTIONS = ["d_d__He3_n", "d_d__t_p", "t_d__a_n", "Be7_n__Li7_p", "He3_n__t_p"]
 
 
 class TestQEDCorrectionFunction:
@@ -67,7 +67,7 @@ class TestQEDCorrectionFunction:
             )
 
     def test_npTOdg_low_T_limit(self):
-        """npTOdg polynomial approaches its T9→0 cap at very low temperature.
+        """n_p__d_g polynomial approaches its T9→0 cap at very low temperature.
 
         The polynomial fit was capped at 1.0009003934476768, which is the
         Pitrou & Pospelov 2020 value of the Kroll factor evaluated at the
@@ -75,16 +75,16 @@ class TestQEDCorrectionFunction:
         """
         T9_ZERO_LIMIT = 1.0009003934476768
         t9_tiny = np.array([1e-4, 1e-5])
-        f = _qed_nuclear_rescale("npTOdg", t9_tiny)
+        f = _qed_nuclear_rescale("n_p__d_g", t9_tiny)
         # The polynomial increases with T9, so at very small T9 it should be
         # close to (but not exceed) the cap.
         assert np.all(f <= T9_ZERO_LIMIT + 1e-12), (
-            f"npTOdg factor must not exceed T9→0 cap {T9_ZERO_LIMIT}, got {f}"
+            f"n_p__d_g factor must not exceed T9→0 cap {T9_ZERO_LIMIT}, got {f}"
         )
         # At T9=0.001 (the low end of the BBN grid) the value is ~1.00033296
-        f_001 = _qed_nuclear_rescale("npTOdg", np.array([0.001]))
+        f_001 = _qed_nuclear_rescale("n_p__d_g", np.array([0.001]))
         assert 1.0003 < f_001[0] < 1.0004, (
-            f"npTOdg at T9=0.001 expected ~1.00033, got {f_001[0]:.8f}"
+            f"n_p__d_g at T9=0.001 expected ~1.00033, got {f_001[0]:.8f}"
         )
 
     def test_kroll_reactions_increase_with_T9(self):
@@ -95,7 +95,7 @@ class TestQEDCorrectionFunction:
         """
         T9_lo = np.array([0.01])
         T9_hi = np.array([5.0])
-        for rxn in ["dpTOHe3g", "tpTOag", "taTOLi7g", "He3aTOBe7g"]:
+        for rxn in ["d_p__He3_g", "t_p__a_g", "t_a__Li7_g", "He3_a__Be7_g"]:
             f_lo = _qed_nuclear_rescale(rxn, T9_lo)[0]
             f_hi = _qed_nuclear_rescale(rxn, T9_hi)[0]
             assert f_hi > f_lo, (
@@ -112,11 +112,11 @@ class TestQEDCorrectionFunction:
         T9_ref = np.array([0.1])
         expected_ranges = {
             # (min, max) at T9=0.1 GK; values from _qed_nuclear_rescale, ±2e-6 tolerance
-            "npTOdg":    (1.000341, 1.000346),
-            "dpTOHe3g":  (1.002175, 1.002181),
-            "tpTOag":    (1.004156, 1.004161),
-            "taTOLi7g":  (1.000976, 1.000981),
-            "He3aTOBe7g":(1.000394, 1.000399),
+            "n_p__d_g":    (1.000341, 1.000346),
+            "d_p__He3_g":  (1.002175, 1.002181),
+            "t_p__a_g":    (1.004156, 1.004161),
+            "t_a__Li7_g":  (1.000976, 1.000981),
+            "He3_a__Be7_g":(1.000394, 1.000399),
         }
         for rxn, (lo, hi) in expected_ranges.items():
             f = _qed_nuclear_rescale(rxn, T9_ref)[0]
@@ -146,7 +146,7 @@ class TestQEDCorrectionInNetwork:
         for rxn in QED_REACTIONS:
             if rxn not in net_base.names:
                 continue        # not in small network; skip
-            # names[0] = nTOp (weak), thermonuclear rates start at names[1] → fwd_median[0]
+            # names[0] = n__p (weak), thermonuclear rates start at names[1] → fwd_median[0]
             i = net_base.names.index(rxn) - 1
             ratio = net_qed._fwd_median[i] / net_base._fwd_median[i]
             assert np.all(ratio > 1.0), (
@@ -176,9 +176,9 @@ class TestQEDCorrectionInNetwork:
         """
         net_base, net_qed = nets
         cfg_qed = PyPRConfig({"network": "small", "nuclear_qed_corrections": True,
-                              "p_npTOdg": 1.0})
+                              "p_n_p__d_g": 1.0})
         net_qed.apply_variations(cfg_qed)
-        i = net_qed.names.index("npTOdg") - 1
+        i = net_qed.names.index("n_p__d_g") - 1
         expected = net_qed._fwd_median[i] * np.exp(np.log(net_qed._expsigma[i]))
         assert np.allclose(net_qed._fwd[i], expected, rtol=1e-12), (
             "Active rate with p=+1 should equal QED-corrected median × exp(ln σ)"

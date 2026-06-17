@@ -79,6 +79,6 @@ def test_duplicate_reaction_entry_raises_value_error():
     ValueError naming the duplicated entry, instead of silently dropping or
     double-counting it."""
     cfg = PyPRConfig({"network": "small", "verbose": False})
-    with pytest.raises(ValueError, match="npTOdg.*already present"):
+    with pytest.raises(ValueError, match="n_p__d_g.*already present"):
         load_network(cfg, era="LT",
-                      reaction_names=["npTOdg", "npTOdg", "ddTOHe3n"])
+                      reaction_names=["n_p__d_g", "n_p__d_g", "d_d__He3_n"])

@@ -92,11 +92,11 @@ def test_decay_reverse_bwd_cap_is_zero():
                       "decay_reverse_rates": True})
     ln = load_network(cfg)
 
-    # weak_indices includes nTOp (index 0) + all β-decay reactions.
+    # weak_indices includes n__p (index 0) + all β-decay reactions.
     # bwd_cap shape: (n_reactions_minus_nTOp,); weak_indices[i] - 1 is the index.
     decay_indices = [i for i in ln.weak_indices if i != 0]
     for rxn_idx in decay_indices:
-        # bwd_cap is indexed without nTOp: entry i corresponds to names[i+1].
+        # bwd_cap is indexed without n__p: entry i corresponds to names[i+1].
         cap = float(ln._bwd_cap[rxn_idx - 1])
         assert cap < 1e-10, (
             f"Decay {ln.names[rxn_idx]}: bwd_cap = {cap:.3e} s^-1 is not"

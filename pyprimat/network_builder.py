@@ -254,7 +254,7 @@ def check_conservation(compiled, N, Z, weak_indices=(), lepton_dZ=None):
         They must still conserve Z (verified via ``lepton_dZ``).
     lepton_dZ : sequence[int] or None
         Net electric charge carried by emitted/absorbed leptons, one entry per
-        reaction.  E.g. ``lepton_dZ[0] = -1`` for nTOp (β⁻ electron emitted
+        reaction.  E.g. ``lepton_dZ[0] = -1`` for n__p (β⁻ electron emitted
         with Z=−1 that balances the nuclear ΔZ = +1 from n→p).  When ``None``,
         the old behaviour (A-only for weak reactions) is used as a fallback.
     """

@@ -5,7 +5,7 @@ The ``small_parthenope`` network (``rates/nuclear/networks/small_parthenope.txt`
 exercises the ``bare_name, filename.txt`` syntax that routes individual reactions
 to non-default rate tables.  For example:
 
-    ddTOHe3n, ddTOHe3n_parthenope.txt
+    d_d__He3_n, ddTOHe3n_parthenope.txt
 
 causes the d + d → He3 + n rate to be read from the Parthenope (Gariazzo 2021)
 table instead of the default AC2024 one.
@@ -53,7 +53,7 @@ def test_small_parthenope_loads():
 def test_small_parthenope_same_reaction_set():
     """small_parthenope has the same 12 nuclear reactions as small."""
     net_std, net_ph = _load_both()
-    # Both should have nTOp + 12 nuclear reactions = 13 entries
+    # Both should have n__p + 12 nuclear reactions = 13 entries
     assert len(net_ph.names) == len(net_std.names), (
         f"Expected {len(net_std.names)} reactions, got {len(net_ph.names)}"
     )
@@ -71,21 +71,21 @@ def test_small_parthenope_same_species():
 def test_parthenope_rates_differ_from_standard():
     """Reactions with custom filenames must use different rate tables.
 
-    ``ddTOHe3n`` is routed to ``ddTOHe3n_parthenope.txt`` (Gariazzo 2021)
-    instead of ``ddTOHe3n.txt`` (Gom17).  The two rate files have different
+    ``d_d__He3_n`` is routed to ``ddTOHe3n_parthenope.txt`` (Gariazzo 2021)
+    instead of ``d_d__He3_n.txt`` (Gom17).  The two rate files have different
     values, so the loaded forward-rate arrays must differ.
     """
     net_std, net_ph = _load_both()
 
-    idx_std = net_std.names.index("ddTOHe3n")
-    idx_ph  = net_ph.names.index("ddTOHe3n")
+    idx_std = net_std.names.index("d_d__He3_n")
+    idx_ph  = net_ph.names.index("d_d__He3_n")
 
-    # _fwd[i-1] because index 0 is nTOp (not in _fwd array)
+    # _fwd[i-1] because index 0 is n__p (not in _fwd array)
     rates_std = net_std._fwd[idx_std - 1]
     rates_ph  = net_ph._fwd[idx_ph - 1]
 
     assert not np.allclose(rates_std, rates_ph, rtol=1e-6), (
-        "ddTOHe3n rate arrays are identical: custom filename was not loaded"
+        "d_d__He3_n rate arrays are identical: custom filename was not loaded"
     )
 
 

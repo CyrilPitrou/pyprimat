@@ -81,6 +81,7 @@ for _p in (_HERE, os.path.dirname(_HERE)):     # generate_rates/ and repo root
 # silently drift apart (IMPROVEMENTS.md #8).  DEFAULT_PARAMS is a plain dict,
 # so importing it has no side effects (no PyPRConfig instantiation).
 from pyprimat.config import DEFAULT_PARAMS
+from pyprimat.network_data import _RATE_SYNTAX_, _format_name
 GRID_NPTS = DEFAULT_PARAMS["rate_grid_npts"]
 GRID_T9_MIN = DEFAULT_PARAMS["rate_grid_T9_min"]
 GRID_T9_MAX = DEFAULT_PARAMS["rate_grid_T9_max"]
@@ -129,10 +130,16 @@ _CANON_TOKEN = {"He4": "a", "H2": "d", "H3": "t"}
 
 
 def reaction_name(reactants, products):
-    """Build the canonical ``<reactants>TO<products>`` short name."""
+    """Build the canonical reaction name in :data:`pyprimat.network_data._RATE_SYNTAX_`.
+
+    Default ``"spaced"`` syntax joins tokens with ``"_"`` and separates the
+    reactant/product sides with ``"__"`` (e.g. ``"n_p__d_g"``); legacy
+    ``"compact"`` syntax concatenates tokens and separates sides with the
+    literal ``"TO"`` (e.g. ``"npTOdg"``).  See :func:`pyprimat.network_data._format_name`.
+    """
     def canon(side):
-        return "".join(_CANON_TOKEN.get(t, t) for t in side)
-    return canon(reactants) + "TO" + canon(products)
+        return [_CANON_TOKEN.get(t, t) for t in side]
+    return _format_name(canon(reactants), canon(products), syntax=_RATE_SYNTAX_)
 
 
 def _parse_side(text):

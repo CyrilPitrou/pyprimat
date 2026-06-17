@@ -20,23 +20,23 @@ from pyprimat import PyPR, mc_uncertainty
 @pytest.mark.slow
 @pytest.mark.solve
 def test_solve_variation():
-    """Varying p_npTOdg shifts D/H; reverting p=0 restores the baseline."""
+    """Varying p_n_p__d_g shifts D/H; reverting p=0 restores the baseline."""
     inst = PyPR(params={"network": "small", "verbose": False})
     res0 = inst.solve()
     dh0  = res0["DoH"]
 
-    # Shift npTOdg by +1σ and re-solve
-    inst.cfg.p_npTOdg = 1.0
+    # Shift n_p__d_g by +1σ and re-solve
+    inst.cfg.p_n_p__d_g = 1.0
     res1 = inst.solve()
     dh1  = res1["DoH"]
-    assert dh1 != dh0, "Changing p_npTOdg should affect D/H"
+    assert dh1 != dh0, "Changing p_n_p__d_g should affect D/H"
 
     # Restore and verify exact match (deterministic ODE)
-    inst.cfg.p_npTOdg = 0.0
+    inst.cfg.p_n_p__d_g = 0.0
     res2 = inst.solve()
     dh2  = res2["DoH"]
     assert np.isclose(dh2, dh0, rtol=1e-10), (
-        f"Reverting p_npTOdg should match baseline: {dh2:.8e} vs {dh0:.8e}"
+        f"Reverting p_n_p__d_g should match baseline: {dh2:.8e} vs {dh0:.8e}"
     )
 
 

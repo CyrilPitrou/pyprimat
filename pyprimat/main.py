@@ -80,8 +80,8 @@ class PyPR:
 
         Example: drop one reaction and override another's rate table,
             >>> PyPR({"network": "small"}, custom_network={
-            ...     "removed": ["ddTOtp"],
-            ...     "replaced": {"npTOdg": "0.001 1.2e3\\n10.0 4.5e1\\n"},
+            ...     "removed": ["d_d__t_p"],
+            ...     "replaced": {"n_p__d_g": "0.001 1.2e3\\n10.0 4.5e1\\n"},
             ... })
     """
 

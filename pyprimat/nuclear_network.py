@@ -655,19 +655,19 @@ class NuclearNetwork:
         N = len(net.species)
         D = np.zeros((N, N))
 
-        # The rate tables (_fwd_median) are indexed without the nTOp slot:
-        # names[0] = "nTOp", names[1:] = thermonuclear reactions.
+        # The rate tables (_fwd_median) are indexed without the n__p slot:
+        # names[0] = "n__p", names[1:] = thermonuclear reactions.
         # _fwd_median[i] corresponds to names[i+1], so we need offset by 1.
         # Mass numbers A_s for each species:
         A_s = (net.N + net.Z).astype(float)   # shape (N,)
 
         for rxn_idx in net.weak_indices:
             if rxn_idx == 0:
-                continue   # nTOp handled by the HT/MT/LT eras, not the DT era
+                continue   # n__p handled by the HT/MT/LT eras, not the DT era
             name = net.names[rxn_idx]
             # The decay rate is constant (T9-independent), stored as a
             # uniform array.  Read from _fwd_median at grid index 0.
-            # rate_table_idx is rxn_idx - 1 because _fwd_median excludes nTOp.
+            # rate_table_idx is rxn_idx - 1 because _fwd_median excludes n__p.
             rate = float(net._fwd_median[rxn_idx - 1, 0])   # [s^-1]
             if rate == 0.0:
                 continue
@@ -694,7 +694,7 @@ class NuclearNetwork:
         # Free-neutron β decay  n → p + e⁻ + ν̄
         # ------------------------------------------------------------------
         # The n→p transition is *not* a decays.txt entry: during BBN it is the
-        # thermal weak rate (nTOp, rxn_idx 0, T-dependent, computed by the
+        # thermal weak rate (n__p, rxn_idx 0, T-dependent, computed by the
         # background) and is therefore skipped above.  In the DT era T→0, so
         # that thermal rate reduces to the vacuum decay constant λ_n = 1/τ_n
         # (τ_n = cfg.tau_n, the neutron lifetime).  Without this term the
