@@ -27,7 +27,60 @@ import zipfile
 import numpy as np
 import streamlit as st
 
-from pyprimat.network_data import _resample_rate_table
+from pyprimat.network_data import _resample_rate_table, reaction_stoichiometry
+
+
+def validate_new_reaction(name):
+    """Validate a brand-new reaction name and return its readable equation.
+
+    Backs the GUI's "Add a new reaction" pop-up: a user types a reaction name
+    in the ``a_b__c_d`` syntax (reactants and products separated by ``__``,
+    nuclides within a side by ``_``; ``g`` denotes a photon, ``Bm``/``Bp`` an
+    emitted electron/positron, and ``d``/``t``/``a`` alias H2/H3/He4).  The
+    name need not exist in the shipped catalog: its stoichiometry is derived
+    from the name itself by :func:`pyprimat.network_data.reaction_stoichiometry`,
+    which also checks baryon-number and electric-charge conservation and that
+    every nuclide token is known.
+
+    Parameters
+    ----------
+    name : str
+        Candidate reaction name, e.g. ``"He3_d__He4_p"``.
+
+    Returns
+    -------
+    str
+        A human-readable equation such as ``"He3 + d -> He4 + p"`` (reactants
+        and products joined with ``+`` and separated by ``->``), suitable for
+        confirming back to the user what was parsed.
+
+    Raises
+    ------
+    ValueError
+        If the name is empty, cannot be tokenised, has no ``__``/``TO``
+        separator, references an unknown nuclide, or does not conserve A/Z.
+
+    Example
+    -------
+    >>> validate_new_reaction("He3_d__He4_p")
+    'He3 + d -> He4 + p'
+    """
+    name = (name or "").strip()
+    if not name:
+        raise ValueError("enter a reaction name (e.g. 'He3_d__He4_p').")
+    if "__" not in name:
+        raise ValueError(
+            "name must use the 'a_b__c_d' syntax: reactants and products "
+            "separated by a double underscore '__'.")
+    try:
+        react, prod = reaction_stoichiometry(name)
+    except (ValueError, KeyError) as exc:
+        raise ValueError(str(exc)) from exc
+
+    def _side(counts):
+        return " + ".join(s for s, c in counts.items() for _ in range(int(c)))
+
+    return f"{_side(react)} -> {_side(prod)}"
 
 
 def parse_rate_upload(fh):
@@ -120,31 +173,41 @@ def export_zip(cfg, custom_network, kept_names):
     cfg : PyPRConfig
         Supplies the master-grid parameters (for resampling replaced tables).
     custom_network : dict
-        ``{"removed": [...], "replaced": {name: raw_text, ...}}``.
+        ``{"removed": [...], "replaced": {name: raw_text, ...},
+        "added": {name: raw_text, ...}}``.
     kept_names : sequence[str]
         The full ordered list of reaction names actually in the network after
-        removal (i.e. ``cfg.network``'s list minus ``custom_network["removed"]``).
+        removal *and* additions (i.e. ``cfg.network``'s list minus
+        ``custom_network["removed"]``, plus ``custom_network["added"]``).  In
+        the GUI this is read off the solved network's reaction list, so added
+        reactions are already included.
 
     Returns
     -------
     bytes
         Zip file contents with ``networks/custom.txt`` (one reaction name per
-        line, using the ``name, name_custom.txt`` syntax for replaced
-        reactions -- see ``load_network``'s ``bare_to_file`` parsing) and one
-        ``tables/<name>_custom.txt`` per replaced reaction (the resampled,
-        on-grid table from :func:`effective_table_text`).
+        line, using the ``name, name_custom.txt`` syntax for reactions carrying
+        an uploaded table -- see ``load_network``'s ``bare_to_file`` parsing)
+        and one ``tables/<name>_custom.txt`` per such reaction (the resampled,
+        on-grid table from :func:`effective_table_text`).  Replaced and added
+        reactions are written identically; on re-import they are told apart by
+        whether the name belongs to the selected network.
     """
-    replaced = custom_network.get("replaced", {})
+    # Replaced (override a kept reaction) and added (brand-new) reactions are
+    # both backed by an uploaded table, so they are written to the zip the same
+    # way -- merge them into one map of custom tables.
+    custom_tables = {**custom_network.get("replaced", {}),
+                     **custom_network.get("added", {})}
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         lines = []
         for name in kept_names:
-            if name in replaced:
+            if name in custom_tables:
                 lines.append(f"{name}, {name}_custom.txt")
             else:
                 lines.append(name)
         zf.writestr("networks/custom.txt", "\n".join(lines) + "\n")
-        for name, raw_text in replaced.items():
+        for name, raw_text in custom_tables.items():
             T9, rate, err = parse_rate_upload(io.StringIO(raw_text))
             table_text = effective_table_text(cfg, T9, rate, err, name=name)
             zf.writestr(f"tables/{name}_custom.txt", table_text)
@@ -162,11 +225,13 @@ def import_zip(fh):
     Returns
     -------
     dict
-        ``{"removed": [], "replaced": {name: raw_text, ...}}``. ``"removed"``
-        is always empty on import: ``networks/custom.txt`` only lists the
-        reactions that were *kept*, so removal is implicit (any reaction
-        absent from the file is treated as removed by the caller, which
-        compares against the full ``cfg.network`` list).
+        ``{"kept": [name, ...], "replaced": {name: raw_text, ...}}``.  Removal
+        is implicit: ``networks/custom.txt`` only lists the reactions that were
+        *kept*, so any reaction of the selected network absent from ``kept`` is
+        treated as removed by the caller.  Brand-new (added) reactions also
+        appear in ``kept`` with their table in ``replaced``; the caller tells
+        them apart from replacements by checking which ``kept`` names do *not*
+        belong to the selected network.
     """
     replaced = {}
     try:

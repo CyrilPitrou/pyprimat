@@ -281,7 +281,8 @@ def _render_reaction_downloads(run):
         An already-solved ``PyPR`` instance.
     """
     custom_network = st.session_state.get("run_custom_network_dict")
-    if custom_network and (custom_network.get("removed") or custom_network.get("replaced")):
+    if custom_network and (custom_network.get("removed") or custom_network.get("replaced")
+                           or custom_network.get("added")):
         st.markdown("**Custom network**")
         kept_names = [name for name, equation, source, file
                       in run.nucl.describe_reactions()
@@ -302,7 +303,11 @@ def _render_reaction_downloads(run):
             )
 
     st.markdown("**Download individual rate tables**")
-    replaced_raw = (custom_network or {}).get("replaced", {})
+    # Replaced and added reactions both carry an uploaded table (source
+    # "custom upload"); merge them so either can be downloaded as the on-grid
+    # effective table actually fed to the solver.
+    replaced_raw = {**(custom_network or {}).get("replaced", {}),
+                    **(custom_network or {}).get("added", {})}
     downloadable = {}
     for name, equation, source, file in run.nucl.describe_reactions():
         if file is not None:

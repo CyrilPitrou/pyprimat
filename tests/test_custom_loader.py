@@ -122,3 +122,80 @@ def test_parthenope_solve_is_physical():
     # since the parthenope rates are legitimately different.
     assert 0.23 < r["YPBBN"] < 0.26, f"YP = {r['YPBBN']:.5f} is outside physical range"
     assert 1e-5 < r["DoH"]   < 5e-5, f"D/H = {r['DoH']:.3e} is outside physical range"
+
+
+# ---------------------------------------------------------------------------
+# Adding a brand-new reaction (GUI "Add a new reaction" feature)
+# ---------------------------------------------------------------------------
+#
+# The GUI's "Customise Reactions" panel can inject a reaction that need not be
+# in the selected network -- or in the shipped catalog at all -- by passing
+# ``custom_network={"added": {name: raw_table_text}}``.  Its stoichiometry is
+# derived from the name's "a_b__c_d" syntax and its reverse-rate coefficients
+# from nuclide data, all in-memory.  These tests cover that path end to end.
+
+def _flat_table_text(rate=1.0e2):
+    """A 3-column (T9, rate, err) rate table spanning the master grid."""
+    T9 = np.logspace(-3, 1, 200)
+    r = rate * np.ones_like(T9)
+    e = np.ones_like(T9)
+    return "# test added reaction\n" + "\n".join(
+        f"{t:.6e} {rr:.6e} {ee:.6e}" for t, rr, ee in zip(T9, r, e)
+    )
+
+
+def test_added_reaction_enters_network():
+    """A new reaction absent from the catalog is added with derived stoichiometry.
+
+    ``t_t__He4_n_n`` (t + t -> He4 + 2n) is a real fusion reaction not present
+    in PyPRIMAT's shipped ``reactions_large.csv``; adding it to the *small*
+    network must extend the LT reaction list and give it a non-trivial
+    detailed-balance reverse rate (it is purely nuclear, so abg != 0).
+    """
+    from pyprimat.network_data import UpdateNuclearRates
+    cfg = PyPRConfig({"network": "small", "verbose": False})
+    cn = {"added": {"t_t__He4_n_n": _flat_table_text()}}
+    upd = UpdateNuclearRates(cfg, custom_network=cn)
+    assert "t_t__He4_n_n" in upd._order_LT
+    i = upd._order_LT.index("t_t__He4_n_n")
+    # _abg excludes the prepended weak n__p (index 0), so it is offset by one.
+    abg = upd._lt_net._abg[i - 1]
+    assert not np.allclose(abg, 0.0), "expected a detailed-balance reverse rate"
+
+
+def test_added_weak_reaction_is_forward_only():
+    """A new *weak* reaction (emitted lepton) is forward-only (abg = 0).
+
+    ``p_p__d_Bp`` (p + p -> d + e+ + nu) carries a Bp lepton, so it is flagged
+    weak and -- like the shipped beta-decays -- left without a reverse rate,
+    while still being recorded in ``weak_indices``.
+    """
+    from pyprimat.network_data import UpdateNuclearRates
+    cfg = PyPRConfig({"network": "small", "verbose": False})
+    cn = {"added": {"p_p__d_Bp": _flat_table_text()}}
+    upd = UpdateNuclearRates(cfg, custom_network=cn)
+    i = upd._order_LT.index("p_p__d_Bp")
+    assert i in upd._lt_net.weak_indices
+    assert np.allclose(upd._lt_net._abg[i - 1], 0.0)
+
+
+def test_added_reaction_non_conserving_rejected():
+    """A reaction that violates baryon/charge conservation raises ValueError."""
+    from pyprimat.network_data import UpdateNuclearRates
+    cfg = PyPRConfig({"network": "small", "verbose": False})
+    # p + p -> He4 conserves neither A (2 != 4) nor Z; must be rejected.
+    cn = {"added": {"p_p__He4": _flat_table_text()}}
+    with pytest.raises(ValueError):
+        UpdateNuclearRates(cfg, custom_network=cn)
+
+
+@pytest.mark.slow
+@pytest.mark.solve
+def test_added_reaction_solve_completes():
+    """A full BBN solve with an added reaction completes and stays physical."""
+    from pyprimat.main import PyPR
+    cn = {"added": {"t_t__He4_n_n": _flat_table_text()}}
+    r = PyPR({"network": "small", "verbose": False},
+             custom_network=cn).PyPRresults()
+    assert 0.23 < r["YPBBN"] < 0.26
+    assert 1e-5 < r["DoH"] < 5e-5

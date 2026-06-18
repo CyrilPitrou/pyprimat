@@ -1284,6 +1284,50 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
 
     tables_dir, data_dir, nuc_order, nuc_NZ, db, rxn_map = _reaction_catalog(cfg.data_dir)
 
+    # Brand-new reactions added via the GUI "Customise Reactions" panel: any
+    # selected reaction whose bare name is *absent* from the shipped catalog
+    # (reactions_large.csv) but whose forward rate is supplied through
+    # ``custom_tables``.  Its stoichiometry is derived from the name itself
+    # (the "a_b__c_d" syntax, via :func:`reaction_stoichiometry`) and its
+    # reverse-rate (alpha, beta, gamma) coefficients from nuclide data
+    # (:func:`compute_detailed_balance_coefficients`), then injected into the
+    # catalog so the rest of this function treats the new reaction exactly like
+    # a shipped one.  ``rxn_map``/``db`` come from the lru_cached
+    # :func:`_reaction_catalog`, so we copy them before injecting to avoid
+    # poisoning the cache shared with other networks/calls.
+    new_names = [n for n in bare_names if n not in rxn_map and n in custom_tables]
+    if new_names:
+        rxn_map = dict(rxn_map)
+        db = dict(db)
+        for n in new_names:
+            try:
+                react_counts, prod_counts = reaction_stoichiometry(n)
+            except (ValueError, KeyError) as exc:
+                # Unparseable name, unknown nuclide token, or a stoichiometry
+                # that does not conserve baryon number/charge: surface a clear
+                # message naming the offending reaction.
+                raise ValueError(f"cannot add reaction {n!r}: {exc}") from exc
+            # Re-serialise to the CSV "A+B" field form used by reactions_large.csv
+            # so that _side_counts (applied below to every reaction) handles
+            # lepton bookkeeping and multiplicities uniformly.
+            rfield = "+".join(s for s, c in react_counts.items() for _ in range(int(c)))
+            pfield = "+".join(s for s, c in prod_counts.items() for _ in range(int(c)))
+            rxn_map[n] = (rfield, pfield)
+            # Give the new reaction a physical reverse rate via detailed balance
+            # when it is purely nuclear (no emitted lepton); weak additions are
+            # left reverse-rate-free (abg = 0), mirroring the decay default.
+            rcounts, dZr = _side_counts(rfield)
+            pcounts, dZp = _side_counts(pfield)
+            if dZp - dZr == 0:
+                reactants = [s for s, c in rcounts.items() for _ in range(int(c))]
+                products = [s for s, c in pcounts.items() for _ in range(int(c))]
+                try:
+                    db[n] = compute_detailed_balance_coefficients(reactants, products, cfg)
+                except Exception:
+                    # Missing spin/mass data for one of the nuclides: fall back
+                    # to a forward-only reaction rather than failing the run.
+                    pass
+
     # cfg.amax: if set, drop any reaction whose stoichiometry involves a nuclide
     # with mass number A = N + Z > amax.  Only meaningful for network="large";
     # silently no-ops for small/medium (their nuclides all have A ≤ 11).
@@ -1384,7 +1428,20 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
             {idx[s]: c for s, c in prod_names.items()},
         ))
 
-        if is_weak:
+        if name in custom_tables:
+            # GUI-uploaded rate table override: raw (T9, rate, err) arrays on
+            # the uploader's own grid, resampled with the exact same
+            # log-log cubic interpolation as the on-disk tables so that
+            # "custom upload" and "shipped table" are interchangeable inputs
+            # to the solver.  Checked *before* the decay branch so that an
+            # uploaded table wins even for a weak reaction (a brand-new added
+            # weak reaction, or a user-replaced decay table).
+            T9_src, rate_src, err_src = custom_tables[name]
+            sources.append("custom upload")
+            files.append(None)
+            fwd_median.append(_resample_rate_table(T9_src, rate_src, grid))
+            fwd_expsigma.append(_resample_rate_table(T9_src, err_src, grid))
+        elif is_weak:
             # Radioactive decay: constant (T9-independent) rate from
             # decays.txt, broadcast onto the master grid -- no rate table,
             # no resampling (see _load_decay_table's docstring).
@@ -1404,17 +1461,6 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
             # the rate column is just the constant rate_s repeated on the grid.
             fwd_median.append(np.full(grid.shape, rate_s))
             fwd_expsigma.append(np.full(grid.shape, f))
-        elif name in custom_tables:
-            # GUI-uploaded rate table override: raw (T9, rate, err) arrays on
-            # the uploader's own grid, resampled with the exact same
-            # log-log cubic interpolation as the on-disk tables so that
-            # "custom upload" and "shipped table" are interchangeable inputs
-            # to the solver.
-            T9_src, rate_src, err_src = custom_tables[name]
-            sources.append("custom upload")
-            files.append(None)
-            fwd_median.append(_resample_rate_table(T9_src, rate_src, grid))
-            fwd_expsigma.append(_resample_rate_table(T9_src, err_src, grid))
         else:
             table_path = os.path.join(tables_dir, filename)
             sources.append(_read_reaction_source(table_path))
@@ -1514,7 +1560,7 @@ class UpdateNuclearRates:
         Parameters
         ----------
         custom_network : dict, optional
-            GUI "Customise Reactions" override, with two keys:
+            GUI "Customise Reactions" override, with three keys:
 
             - ``"removed"``: list of bare reaction names to drop entirely from
               ``cfg.network``'s reaction list (e.g. ``["d_d__t_p"]``).
@@ -1525,6 +1571,13 @@ class UpdateNuclearRates:
               file is written to disk) and fed to :func:`load_network` as
               ``custom_tables`` so it is resampled with the exact same
               log-log cubic interpolation as the shipped tables.
+            - ``"added"``: dict ``name -> raw_table_text`` for *brand-new*
+              reactions that need not exist in ``cfg.network`` (or even in the
+              shipped catalog ``reactions_large.csv``).  The name must follow
+              the ``a_b__c_d`` syntax so that :func:`load_network` can derive
+              its stoichiometry (and detailed-balance reverse rate) from the
+              name and the nuclide tables; its forward rate comes from the
+              uploaded table, just like ``"replaced"``.
 
             ``None`` (default) reproduces the standard, uncustomised network.
             Never applies to the weak ``n__p`` reaction (handled by a separate
@@ -1535,8 +1588,15 @@ class UpdateNuclearRates:
 
         removed = set(custom_network.get("removed", [])) if custom_network else set()
         custom_tables = {}
+        added_names = []
         if custom_network:
-            for name, raw_text in custom_network.get("replaced", {}).items():
+            # "replaced" tables override a kept reaction; "added" tables supply
+            # a brand-new reaction.  Both are parsed identically here and handed
+            # to load_network via custom_tables; the only difference is that the
+            # added names are appended to the selected reaction list below.
+            added = custom_network.get("added", {})
+            added_names = list(added)
+            for name, raw_text in {**custom_network.get("replaced", {}), **added}.items():
                 data = np.loadtxt(io.StringIO(raw_text), unpack=True)
                 T9_src, rate_src = data[0], data[1]
                 err_src = data[2] if data.shape[0] > 2 else np.zeros_like(rate_src)
@@ -1544,6 +1604,7 @@ class UpdateNuclearRates:
 
         self._selected_names = [n for n in load_reaction_names(cfg, cfg.network)
                                  if re.split(r'[, ]+', n, maxsplit=1)[0].strip() not in removed]
+        self._selected_names += added_names
         self._mt_net = load_network(cfg, era="MT", reaction_names=self._selected_names,
                                      custom_tables=custom_tables)
         self._lt_net = load_network(cfg, era="LT", reaction_names=self._selected_names,

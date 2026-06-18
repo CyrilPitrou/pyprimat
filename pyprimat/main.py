@@ -72,16 +72,18 @@ class PyPR:
     custom_network : dict, optional
         GUI/scripting "Customise Reactions" override, forwarded verbatim to
         :class:`pyprimat.network_data.UpdateNuclearRates` (see its docstring
-        for the ``{"removed": [...], "replaced": {...}}`` schema). ``None``
-        (default) uses the standard ``cfg.network`` reaction list unchanged.
-        Not a ``PyPRConfig`` field: it carries bulk table data rather than a
-        fingerprintable scalar, so it does not participate in any rate cache
-        fingerprint.
+        for the ``{"removed": [...], "replaced": {...}, "added": {...}}``
+        schema). ``None`` (default) uses the standard ``cfg.network`` reaction
+        list unchanged. Not a ``PyPRConfig`` field: it carries bulk table data
+        rather than a fingerprintable scalar, so it does not participate in any
+        rate cache fingerprint.
 
-        Example: drop one reaction and override another's rate table,
+        Example: drop one reaction, override another's rate table, and add a
+        brand-new reaction (its stoichiometry is read from the name),
             >>> PyPR({"network": "small"}, custom_network={
             ...     "removed": ["d_d__t_p"],
             ...     "replaced": {"n_p__d_g": "0.001 1.2e3\\n10.0 4.5e1\\n"},
+            ...     "added": {"t_t__He4_n_n": "0.001 1.0e2\\n10.0 1.0e2\\n"},
             ... })
     """
 
@@ -210,13 +212,22 @@ class PyPR:
         YPCMB = ((cfg.He4Overma / 4.) * YPBBN
                  / ((cfg.He4Overma / 4.) * YPBBN + cfg.HOverma * (1. - YPBBN)))
 
+        # Custom networks may not produce some nuclide (e.g. He4 stripped out
+        # of the reaction set), leaving its final abundance at exactly 0;
+        # guard the corresponding ratios so we return inf/nan rather than
+        # raising or silently producing a ZeroDivisionError-free but
+        # misleading float (numpy floats just emit a RuntimeWarning and
+        # produce inf/nan, but plain Python floats raise ZeroDivisionError).
+        def _ratio(num, den):
+            return num / den if den != 0.0 else (float("nan") if num == 0.0 else float("inf"))
+
         results = {
             "YPCMB":   YPCMB,
             "YPBBN":   YPBBN,
-            "DoH":     Yd_f / Yp_f,
-            "He3oH":   (Yt_f + YHe3_f) / Yp_f,
-            "He3oHe4": (Yt_f + YHe3_f) / Ya_f,
-            "Li7oH":   (YLi7_f + YBe7_f) / Yp_f,
+            "DoH":     _ratio(Yd_f, Yp_f),
+            "He3oH":   _ratio(Yt_f + YHe3_f, Yp_f),
+            "He3oHe4": _ratio(Yt_f + YHe3_f, Ya_f),
+            "Li7oH":   _ratio(YLi7_f + YBe7_f, Yp_f),
         }
 
         # Li6/Li7: observable ratio after Be7→Li7 decay (medium/large networks).

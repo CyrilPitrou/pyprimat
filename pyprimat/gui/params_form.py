@@ -295,13 +295,15 @@ def _render_custom_reactions(params):
     bare_names = [re.split(r'[, ]+', e, maxsplit=1)[0].strip() for e in reaction_entries]
 
     def _reset_customisation_state():
-        """Drop every uploaded file and removed/kept choice from memory."""
+        """Drop every uploaded file and removed/kept/added choice from memory."""
         for key in list(st.session_state):
             if (key.startswith("keep_") or key.startswith("upload_")
+                    or key.startswith("add_")
                     or key in ("custom_import", "custom_import_target",
                                "_customise_imported_id")):
                 del st.session_state[key]
         st.session_state["_customise_replaced"] = {}
+        st.session_state["_customise_added"] = {}
         st.session_state["_customise_upload_version"] = {}
         st.session_state["custom_network_dict"] = None
 
@@ -336,6 +338,7 @@ def _render_custom_reactions(params):
         )
 
     replaced_text = st.session_state.setdefault("_customise_replaced", {})
+    added_text = st.session_state.setdefault("_customise_added", {})
 
     # ---- Import a previously exported customisation (zip). Per-reaction
     # table replacement is done directly on each reaction's own uploader
@@ -363,10 +366,20 @@ def _render_custom_reactions(params):
                 st.error(f"Could not import zip: {exc}")
             else:
                 kept = set(result["kept"])
+                imported_tables = dict(result["replaced"])
+                # A kept reaction that is *not* part of the selected network
+                # was a brand-new (added) reaction in the exported zip; its
+                # table is in imported_tables.  Split those out so they are
+                # restored as additions rather than (impossible) replacements.
+                known = set(bare_names)
+                added_in = {n: imported_tables.pop(n)
+                            for n in (kept - known) if n in imported_tables}
                 for name in bare_names:
                     st.session_state[f"keep_{name}"] = name in kept
-                st.session_state["_customise_replaced"] = dict(result["replaced"])
+                st.session_state["_customise_replaced"] = imported_tables
+                st.session_state["_customise_added"] = added_in
                 replaced_text = st.session_state["_customise_replaced"]
+                added_text = st.session_state["_customise_added"]
                 st.rerun()
 
     # The per-reaction uploaders are deliberately compact: hide the dropzone's
@@ -452,11 +465,112 @@ def _render_custom_reactions(params):
             else:
                 replaced_text[name] = raw_text
 
+    # ---- Add a brand-new reaction (need not exist in this network, or even
+    # in the shipped catalog).  A pop-up collects the reaction name (in the
+    # "a_b__c_d" syntax) plus its rate table; both are validated before the
+    # reaction is stored in ``_customise_added`` and threaded through to the
+    # solver via custom_network["added"]. ----------------------------------
+    _render_add_reaction(added_text, bare_names)
+
     replaced = {n: t for n, t in replaced_text.items() if n not in removed}
-    custom_network = {"removed": removed, "replaced": replaced}
+    custom_network = {"removed": removed, "replaced": replaced, "added": dict(added_text)}
     st.session_state["custom_network_dict"] = custom_network
-    if removed or replaced:
+    if removed or replaced or added_text:
         params["custom_network"] = json.dumps(custom_network, sort_keys=True)
+
+
+def _render_add_reaction(added_text, bare_names):
+    """Render the "Add a new reaction" pop-up and the list of added reactions.
+
+    Parameters
+    ----------
+    added_text : dict
+        The live ``st.session_state["_customise_added"]`` store, mapping a
+        brand-new reaction name to the verbatim text of its uploaded rate
+        table.  Mutated in place as the user adds/removes reactions.
+    bare_names : list[str]
+        Bare reaction names already in the selected network -- used to reject an
+        addition that duplicates an existing reaction (which should be edited
+        through its own row instead).
+
+    The reaction name must follow the ``a_b__c_d`` syntax; its stoichiometry
+    and conservation are validated by
+    :func:`pyprimat.gui.custom_rates.validate_new_reaction`, and the rate table
+    by :func:`pyprimat.gui.custom_rates.parse_rate_upload`, before it is stored.
+    """
+    # Show the currently added reactions with a remove (✕) button each, so the
+    # user can see and undo additions without retyping.
+    for name in list(added_text):
+        cols = st.columns([7, 1])
+        try:
+            eq = custom_rates.validate_new_reaction(name)
+        except Exception:
+            eq = name
+        cols[0].markdown(f"➕ `{name}`  ({eq})")
+        if cols[1].button("✕", key=f"add_del_{name}",
+                          help="Remove this added reaction."):
+            added_text.pop(name, None)
+            st.rerun()
+
+    with st.popover("➕ Add a new reaction", use_container_width=True):
+        st.caption(
+            "Add a reaction that need not be in this network (or in PyPRIMAT's "
+            "catalog at all). Its stoichiometry is read from the name."
+        )
+        name = st.text_input(
+            "Reaction name",
+            key="add_reaction_name",
+            placeholder="He3_d__He4_p",
+            help="Syntax `a_b__c_d`: reactants and products separated by a "
+                 "double underscore `__`, nuclides on each side by a single "
+                 "underscore `_`. Use `g` for a photon, `Bm`/`Bp` for an "
+                 "emitted electron/positron, and the aliases `d`/`t`/`a` for "
+                 "H2/H3/He4. Example: `He3_d__He4_p` is He3 + d -> He4 + p. "
+                 "The reaction must conserve baryon number and charge.",
+        )
+        # Live feedback: show the parsed equation (or the error) as the user
+        # types, before they bother uploading a table.
+        parsed_ok = False
+        if name.strip():
+            try:
+                eq = custom_rates.validate_new_reaction(name)
+            except ValueError as exc:
+                st.error(str(exc))
+            else:
+                parsed_ok = True
+                st.success(f"Parsed as: {eq}")
+        upload = st.file_uploader(
+            "Rate table (T9, rate[, err])", key="add_reaction_table",
+            help="Two or three whitespace-separated columns: temperature "
+                 "[GK], rate, and an optional uncertainty factor. Comment "
+                 "lines start with `#`.",
+        )
+        if st.button("Add reaction", key="add_reaction_submit",
+                     disabled=not (parsed_ok and upload is not None)):
+            bare = name.strip()
+            # Re-validate at submit time (defensive: the button is gated on
+            # parsed_ok/upload, but state can change between reruns).
+            try:
+                custom_rates.validate_new_reaction(bare)
+            except ValueError as exc:
+                st.error(str(exc))
+                return
+            if bare in bare_names:
+                st.error(
+                    f"`{bare}` is already in this network -- edit it from its "
+                    "own row above instead of adding it.")
+                return
+            if bare in added_text:
+                st.error(f"`{bare}` has already been added.")
+                return
+            raw_text = upload.getvalue().decode()
+            try:
+                custom_rates.parse_rate_upload(io.StringIO(raw_text))
+            except Exception as exc:
+                st.error(f"Rate table: {exc}")
+                return
+            added_text[bare] = raw_text
+            st.rerun()
 
 
 def render_sidebar_form():
