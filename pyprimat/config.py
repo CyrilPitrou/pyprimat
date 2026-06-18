@@ -185,8 +185,9 @@ DEFAULT_PARAMS: dict = {
 
     # Maximum nuclide mass number A = N + Z to include when loading the large
     # network.  Reactions involving any nuclide with A > amax are dropped.
-    # None = no filter (keep all reactions).  Must be an integer > 7 when set,
-    # because A ≤ 7 is the light-element domain covered by small/medium.
+    # None = no filter (keep all reactions).  Must be a positive integer when
+    # set (low values, e.g. amax=2, drastically restrict the large network
+    # down toward the n/p/d domain of small/medium).
     # Only effective for network="large"; silently ignored otherwise.
     # Example: {"network": "large", "amax": 20} keeps only A ≤ 20 nuclides.
     "amax":                       None,
@@ -487,12 +488,11 @@ class PyPRConfig:
                 self.numba_installed = False
                 self._init_messages.append('[init]  numba not detected: running without JIT compilation.')
 
-        # Validate amax: must be None or an integer > 7.
+        # Validate amax: must be None or a positive integer.
         if self.amax is not None:
-            if not (isinstance(self.amax, int) and self.amax > 7):
+            if not (isinstance(self.amax, int) and self.amax >= 1):
                 raise ValueError(
-                    f"amax must be None or an integer > 7 (got {self.amax!r}); "
-                    "values ≤ 7 are the domain of the small/medium networks."
+                    f"amax must be None or a positive integer (got {self.amax!r})."
                 )
 
         # Validate any custom NEVO table overrides: check the file exists and

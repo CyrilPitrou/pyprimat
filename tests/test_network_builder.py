@@ -194,9 +194,9 @@ def test_stoichiometry_conserves_baryon_and_charge():
 # ---------------------------------------------------------------------------
 
 def test_amax_invalid_values_rejected():
-    """Config validation must reject amax ≤ 7 or non-integer values."""
+    """Config validation must reject non-positive or non-integer amax values."""
     from pyprimat.config import PyPRConfig
-    for bad in (5, 7, 7.5, "8", None):
+    for bad in (0, -1, 6.5, "8", None):
         if bad is None:
             # None is the valid "no filter" sentinel — must not raise
             PyPRConfig({"network": "large", "amax": None})
