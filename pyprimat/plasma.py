@@ -378,51 +378,35 @@ class Plasma:
         """
         me_val = cfg.me
 
-        if cfg.numba_installed:
-            try:
-                from numba import njit
-
-                @njit
-                def _rho_e_intgd(E, Tg):
-                    # Integrand of ρ_e: E² √(E²−(me/Tg)²) / (eᴱ+1)
-                    return E**2 * (E**2 - (me_val / Tg)**2)**0.5 / (np.exp(E) + 1.)
-
-                @njit
-                def _drho_e_dT_intgd(E, Tg):
-                    # Integrand of dρ_e/dTg: E³ √(E²−(me/Tg)²) / (4 cosh²(E/2))
-                    # Factor E/(4 cosh²(E/2)) = −Tg d/dTg [1/(eᴱ+1)]
-                    return E**3 * (E**2 - (me_val / Tg)**2)**0.5 / np.cosh(E / 2.0)**2
-
-                @njit
-                def _p_e_intgd(E, Tg):
-                    # Integrand of p_e: (E²−(me/Tg)²)^{3/2} / (eᴱ+1)
-                    return (E**2 - (me_val / Tg)**2)**1.5 / (np.exp(E) + 1.)
-
-                @njit
-                def _dp_e_dT_intgd(E, Tg):
-                    # Integrand of dp_e/dTg: E (E²−(me/Tg)²)^{3/2} / (4 cosh²(E/2))
-                    return E*(E**2 - (me_val / Tg)**2)**1.5 / np.cosh(E / 2.0)**2
-
-                self._rho_e_int_impl = _rho_e_intgd
-                self._drho_e_dT_impl = _drho_e_dT_intgd
-                self._p_e_int_impl   = _p_e_intgd
-                self._dp_e_dT_impl   = _dp_e_dT_intgd
-                return
-            except ImportError:
-                pass
-
-        # Pure-Python fallback (identical formulae, no JIT).
+        # Pure-Python implementations (single source of truth for the
+        # formulae); optionally JIT-wrapped below so the numba and
+        # pure-Python code paths cannot drift out of sync with each other.
         def _rho_e_intgd(E, Tg):
+            # Integrand of ρ_e: E² √(E²−(me/Tg)²) / (eᴱ+1)
             return E**2 * (E**2 - (me_val / Tg)**2)**0.5 / (np.exp(E) + 1.)
 
         def _drho_e_dT_intgd(E, Tg):
+            # Integrand of dρ_e/dTg: E³ √(E²−(me/Tg)²) / (4 cosh²(E/2))
+            # Factor E/(4 cosh²(E/2)) = −Tg d/dTg [1/(eᴱ+1)]
             return E**3 * (E**2 - (me_val / Tg)**2)**0.5 / np.cosh(E / 2.0)**2
 
         def _p_e_intgd(E, Tg):
+            # Integrand of p_e: (E²−(me/Tg)²)^{3/2} / (eᴱ+1)
             return (E**2 - (me_val / Tg)**2)**1.5 / (np.exp(E) + 1.)
 
         def _dp_e_dT_intgd(E, Tg):
+            # Integrand of dp_e/dTg: E (E²−(me/Tg)²)^{3/2} / (4 cosh²(E/2))
             return E*(E**2 - (me_val / Tg)**2)**1.5 / np.cosh(E / 2.0)**2
+
+        if cfg.numba_installed:
+            try:
+                from numba import njit
+                _rho_e_intgd     = njit(_rho_e_intgd)
+                _drho_e_dT_intgd = njit(_drho_e_dT_intgd)
+                _p_e_intgd       = njit(_p_e_intgd)
+                _dp_e_dT_intgd   = njit(_dp_e_dT_intgd)
+            except ImportError:
+                pass
 
         self._rho_e_int_impl = _rho_e_intgd
         self._drho_e_dT_impl = _drho_e_dT_intgd
@@ -531,8 +515,10 @@ class Plasma:
                 if cfg.verbose:
                     print(f"[init]  Electron-thermo tables loaded from cache ({cfg.n_electron_table} points).")
                 return
-            except Exception:
-                pass   # corrupt or incompatible cache — fall through to recompute
+            except Exception as exc:
+                import warnings
+                warnings.warn(f"[plasma] Could not read electron-thermo cache "
+                               f"({exc}); falling back to recompute.")
 
         # Compute from scratch.
         rho_e_arr     = np.array([self._rho_e_exact(T)     for T in grid])

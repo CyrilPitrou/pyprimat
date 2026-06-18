@@ -15,6 +15,7 @@ No file I/O happens here.  Nuclear rate data are loaded separately in
 
 import os
 import re
+import warnings
 import numpy as np
 
 from .constants import CONST
@@ -397,7 +398,6 @@ class PyPRConfig:
                     unknown.add(key)
             
             if unknown:
-                import warnings
                 warnings.warn(
                     f"PyPRConfig: unknown parameter keys ignored: {unknown}",
                     stacklevel=2,
@@ -409,7 +409,6 @@ class PyPRConfig:
         # before the external_scale_factor / spectral_distortions validations
         # below so those see the corrected flag values.
         if self.custom_background is not None:
-            import warnings as _w
             if self.external_scale_factor:
                 raise ValueError(
                     "custom_background and external_scale_factor are mutually "
@@ -424,7 +423,7 @@ class PyPRConfig:
                 forced.append("spectral_distortions=False")
                 object.__setattr__(self, 'spectral_distortions', False)
             if forced:
-                _w.warn(
+                warnings.warn(
                     f"custom_background: forcing {', '.join(forced)} "
                     "(custom-background mode uses instantaneous-decoupling "
                     "weak rates; spectral distortions are not supported).",
@@ -446,12 +445,35 @@ class PyPRConfig:
         # override already applied above is not clobbered.
         from .network_data import load_reaction_names
         reactions_with_tables = load_reaction_names(self, self.network)
-        for entry in reactions_with_tables:
-            # Each entry is "bare_name" or "bare_name, filename.txt"; only the
-            # bare reaction name is used as the p_<rxn>/NP_delta_<rxn> key.
-            rxn = re.split(r'[, ]+', entry, maxsplit=1)[0]
+        # Each entry is "bare_name" or "bare_name, filename.txt"; only the
+        # bare reaction name is used as the p_<rxn>/NP_delta_<rxn> key.
+        valid_rxns = {re.split(r'[, ]+', entry, maxsplit=1)[0]
+                      for entry in reactions_with_tables}
+        for rxn in valid_rxns:
             self.p_rxn.setdefault(rxn, 0.0)
             self.NP_delta_rxn.setdefault(rxn, 0.0)
+
+        # Catch p_<rxn>/NP_delta_<rxn> typos in the constructor params. This
+        # has to happen here rather than in __setattr__ at the time those
+        # overrides were applied (above): the override loop runs before this
+        # network's reaction list is known (self.network may itself be one of
+        # the overrides), and by the time we reach this point __setattr__'s
+        # routing has already inserted the (possibly bogus) key into
+        # self.p_rxn/self.NP_delta_rxn -- so we must check against
+        # ``valid_rxns`` computed just above, not against those dicts.
+        for key in user_keys:
+            if key.startswith('p_') and key[2:] not in valid_rxns:
+                warnings.warn(
+                    f"PyPRConfig: {key!r} does not match any reaction in "
+                    f"network {self.network!r}; it has no effect on the run.",
+                    stacklevel=2,
+                )
+            elif key.startswith('NP_delta_') and key[9:] not in valid_rxns:
+                warnings.warn(
+                    f"PyPRConfig: {key!r} does not match any reaction in "
+                    f"network {self.network!r}; it has no effect on the run.",
+                    stacklevel=2,
+                )
 
         # Detect optional libraries for flags not explicitly set by the caller.
         # Messages are stored for deferred printing (after the banner).

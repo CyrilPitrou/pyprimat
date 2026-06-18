@@ -169,7 +169,14 @@ def import_zip(fh):
         compares against the full ``cfg.network`` list).
     """
     replaced = {}
-    with zipfile.ZipFile(fh) as zf:
+    try:
+        zf = zipfile.ZipFile(fh)
+    except zipfile.BadZipFile:
+        raise ValueError(
+            "the uploaded file is not a valid zip archive (expected one "
+            "produced by the 'Export custom network' button)."
+        ) from None
+    with zf:
         net_text = zf.read("networks/custom.txt").decode()
         kept_names = []
         for line in net_text.splitlines():
