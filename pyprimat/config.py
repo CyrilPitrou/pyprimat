@@ -185,7 +185,7 @@ DEFAULT_PARAMS: dict = {
 
     # Maximum nuclide mass number A = N + Z to include when loading the large
     # network.  Reactions involving any nuclide with A > amax are dropped.
-    # None = no filter (keep all reactions).  Must be an integer > 7 when set,
+    # None = no filter (keep all reactions).  Must be an integer >= 7 when set,
     # because A ≤ 7 is the light-element domain covered by small/medium.
     # Only effective for network="large"; silently ignored otherwise.
     # Example: {"network": "large", "amax": 20} keeps only A ≤ 20 nuclides.
@@ -489,9 +489,9 @@ class PyPRConfig:
 
         # Validate amax: must be None or an integer > 7.
         if self.amax is not None:
-            if not (isinstance(self.amax, int) and self.amax > 7):
+            if not (isinstance(self.amax, int) and self.amax >= 7):
                 raise ValueError(
-                    f"amax must be None or an integer > 7 (got {self.amax!r}); "
+                    f"amax must be None or an integer >= 7 (got {self.amax!r}); "
                     "values ≤ 7 are the domain of the small/medium networks."
                 )
 

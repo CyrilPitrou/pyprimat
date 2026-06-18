@@ -29,7 +29,7 @@ upstream source changes) to regenerate committed data files.
   3.0 Fortran source (verbatim code fragments, not retyped formulas). See its
   own `parthenope3.0_extract/README.md` for the method and how to run it.
 
-- **`PRIMAT-Main.m`, `PRIMAT-Main_decays.m`** — the original Mathematica
+- **`PRIMAT-Main_decays.m`** — the original Mathematica
   source `convert_ac2024_rates.py`'s analytic-rate table was extracted from.
   Kept only as a reference to regenerate that table if PRIMAT-Main.m changes
   (`--dump-analytic`); not needed for a normal rate-table rebuild.
