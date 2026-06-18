@@ -87,7 +87,7 @@ _FORM_METADATA = {
     "amax": (
         "Nuclear reactions", "Max mass number A (large only)",
         "With network='large', drop reactions involving any nuclide with mass "
-        "number A > amax (must be an integer >= 7). Leave unchecked to keep all "
+        "number A > amax (must be an integer >= 2). Leave unchecked to keep all "
         "~59 nuclides.",
     ),
     "nuclear_qed_corrections": (
@@ -622,7 +622,7 @@ def render_sidebar_form():
                         )
                         if enabled:
                             params["amax"] = int(st.number_input(
-                                label, min_value=7, value=20, step=1,
+                                label, min_value=2, value=20, step=1,
                                 help=help_text, key="amax_value",
                             ))
                         continue
