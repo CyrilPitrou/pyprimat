@@ -42,7 +42,8 @@ MyOptions = {
     "Omegabh2":                  omegabh2,
     # "eta0b": computed automatically from Omegabh2
     "DeltaNeff":                 Nrelat,  # Note: not exactly the PRIMAT definition
-    "network":                   'medium',
+    "network":                   'large',
+    "amax":                      8,
     "output_time_evolution":     True,
     "output_background_evolution":     True,
     "numerical_precision":       1e-7,
@@ -69,8 +70,8 @@ print(" He3/He4 = ",     res['He3oHe4'])
 print(" Li7/H = ",    res['Li7oH'])
 print(" ")
 
-# For the medium and large networks, print the full per-nuclide abundance table.
-if MyOptions.get("network", "small") in ("medium", "large"):
+# Print the full per-nuclide abundance table for any network beyond "small".
+if MyOptions.get("network", "small") != "small":
     print(" Final nuclide mass-fraction abundances Y_i:")
     print(f"  {'Nuclide':<10}  {'Y_i':>14}")
     print("  " + "-" * 26)

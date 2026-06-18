@@ -3,8 +3,10 @@
 Unified nuclear-network construction and use.
 
 This module is the single place where PyPRIMAT turns a named reaction list into
-ODE equations.  The lists in ``rates/nuclear/networks/{small,medium,large}.txt``
-name the thermonuclear reactions to keep.  The weak ``n <-> p`` conversion is
+ODE equations.  The lists in ``rates/nuclear/networks/{small_parthenope,large}.txt``
+(plus the hardcoded ``small``) name the thermonuclear reactions to keep; an
+``amax`` cutoff (any positive integer >= 1) further filters any of these by
+maximum nuclide mass number, regardless of which named network it is applied to.  The weak ``n <-> p`` conversion is
 not stored in those text files because the high-temperature era integrates only
 ``n`` and ``p`` directly; for MT/LT network solves it is prepended internally as
 the first buffer entry.
@@ -50,12 +52,16 @@ __all__ = [
     "SPECIES_SMALL",
     "UpdateNuclearRates",
     "_LinearRate",
-    "_REACTIONS_MEDIUM",
+    "_REACTIONS_LARGE",
     "_KEY12_REACTIONS",
     "check_conservation",
     "compile_network",
     "load_network",
     "load_reaction_names",
+    "available_rate_tables",
+    "reaction_category",
+    "group_reactions_by_category",
+    "AMAX_LARGE",
     "nuclide_latex",
     "network_jacobian",
     "network_rhs",
@@ -269,7 +275,7 @@ def load_reaction_names(cfg_or_dir, network: str | None = None) -> list[str]:
         network = network or cfg_or_dir.network
     else:
         nets_dir = os.fspath(cfg_or_dir)
-        network = network or "medium"
+        network = network or "large"
 
     if network in (None, "small"):
         return list(_KEY12_REACTIONS)
@@ -292,12 +298,12 @@ def load_reaction_names(cfg_or_dir, network: str | None = None) -> list[str]:
 
 
 try:
-    _REACTIONS_MEDIUM = load_reaction_names(_network_dir_from_cwd(), "medium")
+    _REACTIONS_LARGE = load_reaction_names(_network_dir_from_cwd(), "large")
 except OSError:
     # Importing documentation tooling outside the repository should still work.
-    _REACTIONS_MEDIUM = []
+    _REACTIONS_LARGE = []
 
-ORDER_LT = ["n__p"] + _REACTIONS_MEDIUM
+ORDER_LT = ["n__p"] + _REACTIONS_LARGE
 
 
 def _read_csv(path):
@@ -784,7 +790,7 @@ class NetworkDefinition:
 
     Example
     -------
-    >>> cfg = PyPRConfig({"network": "medium"})
+    >>> cfg = PyPRConfig({"network": "large", "amax": 8})
     >>> net = load_network(cfg, era="MT")
     >>> net.names[0], len(net.species)
     ('n__p', 12)
@@ -1195,6 +1201,42 @@ def _load_decay_table(tables_dir):
     return table
 
 
+def available_rate_tables(name: str, cfg) -> list[str]:
+    """Basenames of every rate-table file inside ``tables/<name>/``.
+
+    Backs the GUI popup's per-reaction "rate table" dropdown
+    (CUSTOMPOPUP.md §2.4/§6.4): a reaction with more than one candidate table
+    (e.g. the PRIMAT-default ``n_p__d_g.txt`` plus a
+    ``n_p__d_g_parthenope3.0.txt`` alternate) lets the user pick which one to
+    use. The PRIMAT-default file (``f"{name}.txt"``) is always sorted first
+    when present; the rest follow in alphabetical order.
+
+    Parameters
+    ----------
+    name : str
+        Bare reaction name (the folder under ``tables/`` to list).
+    cfg : PyPRConfig
+        Used only for ``cfg.data_dir``.
+
+    Returns
+    -------
+    list[str]
+        ``[]`` if ``tables/<name>/`` does not exist yet -- the case for a
+        brand-new GUI-added reaction that only has a user-uploaded table,
+        never written to disk.
+    """
+    tables_dir = os.path.join(cfg.data_dir, "rates", "nuclear", "tables")
+    reaction_dir = os.path.join(tables_dir, name)
+    if not os.path.isdir(reaction_dir):
+        return []
+    files = sorted(f for f in os.listdir(reaction_dir) if f.endswith(".txt"))
+    default = f"{name}.txt"
+    if default in files:
+        files.remove(default)
+        files.insert(0, default)
+    return files
+
+
 def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
                   custom_tables=None):
     """Build the selected network from its text reaction list.
@@ -1231,9 +1273,9 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
 
     Example
     -------
-    >>> net = load_network(PyPRConfig({"network": "large"}), era="LT")
-    >>> len(net.names)  # n__p + 423 thermonuclear reactions
-    424
+    >>> net = load_network(PyPRConfig({"network": "large", "amax": 8}), era="LT")
+    >>> len(net.names)  # n__p + 67 thermonuclear reactions (A <= 8)
+    68
     """
     if custom_tables is None:
         custom_tables = {}
@@ -1267,20 +1309,6 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
             fname = bare + ".txt"
         bare_names.append(bare)
         bare_to_file[bare] = fname
-
-    era = era.upper()
-    if era == "MT" and getattr(cfg, "network", None) == "small":
-        allowed = set(bare_names)
-        selected = [name for name in ORDER_SMALL
-                    if name not in _WEAK_NTOP_NAMES and name in allowed]
-    elif era == "MT":
-        allowed = set(bare_names)
-        selected = [name for name in ORDER_MT
-                    if name not in _WEAK_NTOP_NAMES and name in allowed]
-    elif era == "LT":
-        selected = bare_names
-    else:
-        raise ValueError(f"era must be 'MT' or 'LT', got {era!r}")
 
     tables_dir, data_dir, nuc_order, nuc_NZ, db, rxn_map = _reaction_catalog(cfg.data_dir)
 
@@ -1329,9 +1357,46 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
                     pass
 
     # cfg.amax: if set, drop any reaction whose stoichiometry involves a nuclide
-    # with mass number A = N + Z > amax.  Only meaningful for network="large";
-    # silently no-ops for small/medium (their nuclides all have A ≤ 11).
+    # with mass number A = N + Z > amax.  Applies to *any* network (not just
+    # "large" -- small/medium-sized networks simply have no reaction above the
+    # cutoff, so the filter is a no-op for them).
+    #
+    # This filtering must happen *before* the MT/LT era branch below, not only
+    # inside the `parsed` loop: the MT-era intersection (next block) used to
+    # test against the *unfiltered* `bare_names`, so an MT-era solve could
+    # still try to run a reaction that the LT era would have dropped for
+    # amax -- e.g. network="small", amax=2 would let the MT era keep
+    # `n_p__d_g` only in principle, but any other small-network amax<11
+    # reaction would have leaked through the old unfiltered intersection.
+    # Filtering once here, before both era branches, fixes that and lets the
+    # `parsed` loop below drop its own (now redundant) per-name amax check.
     amax = getattr(cfg, "amax", None)
+    if amax is not None:
+        filtered_bare_names = []
+        for name in bare_names:
+            if name not in rxn_map:
+                raise KeyError(f"reaction {name!r} is not present in reactions_large.csv")
+            react, _ = _side_counts(rxn_map[name][0])
+            prod, _ = _side_counts(rxn_map[name][1])
+            all_nuclides = set(react) | set(prod)
+            if any(sum(nuc_NZ[s]) > amax for s in all_nuclides if s in nuc_NZ):
+                continue
+            filtered_bare_names.append(name)
+        bare_names = filtered_bare_names
+
+    era = era.upper()
+    if era == "MT" and getattr(cfg, "network", None) == "small":
+        allowed = set(bare_names)
+        selected = [name for name in ORDER_SMALL
+                    if name not in _WEAK_NTOP_NAMES and name in allowed]
+    elif era == "MT":
+        allowed = set(bare_names)
+        selected = [name for name in ORDER_MT
+                    if name not in _WEAK_NTOP_NAMES and name in allowed]
+    elif era == "LT":
+        selected = bare_names
+    else:
+        raise ValueError(f"era must be 'MT' or 'LT', got {era!r}")
 
     parsed = []
     active_nuclides = {"n", "p"}
@@ -1351,12 +1416,8 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
         net_lepton_dZ = lepton_dZ_p - lepton_dZ_r
         is_weak = (net_lepton_dZ != 0)
 
-        # amax filter: skip this reaction if any nuclide has A > amax.
-        if amax is not None:
-            all_nuclides = set(react) | set(prod)
-            if any(sum(nuc_NZ[s]) > amax for s in all_nuclides if s in nuc_NZ):
-                continue
-
+        # `selected` is already amax-filtered (see above), so no per-name
+        # amax check is needed here.
         parsed.append((name, filename, react, prod, is_weak, net_lepton_dZ))
         active_nuclides.update(react)
         active_nuclides.update(prod)
@@ -1462,7 +1523,11 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
             fwd_median.append(np.full(grid.shape, rate_s))
             fwd_expsigma.append(np.full(grid.shape, f))
         else:
-            table_path = os.path.join(tables_dir, filename)
+            # Per-reaction folder layout: rates/nuclear/tables/<name>/<filename>
+            # (the PRIMAT default table is <name>/<name>.txt; sibling files in
+            # the same folder are alternate candidate tables, e.g. a
+            # "_parthenope3.0.txt" variant -- see available_rate_tables()).
+            table_path = os.path.join(tables_dir, name, filename)
             sources.append(_read_reaction_source(table_path))
             files.append(table_path)
 
@@ -1544,6 +1609,47 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
                              fwd, fwd_median, fwd_expsigma, abg, bwd_cap,
                              lepton_dZ=lepton_dZ_list, sources=sources,
                              files=files)
+
+
+def reaction_category(name: str) -> int:
+    """Heaviest nuclide's mass number A (=N+Z) among name's reactants/products.
+
+    Drives the GUI popup's mass-number-banded category view
+    (CUSTOMPOPUP.md §5/§6): category k contains exactly the reactions that a
+    filter of amax=k keeps but amax=k-1 would drop, so categories and the
+    amax filter stay consistent by construction. Photon ("g") and lepton
+    ("Bm"/"Bp") tokens are excluded from the max (they don't carry a mass
+    number).
+
+    Uses :func:`reaction_stoichiometry`, so it works for shipped catalog
+    reactions, network-file "TO"-derived reactions, and brand-new GUI-added
+    reactions alike (anything reaction_stoichiometry can parse).
+
+    Example
+    -------
+    >>> reaction_category("n_p__d_g")
+    2
+    """
+    react, prod = reaction_stoichiometry(name)
+    _, _, _, nuc_NZ, _, _ = _reaction_catalog(_default_data_dir())
+    nuclides = set(react) | set(prod)
+    return max(sum(nuc_NZ[s]) for s in nuclides if s in nuc_NZ)
+
+
+def group_reactions_by_category(names) -> dict:
+    """{category_A: [bare_name, ...]}, sorted by category; names keep input order."""
+    groups: dict[int, list[str]] = {}
+    for name in names:
+        groups.setdefault(reaction_category(name), []).append(name)
+    return dict(sorted(groups.items()))
+
+
+# True maximum nuclide mass number reachable in the large network's catalog
+# (measured: the heaviest nuclide referenced by any rates/nuclear/networks/
+# large.txt reaction is Na23, A=23). Used by the GUI popup (CUSTOMPOPUP.md
+# §6.2/§7.1) to detect "this kept-reaction list used every reaction up to the
+# top of the catalog", i.e. equivalent to "no amax filter" (amax=None).
+AMAX_LARGE = 23
 
 
 class UpdateNuclearRates:
@@ -1721,5 +1827,5 @@ def _make_frwrd(rxn):
 
 # We dynamically add the extractor methods to UpdateNuclearRates to support
 # the existing output_time_evolution logic in PyPR.
-for _rxn in _REACTIONS_MEDIUM:
+for _rxn in _REACTIONS_LARGE:
     setattr(UpdateNuclearRates, f"{_rxn}_frwrd", _make_frwrd(_rxn))

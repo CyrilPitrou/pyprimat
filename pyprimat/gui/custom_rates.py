@@ -22,6 +22,7 @@ pre-resampled -- so :func:`pyprimat.network_data.load_network`'s
 solve time and when previewing/exporting the "effective" (on-grid) table.
 """
 import io
+import os
 import zipfile
 
 import numpy as np
@@ -84,20 +85,25 @@ def validate_new_reaction(name):
 
 
 def parse_rate_upload(fh):
-    """Parse an uploaded rate-table file into raw ``(T9, rate, err)`` arrays.
+    """Parse an uploaded rate-table file into raw ``(T9, rate, err, header)``.
 
     Parameters
     ----------
     fh : file-like
         2- or 3-column whitespace-separated text (as produced by
         ``st.file_uploader``, or a plain file object): ``T9 [GK]``, ``rate``,
-        and an optional third uncertainty column.
+        and an optional third uncertainty column.  Leading ``#``-prefixed
+        lines are the uploader's own header/provenance comment, preserved
+        verbatim (see ``header``) rather than discarded.
 
     Returns
     -------
-    (T9, rate, err) : tuple of np.ndarray
+    (T9, rate, err, header) : tuple of (np.ndarray, np.ndarray, np.ndarray, list[str])
         ``err`` is an all-zero array of the same length when the upload has
-        only 2 columns.
+        only 2 columns.  ``header`` is the list of the upload's own leading
+        ``#``-prefixed lines (possibly empty), preserved so a re-exported zip
+        carries the original provenance rather than a generic "custom upload"
+        label (see :func:`effective_table_text`).
 
     Raises
     ------
@@ -112,7 +118,14 @@ def parse_rate_upload(fh):
     ``_resample_rate_table`` extrapolates the log-log cubic spline, which can
     be inaccurate far from the data.
     """
-    data = np.loadtxt(fh, unpack=True)
+    if hasattr(fh, "read"):
+        text = fh.read()
+    else:
+        text = fh
+    if isinstance(text, bytes):
+        text = text.decode()
+    header = [line for line in text.splitlines() if line.startswith("#")]
+    data = np.loadtxt(io.StringIO(text), unpack=True)
     if data.ndim != 2 or data.shape[0] not in (2, 3):
         raise ValueError(
             f"expected 2 or 3 columns (T9, rate[, err]), got shape {data.shape}"
@@ -125,10 +138,10 @@ def parse_rate_upload(fh):
             "narrower than the standard grid [0.001, 10] GK -- values outside "
             "this range are extrapolated."
         )
-    return T9, rate, err
+    return T9, rate, err, header
 
 
-def effective_table_text(cfg, T9, rate, err, name="custom"):
+def effective_table_text(cfg, T9, rate, err, name="custom", source_header=()):
     """Return the on-grid table text actually fed to the solver.
 
     Resamples ``(T9, rate, err)`` onto the master T9 grid
@@ -146,26 +159,32 @@ def effective_table_text(cfg, T9, rate, err, name="custom"):
     T9, rate, err : np.ndarray
         Raw uploaded arrays, as returned by :func:`parse_rate_upload`.
     name : str
-        Reaction name, written into the header's ``ref=`` field.
+        Reaction name, written into the header's ``ref=`` field (only used
+        when ``source_header`` is empty).
+    source_header : sequence[str]
+        The uploader's own ``#``-prefixed header lines (from
+        :func:`parse_rate_upload`), preserved verbatim ahead of a bookkeeping
+        line, rather than being replaced by a generic label.
 
     Returns
     -------
     str
-        Table text with a one-line ``#`` header followed by ``T9 rate err``
-        rows on the master grid.
+        Table text with one or more ``#`` header lines followed by
+        ``T9 rate err`` rows on the master grid.
     """
     grid = np.logspace(np.log10(cfg.rate_grid_T9_min),
                         np.log10(cfg.rate_grid_T9_max),
                         cfg.rate_grid_npts)
     rate_grid = _resample_rate_table(T9, rate, grid)
     err_grid = _resample_rate_table(T9, err, grid)
-    lines = [f"# ref=custom upload ({name})"]
+    lines = list(source_header) if source_header else [f"# ref=custom upload ({name})"]
+    lines.append(f"# custom rate (reinterpolated): {name}")
     for t9, r, e in zip(grid, rate_grid, err_grid):
         lines.append(f"{t9:.6e} {r:.6e} {e:.6e}")
     return "\n".join(lines)
 
 
-def export_zip(cfg, custom_network, kept_names):
+def export_zip(cfg, custom_network, kept_names, network_filename="custom"):
     """Pack a customisation into an in-memory zip mirroring the repo layout.
 
     Parameters
@@ -181,15 +200,23 @@ def export_zip(cfg, custom_network, kept_names):
         ``custom_network["removed"]``, plus ``custom_network["added"]``).  In
         the GUI this is read off the solved network's reaction list, so added
         reactions are already included.
+    network_filename : str
+        Basename (without ``.txt``) for the network file under ``networks/``,
+        e.g. the user-chosen custom-network title (sanitised). Defaults to
+        ``"custom"`` for callers that don't have a user-chosen title (e.g. the
+        post-run Reactions-tab export of a legacy "Customise Reactions"
+        session).
 
     Returns
     -------
     bytes
-        Zip file contents with ``networks/custom.txt`` (one reaction name per
-        line, using the ``name, name_custom.txt`` syntax for reactions carrying
-        an uploaded table -- see ``load_network``'s ``bare_to_file`` parsing)
-        and one ``tables/<name>_custom.txt`` per such reaction (the resampled,
-        on-grid table from :func:`effective_table_text`).  Replaced and added
+        Zip file contents with ``networks/<network_filename>.txt`` (one
+        reaction name per line, using the ``name, name_custom.txt`` syntax for
+        reactions carrying an uploaded table -- see ``load_network``'s
+        ``bare_to_file`` parsing) and one ``tables/<name>/<name>_custom.txt``
+        per such reaction (the resampled, on-grid table from
+        :func:`effective_table_text`, per-reaction-folder layout matching the
+        shipped ``rates/nuclear/tables/<name>/`` tree). Replaced and added
         reactions are written identically; on re-import they are told apart by
         whether the name belongs to the selected network.
     """
@@ -206,11 +233,12 @@ def export_zip(cfg, custom_network, kept_names):
                 lines.append(f"{name}, {name}_custom.txt")
             else:
                 lines.append(name)
-        zf.writestr("networks/custom.txt", "\n".join(lines) + "\n")
+        zf.writestr(f"networks/{network_filename}.txt", "\n".join(lines) + "\n")
         for name, raw_text in custom_tables.items():
-            T9, rate, err = parse_rate_upload(io.StringIO(raw_text))
-            table_text = effective_table_text(cfg, T9, rate, err, name=name)
-            zf.writestr(f"tables/{name}_custom.txt", table_text)
+            T9, rate, err, header = parse_rate_upload(raw_text)
+            table_text = effective_table_text(cfg, T9, rate, err, name=name,
+                                              source_header=header)
+            zf.writestr(f"tables/{name}/{name}_custom.txt", table_text)
     return buf.getvalue()
 
 
@@ -225,13 +253,15 @@ def import_zip(fh):
     Returns
     -------
     dict
-        ``{"kept": [name, ...], "replaced": {name: raw_text, ...}}``.  Removal
-        is implicit: ``networks/custom.txt`` only lists the reactions that were
-        *kept*, so any reaction of the selected network absent from ``kept`` is
-        treated as removed by the caller.  Brand-new (added) reactions also
-        appear in ``kept`` with their table in ``replaced``; the caller tells
-        them apart from replacements by checking which ``kept`` names do *not*
-        belong to the selected network.
+        ``{"kept": [name, ...], "replaced": {name: raw_text, ...}, "title": str}``.
+        Removal is implicit: the single file under ``networks/`` only lists
+        the reactions that were *kept*, so any reaction of the selected
+        network absent from ``kept`` is treated as removed by the caller.
+        Brand-new (added) reactions also appear in ``kept`` with their table
+        in ``replaced``; the caller tells them apart from replacements by
+        checking which ``kept`` names do *not* belong to the selected
+        network.  ``title`` is the network file's basename (without
+        ``.txt``), recovered without needing a separate metadata file.
     """
     replaced = {}
     try:
@@ -239,10 +269,19 @@ def import_zip(fh):
     except zipfile.BadZipFile:
         raise ValueError(
             "the uploaded file is not a valid zip archive (expected one "
-            "produced by the 'Export custom network' button)."
+            "produced by the 'Save custom network' button)."
         ) from None
     with zf:
-        net_text = zf.read("networks/custom.txt").decode()
+        net_files = [info.filename for info in zf.infolist()
+                    if info.filename.startswith("networks/")
+                    and info.filename.endswith(".txt")]
+        if len(net_files) != 1:
+            raise ValueError(
+                f"expected exactly one file under 'networks/', found {len(net_files)}."
+            )
+        net_filename = net_files[0]
+        title = os.path.basename(net_filename)[: -len(".txt")]
+        net_text = zf.read(net_filename).decode()
         kept_names = []
         for line in net_text.splitlines():
             line = line.strip()
@@ -252,9 +291,9 @@ def import_zip(fh):
             kept_names.append(bare)
         for info in zf.infolist():
             if info.filename.startswith("tables/") and info.filename.endswith("_custom.txt"):
-                bare = info.filename[len("tables/"):-len("_custom.txt")]
+                bare = os.path.basename(info.filename)[: -len("_custom.txt")]
                 replaced[bare] = zf.read(info.filename).decode()
-    return {"kept": kept_names, "replaced": replaced}
+    return {"kept": kept_names, "replaced": replaced, "title": title}
 
 
 def import_single(fh, reaction_name):
@@ -276,5 +315,5 @@ def import_single(fh, reaction_name):
     if isinstance(raw_text, bytes):
         raw_text = raw_text.decode()
     # Validate it parses before storing (raises ValueError on malformed input).
-    parse_rate_upload(io.StringIO(raw_text))
+    parse_rate_upload(raw_text)
     return {"removed": [], "replaced": {reaction_name: raw_text}}

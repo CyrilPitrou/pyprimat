@@ -98,24 +98,28 @@ def test_pyprimat_import_does_not_pull_in_gui():
 
 def test_form_metadata_covers_amax_default():
     """`amax` (the one DEFAULT_PARAMS key whose default is ``None``) must be
-    handled by the curated/conditional logic, not the generic type-based
-    widget chooser (which has no sensible widget for ``None``)."""
+    handled by curated logic, not the generic type-based widget chooser
+    (which has no sensible widget for ``None``). Unlike the other
+    conditionally-rendered keys, `amax` is now offered for *every* network
+    (CUSTOMPOPUP.md §3.3), so it is handled directly in
+    ``render_sidebar_form`` rather than through ``_CONDITIONAL``."""
     assert "amax" in params_form._FORM_METADATA
-    assert "amax" in params_form._CONDITIONAL
+    assert "amax" not in params_form._CONDITIONAL
 
 
 def test_available_networks_includes_small_and_large():
     networks = params_form._available_networks()
-    assert "small" in networks
-    assert "large" in networks
-    assert "medium" in networks
+    assert networks == ["large", "small", "small_parthenope"]
 
 
 def test_network_label_appends_reaction_count():
-    """The selectbox shows e.g. 'small (12)'/'deuterium (1)' so users can
-    gauge a network's size before picking it."""
+    """The selectbox shows e.g. 'small (12)'/'large (N)' so users can
+    gauge a network's size before picking it; the count is read dynamically
+    (CUSTOMPOPUP.md dropped the old fixed-size 'deuterium' network)."""
     assert params_form._network_label("small") == "small (12)"
-    assert params_form._network_label("deuterium") == "deuterium (1)"
+    n_large = len(params_form.load_reaction_names(
+        params_form.PyPRConfig({"network": "large"}), "large"))
+    assert params_form._network_label("large") == f"large ({n_large})"
 
 
 # ---------------------------------------------------------------------------
@@ -123,8 +127,14 @@ def test_network_label_appends_reaction_count():
 # ---------------------------------------------------------------------------
 
 def _run_bbn(at):
-    """Click the sidebar "Run BBN" button and let the app rerun."""
-    at.sidebar.button[0].click()
+    """Click the sidebar "Run BBN" button and let the app rerun.
+
+    "Run BBN" is no longer the sidebar's only button -- "Import custom
+    network"/"Create custom network" (CUSTOMPOPUP.md §5.2) come first -- so
+    find it by label rather than assuming index 0.
+    """
+    [run_button] = [b for b in at.sidebar.button if b.label == "Run BBN"]
+    run_button.click()
     at.run(timeout=120)
     return at
 
@@ -134,7 +144,9 @@ def test_app_loads_without_error():
     at = AppTest.from_file(APP_PATH)
     at.run(timeout=60)
     assert not at.exception
-    assert at.sidebar.button[0].label == "Run BBN"
+    assert {"Run BBN", "Import custom network", "Create custom network"} <= {
+        b.label for b in at.sidebar.button
+    }
     # Before any run, the main area shows the "set parameters" placeholder.
     assert any("Run BBN" in info.value for info in at.info)
 
@@ -212,15 +224,16 @@ def test_evolution_panel_renders_with_default_selection():
 # Conditional widgets and error surfacing
 # ---------------------------------------------------------------------------
 
-def test_amax_widget_only_shown_for_large_network():
-    """`amax` (GUI.md §2 "Network") only appears once `network='large'`."""
+def test_amax_widget_shown_for_every_network():
+    """`amax` (GUI.md §2 "Network") is offered regardless of `network`'s
+    value (CUSTOMPOPUP.md §3.3 dropped the old "large only" restriction)."""
     at = AppTest.from_file(APP_PATH)
     at.run(timeout=60)
 
     def has_amax_checkbox():
         return any(c.key == "amax_enabled" for c in at.sidebar.checkbox)
 
-    assert not has_amax_checkbox()  # default network is "small"
+    assert has_amax_checkbox()  # default network is "small"; still shown
 
     [network_select] = [s for s in at.sidebar.selectbox if s.key == "network"]
     network_select.set_value("large")
@@ -233,7 +246,7 @@ def test_time_evolution_download_available_for_large_network():
     """The "output_time_evolution.tsv" download button (under the "Abundances
     time evolution" subsection of the Output tab, see
     ``panels.render_downloads_panel``) is offered for ``network="large"``
-    too, not just small/medium.
+    too, not just "small".
 
     ``NuclearNetwork._write_time_evolution`` (nuclear_network.py) derives its
     ``Y<species>`` columns from ``self.abundance_names``, which already
@@ -287,29 +300,26 @@ def test_quick_mc_uncertainty_adds_sigma_column():
 
 def test_quick_mc_uncertainty_with_customised_network():
     """Quick MC must keep working (no exception, sigma column still renders)
-    when "Customise Reactions" is active and a reaction has been removed --
-    guards app._quick_mc's decode/forward of the JSON custom_network entry."""
+    when a custom network (built via "Create custom network" -> "Apply and
+    run BBN") has a reaction removed -- guards app._quick_mc's decode/forward
+    of the JSON custom_network entry."""
     at = AppTest.from_file(APP_PATH)
-    at.run(timeout=60)
-
-    [customise] = [c for c in at.sidebar.checkbox if c.key == "customise_reactions"]
-    customise.set_value(True)
-    at.run(timeout=60)
-
-    [keep] = [c for c in at.sidebar.checkbox if c.key == "keep_d_d__t_p"]
-    keep.set_value(False)
     at.run(timeout=60)
 
     [toggle] = [t for t in at.sidebar.toggle if t.key == "quick_mc_uncertainty"]
     toggle.set_value(True)
     at.run(timeout=60)
 
-    # The "Customise Reactions" panel adds its own per-reaction "↺" reset
-    # buttons to the sidebar (see params_form._render_custom_reactions), so
-    # _run_bbn's sidebar.button[0] no longer reliably points at "Run BBN" --
-    # find it by label instead.
-    [run_button] = [b for b in at.sidebar.button if b.label == "Run BBN"]
-    run_button.click()
+    [create_btn] = [b for b in at.sidebar.button if b.label == "Create custom network"]
+    create_btn.click()
+    at.run(timeout=60)
+
+    [ddtp] = [t for t in at.toggle if t.key == "_dialog_keep_d_d__t_p"]
+    ddtp.set_value(False)
+    at.run(timeout=60)
+
+    [apply_btn] = [b for b in at.button if b.key == "_dialog_apply"]
+    apply_btn.click()
     at.run(timeout=120)
     assert not at.exception
 

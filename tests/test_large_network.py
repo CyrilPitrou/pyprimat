@@ -5,7 +5,8 @@ nuclides, loaded from the generated CSVs and integrated in the LT era only.
 These check the load (species/reaction counts, formal conservation), the
 vectorised rate buffer (finite, bounded), and a full solve: that baryon number
 is conserved exactly and that the light-element abundances the small network
-predicts (n, p, d, t, He4, Li7, Be7) agree with the medium network -- they must,
+predicts (n, p, d, t, He4, Li7, Be7) agree with the large network restricted
+to amax=8 (the old "medium" network's 68-reaction equivalent) -- they must,
 since the extra heavy-nuclide channels are tiny corrections.  The heavy-nuclide
 tail itself (B, C, N, O, ...) is approximate (limited by the AC2024 rate floors)
 and is not asserted here.
@@ -59,11 +60,11 @@ def test_large_rate_buffer_is_finite_and_bounded():
 @_needs_ac2024
 @pytest.mark.slow
 @pytest.mark.solve
-def test_large_solve_conserves_baryon_and_matches_medium():
+def test_large_solve_conserves_baryon_and_matches_amax8():
     """Full large-network solve: baryon number conserved, and the light-element
-    finals agree with the medium network (the heavy channels are tiny)."""
+    finals agree with large/amax=8 (the heavy channels are tiny)."""
     from pyprimat import PyPR
-    med = PyPR(params={"network": "medium", "verbose": False})
+    med = PyPR(params={"network": "large", "amax": 8, "verbose": False})
     med.solve()
     big = PyPR(params={"network": "large", "verbose": False})
     big.solve()
@@ -78,7 +79,7 @@ def test_large_solve_conserves_baryon_and_matches_medium():
     baryon = sum(Avec[s] * y for s, y in big.nuclear.Y_final.items())
     assert abs(baryon - 1.0) < 1e-6
 
-    # Light-element finals agree with medium (relative, for the non-tiny ones).
+    # Light-element finals agree with large/amax=8 (relative, non-tiny ones).
     # H3/Li7/Be7 are excluded: the large network alone carries the
     # t__He3_Bm/Be7__Li7_Bp analytic decay reactions (commit 6221e43), whose
     # laboratory decay constants convert ~0.23% of H3->He3 and ~18% of
@@ -95,8 +96,8 @@ def test_large_solve_conserves_baryon_and_matches_medium():
 def test_large_network_time_evolution_tsv(tmp_path):
     """``output_time_evolution=True`` writes a TSV for network="large" too
     (Item 5): one ``Y<species>`` column per of the ~59 large-network nuclides,
-    no per-reaction flux columns (those are small/medium only), and the final
-    He4/D/Li7 rows agree with the medium-network time series to the same
+    no per-reaction flux columns (those are small/large-amax8 only), and the
+    final He4/D/Li7 rows agree with the large/amax=8 time series to the same
     tolerances as the final-abundance comparison above."""
     from pyprimat import PyPR
     import numpy as np
@@ -124,16 +125,16 @@ def test_large_network_time_evolution_tsv(tmp_path):
     # fill is applied any more, see NuclearNetwork._write_time_evolution).
     assert np.isfinite(data).all()
 
-    med = PyPR(params={"network": "medium", "verbose": False})
+    med = PyPR(params={"network": "large", "amax": 8, "verbose": False})
     med.solve()
 
     # Compare the final-time row of the large-network TSV against the
-    # medium-network's final abundances (same tolerance as the
-    # final-abundance comparison in test_large_solve_conserves_baryon_and_matches_medium).
+    # large/amax=8 network's final abundances (same tolerance as the
+    # final-abundance comparison in test_large_solve_conserves_baryon_and_matches_amax8).
     # Li7 is excluded for the same reason as in that test: the large
     # network's Be7__Li7_Bp decay reaction (commit 6221e43) converts ~18% of
     # Be7 into Li7 over the full integration window, so large Li7 is ~4x
-    # medium Li7 by design (see CLAUDE.md "Per-nuclide final abundances").
+    # large/amax=8 Li7 by design (see CLAUDE.md "Per-nuclide final abundances").
     for s in ("He4", "H2"):
         col = header.index("Y" + s)
         y_final_tsv = data[-1, col]

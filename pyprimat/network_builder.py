@@ -18,7 +18,7 @@ NumPy arrays (:func:`compile_network` -> :class:`CompiledNetwork`).  Two small
 array-driven kernels (:func:`_rhs_kernel`, :func:`_jac_kernel`) then evaluate
 dY/dt and J for *any* such network.  The numbers are identical, to round-off, to
 the hand-written reference -- but the same code path serves the small (8-species),
-medium (12) and large (~59) networks.
+small (8), large (~59), and any amax-restricted large network.
 
 --------------------------------------------------------------------------------
 Lifecycle / how the pieces fit together  (READ THIS FIRST)

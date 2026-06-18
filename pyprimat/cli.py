@@ -10,7 +10,7 @@ This wraps the same "build a params dict and call PyPR" pattern used by
 need (baryon density, extra relativistic species, network choice) so a
 ``pip install``-ed user can get BBN abundances without writing any Python::
 
-    pyprimat --Omegabh2 0.02242 --network medium
+    pyprimat --Omegabh2 0.02242 --network large --amax 8
 
 Anything not exposed as a flag here can still be reached by writing a short
 script that builds a ``params`` dict (see ``runfiles/PyPRIMAT_run.py`` for
@@ -59,15 +59,16 @@ def _build_parser():
         "--network", default=None, metavar="NAME",
         help="Nuclear reaction network used in the LT era "
              "(PyPRConfig default: small). Built-in choices are 'small', "
-             "'medium' and 'large', but any name for which "
-             "rates/nuclear/networks/<NAME>.txt exists is accepted "
-             "(e.g. 'small_parthenope'); PyPRConfig raises a ValueError "
-             "if no such file is found.",
+             "'small_parthenope' and 'large', but any name for which "
+             "rates/nuclear/networks/<NAME>.txt exists is accepted; "
+             "PyPRConfig raises a ValueError if no such file is found.",
     )
     parser.add_argument(
         "--amax", type=int, default=None, metavar="A",
-        help="With --network large, drop reactions involving any nuclide "
-             "with mass number > A (must be an integer > 7).",
+        help="Drop reactions involving any nuclide with mass number > A "
+             "(must be a positive integer); applies to any --network, not "
+             "just 'large'. E.g. --network large --amax 8 reproduces the "
+             "old 'medium' network's 68 reactions.",
     )
     parser.add_argument(
         "--numerical_precision", type=float, default=None, metavar="RTOL",
@@ -107,7 +108,7 @@ def main(argv=None):
 
     Example
     -------
-        $ pyprimat --Omegabh2 0.02242 --network medium
+        $ pyprimat --Omegabh2 0.02242 --network large --amax 8
         Neff       = 3.04397730
         YP (BBN)   = 0.24691900
         ...

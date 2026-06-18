@@ -14,10 +14,12 @@ The tests below check, without re-running the (slow) full generation:
 1. the token resolver and the *formal* baryon/charge conservation check;
 2. that the generated nuclide table is internally consistent and agrees with
    PyPRIMAT's hard-coded 12-nuclide table;
-3. that the deduced reaction list is a superset of the known 12- and 62-reaction
-   networks and that *every* listed reaction conserves A and Q;
+3. that the deduced reaction list is a superset of the known 12- and 68-reaction
+   networks (the latter being "large" filtered to amax=8, the old "medium"
+   network's exact equivalent) and that *every* listed reaction conserves A
+   and Q;
 4. that the detailed-balance coefficients computed from nuclide data reproduce
-   PyPRIMAT's published values for the 62 medium-network reactions.
+   PyPRIMAT's published values for those 68 reactions.
 
 The CSV-based tests skip if the generated ``rates/nuclear/AC2024`` folder is
 absent (fresh checkout before the generator has been run).
@@ -134,13 +136,19 @@ def _load_reactions_csv():
 @_needs_ac2024
 def test_reaction_list_is_superset_of_known_networks():
     """The deduced large list must contain every reaction of the 12-key and
-    62-reaction networks (matched by their <reactants>TO<products> file name)."""
-    from pyprimat.network_data import to_filename, _KEY12_REACTIONS, _REACTIONS_MEDIUM
+    68-reaction (large, amax=8 -- the old "medium" network's exact
+    equivalent) networks (matched by their <reactants>TO<products> file name)."""
+    from pyprimat.config import PyPRConfig
+    from pyprimat.network_data import to_filename, _KEY12_REACTIONS, load_network
     names = {r["name"] for r in _load_reactions_csv()}
     for compact in _KEY12_REACTIONS:
         name = compact if 'TO' in compact else to_filename(compact)
         assert name in names, f"{compact} missing from large list"
-    for compact in _REACTIONS_MEDIUM:
+    amax8_names = load_network(PyPRConfig({"network": "large", "amax": 8}),
+                               era="LT").names
+    for compact in amax8_names:
+        if compact == "n__p":
+            continue
         name = compact if 'TO' in compact else to_filename(compact)
         assert name in names, f"{compact} missing from large list"
 

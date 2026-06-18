@@ -32,7 +32,7 @@ consumed by the nuclear solve.
 * **MT** (mid temperature, T_weak -> T_nucl ~ 0.1 MeV): the fixed 18-reaction
   subset (n<->p + 17 reactions), regardless of network size.
 * **LT** (low temperature, T_nucl -> T_end ~ 0.001 MeV): the chosen network
-  (small/medium/large).
+  (small/large, optionally amax-restricted).
 
 and populates the public ``Y_final``, ``abundance_names`` and ``Y_of_t``
 attributes consumed by ``PyPR``'s observable accessors (``get_quantity``,
@@ -249,7 +249,7 @@ class NuclearNetwork:
         # Saha (NSE) seed for all MT species except n and p, which come from
         # the HT solution.  The MT network's species list is determined by the
         # NetworkDefinition, so this loop is independent of the network size.
-        mt_species = nucl._mt_net.species   # e.g. 8 for small, 12 for medium
+        mt_species = nucl._mt_net.species   # e.g. 8 for small, 12 for large/amax=8
         mt_saha = {"n": Yn_HT_f, "p": Yp_HT_f}
         for s in mt_species:
             if s not in mt_saha:
@@ -300,7 +300,7 @@ class NuclearNetwork:
             # Full list of every nuclide that was integrated numerically in the
             # LT era (species_L is exactly the LT solver's state vector).  The
             # list grows with the chosen network (8 / 12 / ~59 nuclides for
-            # small / medium / large).
+            # small / large, optionally amax-restricted).
             print("-" * 50)
             print(f"Predicted primordial abundances at the end of BBN "
                   f"({len(species_L)} numerically solved nuclides)")
@@ -435,7 +435,8 @@ class NuclearNetwork:
         ``cfg.output_final_file``.  ``Y`` is normalised so that
         ``sum_s A_s Y_s = 1`` (A = mass number), i.e. it is the per-baryon
         abundance weighted by A.  The rows are exactly the species of the
-        chosen network: 8 for ``small``, 12 for ``medium``, ~59 for ``large``,
+        chosen network: 8 for ``small``, ~59 for ``large`` (fewer with an
+        ``amax`` cutoff, e.g. 12 for ``large, amax=8``),
         in abundance-vector order (``n`` and ``p`` first).
 
         Enabled by ``output_final_result=True``; the destination is
@@ -477,7 +478,7 @@ class NuclearNetwork:
 
         Enabled by ``output_time_evolution=True``; the destination is
         ``cfg.output_file``.  Works for all three networks
-        (``small``/``medium``/``large``) -- ``Y<species>`` columns are
+        (``small``/``large``, optionally ``amax``-restricted) -- ``Y<species>`` columns are
         derived from ``self.abundance_names`` (8 / 12 / ~59 nuclides).
 
         Columns, always present:
@@ -508,7 +509,7 @@ class NuclearNetwork:
         Conditional columns:
             per-reaction flux columns (``<reaction>_frwrd``) -- included only
                 when ``cfg.output_rates_time_evolution=True`` *and*
-                ``network`` is ``small``/``medium``.  Omitted for
+                ``network`` is ``small``.  Omitted for
                 ``network="large"`` (~433 reactions): use the
                 ``run[species](t)`` abundance interpolators (and the
                 tabulated rates on ``nucl``) directly if reaction-level

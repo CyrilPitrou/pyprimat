@@ -188,7 +188,7 @@ class PyPR:
         self.nuclear.solve()
 
         # For the large network, NuclearNetwork.solve() discovers nuclides
-        # beyond the small/medium set (e.g. B10, C12, ...).  Extend the
+        # beyond the small/amax-restricted set (e.g. B10, C12, ...).  Extend the
         # N/Z/A maps (built in __init__ from cfg.Nuclides) so callers (e.g.
         # the AbundanceEvolution notebook, pyprimat.gui.panels) can look up
         # A[name]/Z[name]/N[name] for every species returned by
@@ -230,7 +230,7 @@ class PyPR:
             "Li7oH":   _ratio(YLi7_f + YBe7_f, Yp_f),
         }
 
-        # Li6/Li7: observable ratio after Be7→Li7 decay (medium/large networks).
+        # Li6/Li7: observable ratio after Be7→Li7 decay (large networks).
         # SPECIES_MD ensures Li6 is always in finL (padded with 0 for small
         # network which has no Li6 production reactions), so check Y>0.
         if finL.get("Li6", 0.0) > 0:

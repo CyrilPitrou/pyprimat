@@ -18,7 +18,6 @@ All three take an already-solved ``pyprimat.PyPR`` instance (see
 result).
 """
 import html
-import io
 import os
 import re
 
@@ -147,7 +146,7 @@ def final_abundances_text(run):
     (``output_final_result=True``), built from the in-memory results so that
     flag is not needed just to export this table. ``Y`` is the final
     mass-fraction abundance of every nuclide in ``run.abundance_names`` (8 /
-    12 / ~59 for the small / medium / large network).
+    ~59 for the large network, fewer with an amax cutoff).
     """
     lines = [f"# {'nuclide':<12}Y"]
     lines += [
@@ -283,23 +282,26 @@ def _render_reaction_downloads(run):
     custom_network = st.session_state.get("run_custom_network_dict")
     if custom_network and (custom_network.get("removed") or custom_network.get("replaced")
                            or custom_network.get("added")):
+        active = st.session_state.get("_active_custom_network")
+        title = active["title"] if active else "custom"
         st.markdown("**Custom network**")
         kept_names = [name for name, equation, source, file
                       in run.nucl.describe_reactions()
                       if name not in ("n__p", "n__p")]
         try:
-            zip_bytes = custom_rates.export_zip(run.cfg, custom_network, kept_names)
+            zip_bytes = custom_rates.export_zip(run.cfg, custom_network, kept_names,
+                                                network_filename=title)
         except Exception as exc:
             st.warning(f"Could not build the custom-network export: {exc}")
         else:
             st.download_button(
-                "Export custom network (zip)",
+                f"Export custom network (zip)",
                 data=zip_bytes,
-                file_name="custom_network.zip",
+                file_name=f"{title}.zip",
                 mime="application/zip",
                 key="dl_custom_network",
-                help="networks/custom.txt + tables/<name>_custom.txt, "
-                     "re-importable from the sidebar's Customise Reactions panel.",
+                help=f"networks/{title}.txt + tables/<name>/<name>_custom.txt, "
+                     "re-importable from the sidebar's \"Import custom network\" button.",
             )
 
     st.markdown("**Download individual rate tables**")
@@ -331,8 +333,9 @@ def _render_reaction_downloads(run):
             return
     else:
         basename = f"{name}_custom.txt"
-        T9, rate, err = custom_rates.parse_rate_upload(io.StringIO(replaced_raw[name]))
-        data = custom_rates.effective_table_text(run.cfg, T9, rate, err, name=name)
+        T9, rate, err, header = custom_rates.parse_rate_upload(replaced_raw[name])
+        data = custom_rates.effective_table_text(run.cfg, T9, rate, err, name=name,
+                                                  source_header=header)
     st.download_button(
         label=f"Download {basename}",
         data=data,
@@ -455,7 +458,7 @@ def render_downloads_panel(run, time_evolution_tsv, background_tsv):
 # ---------------------------------------------------------------------------
 
 # Default nuclide selection and time grid, matching
-# notebooks/AbundanceEvolution.ipynb (species_small/medium lists and
+# notebooks/AbundanceEvolution.ipynb (species_small/large lists and
 # `t = np.logspace(0, 5, 500)`, i.e. 1 s to 1e5 s -- the range over which all
 # three networks have completed nucleosynthesis and the Y_i(t) interpolators
 # remain well defined).
@@ -561,7 +564,7 @@ def render_evolution_panel(run):
     # interpolator extends seamlessly past the end of BBN out to the age of the
     # Universe.  When on, the time grid spans the full BBN+DT history (so e.g.
     # ⁷Be→⁷Li, ³H→³He, ²²Na, ¹⁴C, ¹⁰Be decays become visible); when off (or for
-    # small/medium), only the BBN window 1 s … 1e5 s is shown.
+    # small/large with amax), only the BBN window 1 s … 1e5 s is shown.
     has_decay = (run.cfg.network == "large"
                  and getattr(run.cfg, "decay_era", False)
                  and run.nuclear.Y_of_t.x[-1] > _T_GRID[-1])
@@ -613,7 +616,7 @@ def render_evolution_panel(run):
     x_title = "Photon temperature T_γ [K]" if use_temperature else "Cosmic time t [s]"
     # Y-axis floor: large network has heavy isotopes with abundances as low as
     # ~1e-45, so we clip the range at 1e-50 to keep them visible; for the
-    # light small/medium networks 1e-36 is sufficient and avoids blank space.
+    # light small/amax-restricted networks 1e-36 is sufficient and avoids blank space.
     y_floor = -50 if run.cfg.network == "large" else -36
     fig.update_layout(
         xaxis_title=x_title,

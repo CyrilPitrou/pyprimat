@@ -194,7 +194,7 @@ def test_tau_n_normalization_false_disables_tau_n_effect():
 
 import pyprimat
 _TABLES_DIR = os.path.join(os.path.dirname(pyprimat.__file__),
-                            "rates", "nuclear", "tables")
+                            "rates", "nuclear", "tables", "d_d__He3_n")
 
 
 def _table_text(T9, rate, err):
@@ -277,7 +277,8 @@ def test_prev_ignored_when_params_differ():
     """A prev computed under different params (here: network) must not be
     silently reused -- closes the pre-existing blind spot in the reuse guard."""
     prev = mc_uncertainty(3, "DoH", params={"network": "small"}, n_jobs=1, seed=0)
-    ref  = mc_uncertainty(3, "DoH", params={"network": "medium"}, n_jobs=1, seed=0)
-    got  = mc_uncertainty(3, "DoH", params={"network": "medium"}, n_jobs=1, seed=0,
+    large_amax8 = {"network": "large", "amax": 8}
+    ref  = mc_uncertainty(3, "DoH", params=large_amax8, n_jobs=1, seed=0)
+    got  = mc_uncertainty(3, "DoH", params=large_amax8, n_jobs=1, seed=0,
                           prev=prev)
     np.testing.assert_array_equal(ref["DoH"].values, got["DoH"].values)

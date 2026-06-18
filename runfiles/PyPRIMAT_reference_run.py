@@ -78,14 +78,16 @@ MyOptions = {
 # Run both networks
 # ---------------------------------------------------------------------------
 
-def run_network(network):
-    label = f"{network} network"
+def run_network(label, network, amax=None):
     print()
     print("=" * 60)
     print(f"  {label}")
     print("=" * 60)
     t0 = time.time()
-    res = PyPR(params={**MyOptions, "network": network}).PyPRresults()
+    extra = {"network": network}
+    if amax is not None:
+        extra["amax"] = amax
+    res = PyPR(params={**MyOptions, **extra}).PyPRresults()
     elapsed = time.time() - t0
     print(" ")
     print(f" Neff               --> {res['Neff']}")
@@ -101,18 +103,18 @@ def run_network(network):
 
 total_start = time.time()
 
-res_small  = run_network(network="small")
-res_medium = run_network(network="medium")
-res_large  = run_network(network="large")
+res_small  = run_network("small network", network="small")
+res_amax8  = run_network("large network, amax=8", network="large", amax=8)
+res_large  = run_network("large network", network="large")
 
 print()
 print("=" * 76)
 print("  Summary")
 print("=" * 76)
-print(f"  {'':30s}  {'small net':>14}  {'medium net':>14}  {'large net':>14}")
-print(f"  {'YP (BBN)':30s}  {res_small['YPBBN']:>14.8f}  {res_medium['YPBBN']:>14.8f}  {res_large['YPBBN']:>14.8f}")
-print(f"  {'D/H':30s}  {res_small['DoH']:>14.5e}  {res_medium['DoH']:>14.5e}  {res_large['DoH']:>14.5e}")
-print(f"  {'He3/H':30s}  {res_small['He3oH']:>14.5e}  {res_medium['He3oH']:>14.5e}  {res_large['He3oH']:>14.5e}")
-print(f"  {'Li7/H':30s}  {res_small['Li7oH']:>14.5e}  {res_medium['Li7oH']:>14.5e}  {res_large['Li7oH']:>14.5e}")
+print(f"  {'':30s}  {'small net':>14}  {'large, amax=8':>14}  {'large net':>14}")
+print(f"  {'YP (BBN)':30s}  {res_small['YPBBN']:>14.8f}  {res_amax8['YPBBN']:>14.8f}  {res_large['YPBBN']:>14.8f}")
+print(f"  {'D/H':30s}  {res_small['DoH']:>14.5e}  {res_amax8['DoH']:>14.5e}  {res_large['DoH']:>14.5e}")
+print(f"  {'He3/H':30s}  {res_small['He3oH']:>14.5e}  {res_amax8['He3oH']:>14.5e}  {res_large['He3oH']:>14.5e}")
+print(f"  {'Li7/H':30s}  {res_small['Li7oH']:>14.5e}  {res_amax8['Li7oH']:>14.5e}  {res_large['Li7oH']:>14.5e}")
 print()
 print(f"--- total running time: {time.time() - total_start:.1f} s ---")

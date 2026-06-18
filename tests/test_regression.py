@@ -91,7 +91,7 @@ def ref_small():
 @pytest.fixture(scope="session")
 def ref_large():
     from pyprimat.main import PyPR
-    return PyPR({**_REF_PARAMS, "network": "medium"}).PyPRresults()
+    return PyPR({**_REF_PARAMS, "network": "large", "amax": 8}).PyPRresults()
 
 
 @pytest.mark.reference
@@ -128,23 +128,47 @@ def test_no_numba_small_matches_numba(solved_small):
 
 
 @pytest.mark.solve
-def test_no_numba_medium_smoke():
-    """Pure-Python medium network solve completes and YP is physically reasonable."""
+def test_no_numba_large_amax8_smoke():
+    """Pure-Python large/amax=8 network solve completes and YP is physically
+    reasonable (the old "medium" network's exact 68-reaction equivalent)."""
     from pyprimat.main import PyPR
-    r = PyPR({"numba_installed": False, "network": "medium"}).PyPRresults()
+    r = PyPR({"numba_installed": False, "network": "large", "amax": 8}).PyPRresults()
     assert 0.24 < r["YPBBN"] < 0.25
     assert 2.0e-5 < r["DoH"] < 3.0e-5
 
 
 # ---------------------------------------------------------------------------
-# amax cutoff: large network filtered to A <= 20 matches medium to ~1e-3
+# amax cutoff: large network filtered to A <= 20 matches the full large
+# network to ~1e-3
 # ---------------------------------------------------------------------------
 
 @pytest.mark.solve
-def test_amax_filter_light_elements_match_medium(solved_large):
-    """With amax=20, heavy reactions (A>20) are dropped; light elements match medium."""
+def test_amax_filter_light_elements_match_large(solved_large):
+    """With amax=20, heavy reactions (A>20) are dropped; light elements match
+    the full large network."""
     from pyprimat.main import PyPR
     r = PyPR({"network": "large", "amax": 20}).PyPRresults()
-    # Light elements should still match the medium result to ~1e-3 relative
+    # Light elements should still match the full large-network result to
+    # ~1e-3 relative.
     assert r["YPBBN"] == pytest.approx(solved_large.results["YPBBN"], rel=1e-3)
     assert r["DoH"]   == pytest.approx(solved_large.results["DoH"],   rel=1e-3)
+
+
+@pytest.mark.solve
+def test_small_amax2_collapses_to_deuterium_channel():
+    """``network="small", amax=2`` must collapse both MT and LT to just the
+    n<->p weak rate + n_p__d_g (CUSTOMPOPUP.md §1.2's MT-branch amax-ordering
+    fix): previously the MT-era intersection used the *unfiltered* bare names,
+    so an amax-violating reaction could still run in the MT era."""
+    from pyprimat.main import PyPR
+    from pyprimat.config import PyPRConfig
+    from pyprimat.network_data import load_network
+    cfg = PyPRConfig({"network": "small", "amax": 2})
+    mt_names = load_network(cfg, era="MT").names
+    lt_names = load_network(cfg, era="LT").names
+    assert mt_names == ["n__p", "n_p__d_g"]
+    assert lt_names == ["n__p", "n_p__d_g"]
+
+    r = PyPR({"network": "small", "amax": 2}).PyPRresults()
+    assert r["YPBBN"] == 0.0
+    assert r["DoH"] > 0.0

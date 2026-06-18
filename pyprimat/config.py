@@ -146,8 +146,8 @@ DEFAULT_PARAMS: dict = {
     
     # ---- Output options ------------------------------------------------------
     # Writes a TSV (cfg.output_file) with the time evolution of T, t, and of
-    # every nuclide's abundance in the chosen network (8/12/~59 for
-    # small/medium/large) plus the n<->p weak rates; see
+    # every nuclide's abundance in the chosen network (8/~59 for small/large,
+    # fewer for large with an amax cutoff) plus the n<->p weak rates; see
     # nuclear_network.NuclearNetwork._write_time_evolution.
     "output_time_evolution":      False,
     "output_rates_time_evolution": False, #whether to include or not the nuclear rates evolution in the output time evolution file. This is only useful if you want to inspect the rates evolution, otherwise it is better to set it to False to save disk space and speed up the code. Ignored (with a printed note) for network="large", where per-reaction flux columns are omitted.
@@ -180,21 +180,31 @@ DEFAULT_PARAMS: dict = {
     "rate_grid_T9_max":          10.0,       # maximum T9 [GK] on the master grid
 
     # Network selector.  "small" is the built-in ORDER_SMALL network.  Any other
-    # value loads rates/nuclear/networks/<network>.txt.
+    # value loads rates/nuclear/networks/<network>.txt -- shipped options are
+    # "small_parthenope" and "large"; any other name loads a custom network
+    # file of the same form.
     "network":                    "small",
 
-    # Maximum nuclide mass number A = N + Z to include when loading the large
-    # network.  Reactions involving any nuclide with A > amax are dropped.
-    # None = no filter (keep all reactions).  Must be a positive integer when
-    # set (low values, e.g. amax=2, drastically restrict the large network
-    # down toward the n/p/d domain of small/medium).
-    # Only effective for network="large"; silently ignored otherwise.
+    # Maximum nuclide mass number A = N + Z to include, for *any* network
+    # (not just "large" -- a network whose nuclides are all below the cutoff
+    # simply sees no reaction dropped). Reactions involving any nuclide with
+    # A > amax are dropped. None = no filter (keep all reactions). Must be a
+    # positive integer when set.
+    # Migration from the old named networks (removed; reproduce them via):
+    #   old network="medium"    -> network="large", amax=8   (68 reactions,
+    #                                                          identical set)
+    #   old network="deuterium" -> network="large", amax=2   (adds
+    #                                                          p_p_n__d_p
+    #                                                          alongside
+    #                                                          n_p__d_g;
+    #                                                          D/H matches to
+    #                                                          ~1e-9 relative)
     # Example: {"network": "large", "amax": 20} keeps only A ≤ 20 nuclides.
     "amax":                       None,
 
     # Absolute solve_ivp tolerance for the large-network LT era.  The heavy
     # nuclides reach very small abundances, so this is tighter than the 1e-15
-    # used for the small/medium LT era (which keep their validated tolerances).
+    # used for the small-network LT era (which keeps its validated tolerances).
     "atol_large_LT":              1.e-26,
     "rescale_nuclear_rates":            False, #Use to vary some rates with a uniform factor to explore their impact.
 
@@ -248,7 +258,7 @@ class PyPRConfig:
     Usage::
 
         cfg = PyPRConfig()                    # all defaults
-        cfg = PyPRConfig({"Omegabh2": 0.022, "network": "medium"})
+        cfg = PyPRConfig({"Omegabh2": 0.022, "network": "large", "amax": 8})
 
     After construction every key in ``DEFAULT_PARAMS`` is an attribute, plus
     all physical constants listed below.
@@ -444,12 +454,19 @@ class PyPRConfig:
         # finalised by the overrides above) to p_<rxn>=0 / NP_delta_<rxn>=0,
         # i.e. "no rate variation".  Use setdefault so any p_<rxn>/NP_delta_<rxn>
         # override already applied above is not clobbered.
-        from .network_data import load_reaction_names
+        from .network_data import load_reaction_names, reaction_category
         reactions_with_tables = load_reaction_names(self, self.network)
         # Each entry is "bare_name" or "bare_name, filename.txt"; only the
         # bare reaction name is used as the p_<rxn>/NP_delta_<rxn> key.
-        valid_rxns = {re.split(r'[, ]+', entry, maxsplit=1)[0]
-                      for entry in reactions_with_tables}
+        # amax (now meaningful for any network, not just "large") must be
+        # applied here too, so p_rxn/NP_delta_rxn don't carry stale keys for
+        # reactions load_network would have dropped.
+        valid_rxns = set()
+        for entry in reactions_with_tables:
+            bare = re.split(r'[, ]+', entry, maxsplit=1)[0]
+            if self.amax is not None and reaction_category(bare) > self.amax:
+                continue
+            valid_rxns.add(bare)
         for rxn in valid_rxns:
             self.p_rxn.setdefault(rxn, 0.0)
             self.NP_delta_rxn.setdefault(rxn, 0.0)

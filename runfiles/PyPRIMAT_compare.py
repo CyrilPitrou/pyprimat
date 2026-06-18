@@ -3,7 +3,9 @@
 PyPRIMAT_compare.py
 ===================
 Compares primordial abundance predictions between the built-in 12-reaction
-small network, the 62-reaction medium file, and the 423-reaction large file.
+small network, the small_parthenope network, the large network restricted to
+A <= 8 (68 reactions, equivalent to the old "medium" network), and the full
+large network.
 
 Usage::
 
@@ -34,26 +36,31 @@ _base_opts = {
     # spectral_distortions: left at its PyPRConfig default (True).
     # nuclear_qed_corrections is turned off here (the CLAUDE.md reference
     # table uses the True default), so these results are an internal
-    # small-vs-medium-vs-large comparison only -- not directly comparable to
-    # the CLAUDE.md reference values.
+    # small-vs-large(amax=8)-vs-large comparison only -- not directly
+    # comparable to the CLAUDE.md reference values.
     "nuclear_qed_corrections":   False
 }
 
 # ---------------------------------------------------------------------------
 # Run networks
 # ---------------------------------------------------------------------------
-networks = ["small","small_parthenope","medium", "large"]
+networks = [
+    ("small", {}),
+    ("small_parthenope", {}),
+    ("large_amax8", {"network": "large", "amax": 8}),
+    ("large", {"network": "large"}),
+]
 results = {}
 
-for net in networks:
+for label, extra in networks:
     print("=" * 60)
-    print(f"Running {net} network ...")
+    print(f"Running {label} network ...")
     print("=" * 60)
     t0 = time.time()
-    params = {**_base_opts, "network": net}
+    params = {**_base_opts, "network": "small", **extra}
     run = PyPR(params=params)
-    results[net] = run.PyPRresults()
-    print(f"{net.capitalize()} network finished in {time.time()-t0:.1f} s\n")
+    results[label] = run.PyPRresults()
+    print(f"{label.capitalize()} network finished in {time.time()-t0:.1f} s\n")
 
 # ---------------------------------------------------------------------------
 # Print results
@@ -69,6 +76,6 @@ def _print_res(label, res):
 print("\n" + "=" * 60)
 print("Results comparison")
 print("=" * 60)
-for net in networks:
-    _print_res(f"{net.capitalize()} net", results[net])
+for label, _ in networks:
+    _print_res(f"{label} net", results[label])
 print()

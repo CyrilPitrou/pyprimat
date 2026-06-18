@@ -49,10 +49,12 @@ def _solve(params_items):
         ``params`` dict (see ``app.main``, which sorts the items before
         calling this function), required because ``st.cache_resource`` keys
         its cache on the function arguments.  May include a ``"custom_network"``
-        entry (JSON text from ``params_form._render_custom_reactions``); it is
-        popped out and decoded before building ``PyPR`` (it is not a
-        ``PyPRConfig``/``DEFAULT_PARAMS`` field) but stays part of the tuple so
-        a different customisation still produces a different cache key.
+        entry (JSON text built by the "Create custom network"/"Import custom
+        network" popups, ``params_form._custom_network_dialog``/
+        ``_import_dialog``); it is popped out and decoded before building
+        ``PyPR`` (it is not a ``PyPRConfig``/``DEFAULT_PARAMS`` field) but
+        stays part of the tuple so a different customisation still produces a
+        different cache key.
 
     Returns
     -------
@@ -93,7 +95,7 @@ def _solve(params_items):
     # evolution panel can optionally show abundances past the end of BBN, out to
     # the age of the Universe (its "Show radioactive decays" toggle).  The DT
     # integration is a cheap constant-matrix exponentiation (~0.1 s), and the
-    # solve()-level guard ignores decay_era for the small/medium networks, so we
+    # solve()-level guard ignores decay_era for the small network, so we
     # can set it unconditionally for large only.  t_decay_end is set to ~13.8 Gyr
     # (the age of the Universe) unless the user already overrode it.
     AGE_UNIVERSE_S = 13.8e9 * 365.25 * 86400.0   # ≈ 4.35×10^17 s
@@ -144,7 +146,7 @@ def _quick_mc(params_items, num_mc, run):
         The already-solved reference run (see ``app.main``), used only to
         determine which ``_RATIO_FORMAT`` keys are actually present in
         ``run.results`` -- e.g. ``Li6oLi7`` requires a network producing Li6
-        (medium/large) and ``YCNO`` requires CNO species (large), so for the
+        (large) and ``YCNO`` requires CNO species (large), so for the
         default small network neither key exists and requesting them from
         ``get_quantity`` would raise ``ValueError`` (see ``main.py``'s
         conditional ``results["Li6oLi7"] = ...`` / ``results["YCNO"] = ...``).
@@ -225,10 +227,14 @@ def main():
         st.session_state["params"] = dict(params)
         st.session_state["quick_mc"] = quick_mc
         st.session_state["mc_samples"] = mc_samples
-        # Snapshot the customisation dict too (params_form stashed it in
-        # custom_network_dict), so the Reactions tab's export button reflects
-        # what was actually run rather than whatever the sidebar shows now.
-        st.session_state["run_custom_network_dict"] = st.session_state.get("custom_network_dict")
+        # Snapshot the active custom network's dict (if any -- set by the
+        # "Create custom network"/"Import custom network" popups, see
+        # params_form._render_dialog_footer/_import_dialog), so the Reactions
+        # tab's export button reflects what was actually run rather than
+        # whatever the sidebar shows now.
+        active = st.session_state.get("_active_custom_network")
+        st.session_state["run_custom_network_dict"] = (
+            active["custom_network"] if active else None)
 
     stored_params = st.session_state.get("params")
     if stored_params is None:

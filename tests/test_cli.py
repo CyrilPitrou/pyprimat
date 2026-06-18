@@ -57,7 +57,7 @@ def test_cli_omegabh2_override_changes_doh(capsys):
 
 def test_cli_network_accepts_any_network_file(capsys):
     """--network accepts any name with a rates/nuclear/networks/<name>.txt
-    file, not just 'small'/'medium'/'large' (IDEAS2.md item 3).
+    file, not just 'small'/'small_parthenope'/'large' (IDEAS2.md item 3).
 
     'small_parthenope' (12-reaction network using Parthenope 3.0 rate
     tables) uses different reaction rates from 'small', so YPBBN differs

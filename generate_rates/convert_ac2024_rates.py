@@ -30,11 +30,15 @@ Source format (one block per reaction)::
          ...                                   (60 rows, grid 0.001..10)
 
 Output:
-  * ``pyprimat/rates/nuclear/tables/<reactants>TO<products>.txt`` for every
-    *non-decay* reaction: a header line (``#`` comment, ignored by
-    ``numpy.loadtxt``) recording the reaction, its reference and its
-    detailed-balance coefficients, then three columns ``T9  rate  error`` on
-    the 500-point grid.
+  * ``pyprimat/rates/nuclear/tables/<name>/<name>.txt`` for every *non-decay*
+    reaction (one folder per reaction, ``<name>`` being the
+    ``<reactants>TO<products>``-derived bare name): a header line (``#``
+    comment, ignored by ``numpy.loadtxt``) recording the reaction, its
+    reference and its detailed-balance coefficients, then three columns
+    ``T9  rate  error`` on the 500-point grid.  Alternate-source variants
+    (``--suffix``, e.g. a Parthenope-extracted table) land as a sibling file
+    in the same per-reaction folder, e.g.
+    ``tables/n_p__d_g/n_p__d_g_parthenope3.0.txt``.
   * ``pyprimat/rates/nuclear/tables/decays.txt`` for every radioactive-decay
     reaction (Bm/Bp on the products side): one row each with
     ``name  halflife_s  rate_s^-1  uncertainty  ref`` -- decay rates don't
@@ -235,8 +239,12 @@ def write_reaction_file(block, grid, outdir, suffix=""):
         grid   : 1-D T9 array to write.  When equal to block["T9"] (i.e. with
                  --keep-source-grid) the rates are written directly without
                  reinterpolation; otherwise log-log cubic interpolation is applied.
-        outdir : directory path for output files.
-        suffix : appended to the reaction name before ".txt".
+        outdir : directory containing one subfolder per reaction.
+        suffix : appended to the reaction name before ".txt" (alternate-source
+                 variants land as a sibling file inside the same per-reaction
+                 folder as the PRIMAT-default table -- the per-reaction-folder
+                 mechanism for multiple candidate tables, see network_data.py's
+                 available_rate_tables()).
     """
     if np.array_equal(grid, block["T9"]):
         # Native grid — no interpolation needed.
@@ -252,7 +260,9 @@ def write_reaction_file(block, grid, outdir, suffix=""):
         f"gamma={block['gamma']:.6g}  Q={block['Q']:.6g}\n"
         f"T9                 rate                error"
     )
-    path = os.path.join(outdir, block["name"] + suffix + ".txt")
+    reaction_dir = os.path.join(outdir, block["name"])
+    os.makedirs(reaction_dir, exist_ok=True)
+    path = os.path.join(reaction_dir, block["name"] + suffix + ".txt")
     np.savetxt(path, np.column_stack([grid, rate, err]),
                fmt=["%.6e", "%.6e", "%.6e"], header=header)
     return path
@@ -531,7 +541,9 @@ def write_analytic_file(block, grid, outdir, suffix=""):
         f"forward[T9] = {block['expr']}   uncertainty factor f = {block['f']:g}\n"
         f"T9                 rate                error"
     )
-    path = os.path.join(outdir, block["name"] + suffix + ".txt")
+    reaction_dir = os.path.join(outdir, block["name"])
+    os.makedirs(reaction_dir, exist_ok=True)
+    path = os.path.join(reaction_dir, block["name"] + suffix + ".txt")
     np.savetxt(path, np.column_stack([grid, rate, err]),
                fmt=["%.6e", "%.6e", "%.6e"], header=header)
     return path

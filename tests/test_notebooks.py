@@ -4,7 +4,7 @@ Notebook smoke test.
 Executes the two *fast* demonstration notebooks end-to-end with
 ``papermill`` and checks they run without raising:
 
-* ``AbundanceEvolution.ipynb`` -- small/medium/large solves, ~5 s total.
+* ``AbundanceEvolution.ipynb`` -- small/large(amax=8)/large solves, ~5 s total.
 * ``CompareSmallNetworks.ipynb`` -- two small-network solves (~4 s total).
 
 This is a regression guard against import-path bugs (the notebooks still

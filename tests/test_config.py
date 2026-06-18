@@ -82,21 +82,20 @@ def test_nuclides_NZ_values():
 
 def test_p_rate_keys_count():
     """``p_rxn``/``NP_delta_rxn`` carry one MCMC weight per *configured*
-    network's reaction (small/medium/large), not always the medium set --
+    network's reaction (small/large±amax), not always the full large set --
     see the "Corrected bug on MC" fix in ``PyPRConfig.__init__``, which reads
     ``load_reaction_names(self.data_dir, self.network)`` rather than the
-    hardcoded ``_REACTIONS_MEDIUM`` list."""
-    import re
-    from pyprimat.network_data import _REACTIONS_MEDIUM, load_reaction_names
+    hardcoded ``_REACTIONS_LARGE`` list."""
+    from pyprimat.network_data import load_network
 
     cfg = PyPRConfig()  # default network="small" -> 12 reactions
     assert cfg.network == "small"
     assert len(cfg.p_rxn) == 12
 
-    cfg_medium = PyPRConfig({"network": "medium"})
-    bare_names = [re.split(r'[, ]+', entry, maxsplit=1)[0]
-                   for entry in load_reaction_names(cfg_medium, "medium")]
-    assert len(cfg_medium.p_rxn) == len(bare_names) == len(_REACTIONS_MEDIUM) == 67
+    cfg_amax8 = PyPRConfig({"network": "large", "amax": 8})
+    net_amax8 = load_network(cfg_amax8, era="LT")
+    n_thermonuclear = len(net_amax8.names) - 1  # exclude the prepended n__p
+    assert len(cfg_amax8.p_rxn) == n_thermonuclear == 67
 
 
 def test_physical_constants_positive():

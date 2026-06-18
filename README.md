@@ -13,7 +13,7 @@ always agree on results for the same configuration:
    the full `pyprimat.config.DEFAULT_PARAMS` surface is available.
 2. **The `pyprimat` command-line tool** — a quick one-liner for the most
    commonly varied parameters, e.g. `pyprimat --Omegabh2 0.02242 --network
-   medium` (see [Command-line interface](#command-line-interface)).
+   large --amax 8` (see [Command-line interface](#command-line-interface)).
 3. **The `pyprimat-gui` graphical interface** — a browser-based app with a
    grouped parameter form, an interactive abundance-evolution plot, and a
    final-abundances/ratios panel (see [Graphical interface](#graphical-interface-gui)).
@@ -92,25 +92,27 @@ The `pyprimat` console script wraps the same "build a `params` dict and call
 any Python:
 
 ```bash
-pyprimat --Omegabh2 0.02242 --network medium
+pyprimat --Omegabh2 0.02242 --network large --amax 8
 ```
 
 ```
-Neff     = 3.04397730
-YP (BBN) = 0.24691155
-YP (CMB) = 0.24558556
-D/H      = 2.4381479e-05
-He3/H    = 1.0387101e-05
-Li7/H    = 5.489582e-10
---- running time: 1.22 seconds ---
+Neff       = 3.04397730
+YP (BBN)   = 0.24699808
+YP (CMB)   = 0.24567178
+D/H        = 2.4365389e-05
+He3/H      = 1.0397042e-05
+He3/He4    = 1.2677615e-04
+Li7/H      = 5.501865e-10
+Li6/Li7    = 1.418945e-05
+--- running time: 3.67 seconds ---
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--Omegabh2 VALUE` | Baryon density Ω_b h² (default: 0.022425) |
 | `--DeltaNeff VALUE` | Extra relativistic degrees of freedom (default: 0) |
-| `--network {small,medium,large}` | Nuclear reaction network (default: small) |
-| `--amax A` | With `--network large`, drop reactions involving any nuclide with mass number > A (integer > 7) |
+| `--network {small,small_parthenope,large}` | Nuclear reaction network (default: small) |
+| `--amax A` | Drop reactions involving any nuclide with mass number > A (integer >= 1); applies to any `--network` |
 | `--numerical_precision RTOL` | `solve_ivp` relative tolerance (default: 1e-7) |
 | `--json` | Print the full results dict as JSON instead of the short summary |
 | `--verbose` | Enable PyPRIMAT's internal progress messages (timings, cache hits, ...) |
@@ -139,11 +141,12 @@ python -m pyprimat.gui.launcher
 
 The app mirrors a single CLI/script run:
 
-- **Sidebar** — a parameter form grouped into *Cosmology*, *Network*,
-  *Precision*, *Physics* and *Output* sections (plus an *Advanced* expander
-  covering the full `pyprimat.config.DEFAULT_PARAMS` surface), an
-  *Uncertainty* expander with a **Quick MC uncertainty (30 samples)** toggle,
-  and a **Run BBN** button.
+- **Sidebar** — a parameter form grouped into *Cosmology*, *Nuclear
+  reactions* (network/amax + the "Import/Create custom network" popups) and
+  *Physics* (weak rates, plasma physics, nuclear QED corrections) sections,
+  plus a *Constants* expander for `GN`/`tau_n` and an *Uncertainty* expander
+  with a **Quick MC uncertainty (30 samples)** toggle, and a **Run BBN**
+  button.
 - **Final abundances tab** — the standard ratios (`Neff`, `YP` (BBN/CMB),
   `D/H`, `³He/H`, `³He/⁴He`, `⁷Li/H`) as metric cards, a sortable table of
   every tracked nuclide's final abundance, and a download button for an
@@ -168,7 +171,7 @@ the full design.
 |-----------|---------|-------------|
 | `Omegabh2` | 0.022425 | Baryon density |
 | `DeltaNeff` | 0.0 | Extra relativistic degrees of freedom |
-| `network` | `"small"` | `"small"` (12 reactions) / `"medium"` (62) / `"large"` (~433). |
+| `network` | `"small"` | `"small"` (12 reactions) / `"small_parthenope"` (12, Parthenope 3.0 tables) / `"large"` (~429), optionally restricted via `amax`. |
 | `numerical_precision` | 1e-7 | ODE solver rtol |
 | `sampling_temperature_per_decade` | 400 | Background grid points per decade of T |
 | `sampling_nTOp_per_decade` | 80 | n↔p rate grid points per decade of T |
@@ -256,9 +259,10 @@ When `output_time_evolution=True`, a TSV file is written with columns:
 
 `Nheating` is included only for `incomplete_decoupling=True` (a real NEVO
 heating table). `[abundances]` is one `Y<species>` column per nuclide of the
-chosen network (8 / 12 / ~59 for small/medium/large). `[nuclear rates]`
-(`output_rates_time_evolution=True`) is available for small/medium only; it is
-omitted (with a printed note) for `network="large"`.
+chosen network (8 for small/small_parthenope, ~59 for large, fewer with an
+`amax` cutoff). `[nuclear rates]` (`output_rates_time_evolution=True`) is
+available for small/small_parthenope only; it is omitted (with a printed
+note) for `network="large"`.
 
 ## Architecture
 
@@ -275,8 +279,9 @@ pyprimat/                    Core package
 rates/
   plasma/                QED corrections pressure tables
   nuclear/
-    tables/              Per-reaction rate tables (.txt)
-    networks/            Network list files: small.txt, medium.txt, large.txt, …
+    tables/              Per-reaction rate tables, one folder per reaction:
+                           tables/<name>/<name>.txt (+ sibling alternate tables)
+    networks/            Network list files: small_parthenope.txt, large.txt, …
     data/                nuclides.csv, reactions_large.csv, detailed_balance.csv
   weak/                  Pre-tabulated n↔p forward/backward rates
   NEVO/                  Non-instantaneous decoupling table
@@ -288,19 +293,33 @@ generate_rates/    Offline one-off generator (run only to refresh the
 
 ### Networks
 
-Three networks are available via the `network` flag:
+Two named networks (plus a Parthenope-rates variant of the small one) are
+available via the `network` flag; `amax` (any positive integer) further
+restricts *any* of them to reactions whose nuclides all have mass number
+A ≤ amax:
 
 | `network` | Reactions | Nuclides | Notes |
 |-----------|-----------|----------|-------|
 | `"small"`  | 12  | 8  | the key reactions; fastest |
-| `"medium"` | 62  | 12 | the standard full network |
-| `"large"`  | ~433 | ~59 | from the AC2024 compilation; LT era only |
+| `"small_parthenope"` | 12 | 8 | same reactions, Parthenope 3.0 rate tables (comparison runs) |
+| `"large"`  | ~429 | ~59 | from the AC2024 compilation; LT era only |
+| `"large"`, `amax=8` | 68 | 12 | the old "medium" network's exact equivalent |
+| `"large"`, `amax=2` | 3 | 3 | the old "deuterium" network's equivalent (n↔p + n_p__d_g + p_p_n__d_p) |
 
-All three share the HT (n↔p) and MT eras (the MT era always uses a fixed
-18-reaction subset, too stiff to run the full network); only the LT reaction set
-grows with `network`. The light-element abundances of the large network match the
-medium one to ≲1e-4; its heavy-nuclide tail (B, C, N, O, …) is approximate. See
-`notebooks/AbundanceEvolution.ipynb` for evolution plots of all three.
+All networks share the HT (n↔p) and MT eras (the MT era always uses a fixed
+18-reaction subset, too stiff to run the full network); only the LT reaction
+set is filtered by `network`/`amax`. The light-element abundances of the full
+large network match the `amax=8` restriction to ≲1e-4; its heavy-nuclide tail
+(B, C, N, O, …) is approximate. See `notebooks/AbundanceEvolution.ipynb` for
+evolution plots.
+
+### Custom networks (GUI)
+
+The `pyprimat-gui` sidebar's "Nuclear reactions" group offers **"Create
+custom network"** (a popup to start from any named network, toggle reactions
+in/out by mass-number category, and substitute or upload alternate rate
+tables) and **"Import custom network"** (re-load a previously saved
+`.zip`). See `GUI.md` for the full design.
 
 ## Cobaya / MCMC interface
 
