@@ -223,6 +223,20 @@ def _available_networks():
     return names
 
 
+def _network_label(network):
+    """Return ``"<network> (<n>)"`` for display in the selectbox, ``<n>`` being
+    the reaction count.
+
+    ``load_reaction_names`` already special-cases 'small' (no file on disk,
+    just the hard-coded :data:`ORDER_SMALL`/``_KEY12_REACTIONS`` list) and
+    'large' (filtered by ``amax`` via ``PyPRConfig``), so it is the single
+    source of truth for the count -- counting lines in the network's own
+    ``.txt`` file would under-count both of those.
+    """
+    n = len(load_reaction_names(PyPRConfig({"network": network}), network))
+    return f"{network} ({n})"
+
+
 def _widget_for(key, label, help_text):
     """Render a single widget for ``key``, typed from its default value.
 
@@ -235,7 +249,8 @@ def _widget_for(key, label, help_text):
     if key == "network":
         options = _available_networks()
         index = options.index(default) if default in options else 0
-        return st.selectbox(label, options, index=index, help=help_text, key=key)
+        return st.selectbox(label, options, index=index, help=help_text, key=key,
+                             format_func=_network_label)
 
     if isinstance(default, bool):
         return st.toggle(label, value=default, help=help_text, key=key)

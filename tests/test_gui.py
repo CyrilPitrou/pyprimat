@@ -111,6 +111,13 @@ def test_available_networks_includes_small_and_large():
     assert "medium" in networks
 
 
+def test_network_label_appends_reaction_count():
+    """The selectbox shows e.g. 'small (12)'/'deuterium (1)' so users can
+    gauge a network's size before picking it."""
+    assert params_form._network_label("small") == "small (12)"
+    assert params_form._network_label("deuterium") == "deuterium (1)"
+
+
 # ---------------------------------------------------------------------------
 # End-to-end: AppTest drives the Streamlit script without a browser
 # ---------------------------------------------------------------------------
