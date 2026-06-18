@@ -39,6 +39,38 @@ def test_nuclides_keys():
     assert expected_subset.issubset(set(cfg.Nuclides.keys()))
 
 
+def test_p_rxn_typo_warns():
+    """A p_<rxn> override whose reaction name isn't in the network must warn.
+
+    Before this check existed, a typo'd reaction name (e.g. a stray
+    underscore, or a name from a different network) was silently accepted: it
+    became a no-op dict entry in cfg.p_rxn with no signal that the rate
+    variation the caller asked for was never actually applied.
+    """
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        PyPRConfig({"p_not_a_real_reaction": 0.5})
+    assert any("p_not_a_real_reaction" in str(x.message) for x in w)
+
+
+def test_NP_delta_rxn_typo_warns():
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        PyPRConfig({"NP_delta_not_a_real_reaction": 0.5})
+    assert any("NP_delta_not_a_real_reaction" in str(x.message) for x in w)
+
+
+def test_p_rxn_valid_reaction_does_not_warn():
+    """A genuine reaction name (from the small network) must not warn."""
+    cfg = PyPRConfig()
+    rxn = next(iter(cfg.p_rxn))
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        cfg2 = PyPRConfig({f"p_{rxn}": 0.3})
+    assert not any(rxn in str(x.message) for x in w)
+    assert getattr(cfg2, f"p_{rxn}") == pytest.approx(0.3)
+
+
 def test_nuclides_NZ_values():
     cfg = PyPRConfig()
     assert cfg.Nuclides["He4"] == [2, 2]

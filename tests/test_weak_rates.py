@@ -431,3 +431,39 @@ def test_recomputed_rates_match_cached():
         for cached, fresh in ((r_cached.background.weak_nTOp_frwrd_raw, r_fresh.background.weak_nTOp_frwrd_raw),
                               (r_cached.background.weak_nTOp_bkwrd_raw, r_fresh.background.weak_nTOp_bkwrd_raw)):
             assert fresh(T_K) == pytest.approx(cached(T_K), rel=2e-3)
+
+
+def test_setup_fd_impls_rewraps_on_numba_installed_change():
+    """Regression test: _setup_fd_impls must re-wrap when numba_installed flips.
+
+    It used to latch on a one-shot boolean (``_fd_impls_initialized``), so a
+    second call -- e.g. from a second PyPRConfig with the opposite
+    numba_installed value -- was a silent no-op: whichever variant (jitted or
+    plain Python) got set up *first* in the process stuck around forever,
+    regardless of what later callers asked for. _setup_fd_impls now tracks
+    the actual last-applied value (``_fd_impls_numba``) and always rebuilds
+    from the pristine pure-Python implementations, so this is idempotent in
+    either direction. Numerical results are identical either way (see
+    test_FD2_between_zero_and_one etc.); this test only checks *which*
+    implementation (jitted vs plain) is installed, via the wrapped function's
+    type -- a numba CPUDispatcher vs an ordinary Python function.
+    """
+    pytest.importorskip("numba")
+    from numba.core.registry import CPUDispatcher
+
+    # Start from a known state, then flip numba_installed back and forth and
+    # check the module-level FD_* names track it each time (not just once).
+    wr._setup_fd_impls(False)
+    assert not isinstance(wr.FD_nu3, CPUDispatcher)
+
+    wr._setup_fd_impls(True)
+    assert isinstance(wr.FD_nu3, CPUDispatcher)
+    assert isinstance(wr.FD2, CPUDispatcher)
+
+    wr._setup_fd_impls(False)
+    assert not isinstance(wr.FD_nu3, CPUDispatcher)
+    assert not isinstance(wr.FD2, CPUDispatcher)
+
+    # Restore numba=True so later tests in this session (most fixtures use
+    # the real numba_installed autodetection) see the JIT-compiled versions.
+    wr._setup_fd_impls(True)

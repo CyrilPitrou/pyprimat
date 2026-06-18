@@ -189,17 +189,19 @@ def conservation_residual(reactants, products):
 
 
 # ---------------------------------------------------------------------------
-# Detailed balance, reusing PyPRIMAT's validated physics
+# Detailed balance (same physics as pyprimat.network_data.compute_detailed_
+# balance_coefficients, reimplemented standalone here so this offline
+# generator has no runtime dependency on a live PyPRConfig instance)
 # ---------------------------------------------------------------------------
 class _DBConfig:
     """Minimal stand-in for ``PyPRConfig`` exposing exactly what
-    :func:`pyprimat.nuclear_data.detailed_balance` reads: the nuclide property dicts
+    :func:`nuclear_data.detailed_balance` reads: the nuclide property dicts
     (built here for the *whole* large network) and the fundamental constants
     (copied verbatim from ``pyprimat.constants.CONST``, the frozen single
     source of truth -- avoids instantiating a full, throwaway ``PyPRConfig``
     just to read seven numbers; see IDEAS.md/IMPROVEMENTS.md #5).  This lets the
-    offline generator reuse the same, already-validated detailed-balance code
-    that PyPRIMAT uses for its 62 reactions, but over an arbitrary nuclide set."""
+    offline generator compute detailed balance over an arbitrary nuclide set
+    without needing a full PyPRConfig."""
 
     def __init__(self, nuclide_table):
         from pyprimat.constants import CONST
@@ -215,7 +217,7 @@ def make_detailed_balance(nuclide_table):
 
     ``reactants``/``products`` are token lists (any spelling); photons and
     leptons are dropped, the rest canonicalised, and the result handed to
-    PyPRIMAT's :func:`pyprimat.nuclear_data.detailed_balance`.  ``Q_keV`` is the
+    :func:`nuclear_data.detailed_balance`.  ``Q_keV`` is the
     energy released (positive = exothermic).  Reactions that emit a lepton
     (decays) have no reverse rate and must not be passed here.
     """

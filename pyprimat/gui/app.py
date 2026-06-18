@@ -245,11 +245,13 @@ def main():
             t0 = time.time()
             run, time_evolution_tsv, background_tsv = _solve(params_items)
             elapsed = time.time() - t0
-    except Exception as exc:
+    except (ValueError, RuntimeError) as exc:
         # PyPRConfig validates e.g. `amax`/`network` and the
         # spectral_distortions/incomplete_decoupling/analytic_distortions
-        # flag combination, raising ValueError on bad input -- surface that
-        # (and any other failure) as a clean message rather than a traceback.
+        # flag combination, raising ValueError on bad input; nuclear_network
+        # raises RuntimeError for internal-state misuse. Surface those as a
+        # clean message rather than a traceback. Other exception types are
+        # genuine bugs and should propagate so they show up loudly.
         st.error(f"PyPRIMAT run failed: {exc}")
         return
 
