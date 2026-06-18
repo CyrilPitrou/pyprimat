@@ -1324,6 +1324,13 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
         # networks we only add SPECIES_MD members that actually appear in the
         # file's full reaction list (before the MT intersection), so we don't
         # carry columns for species that are completely absent from the network.
+        #
+        # The amax filter must apply here too: SPECIES_MD includes Li8 and B8
+        # (both A=8) and Li6/He6 (A=6).  With e.g. amax=7 the LT network drops
+        # the A>7 species, so carrying them through the MT era would leave the
+        # solver unable to map the MT-era columns onto the LT abundance layout
+        # by name (KeyError 'Li8').  Dropping them from the MT species set as
+        # well keeps the two eras consistent.
         file_nuclides: set[str] = {"n", "p"}
         for bn in bare_names:
             if bn in rxn_map:
@@ -1331,7 +1338,10 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
                 p, _ = _side_counts(rxn_map[bn][1])
                 file_nuclides.update(r)
                 file_nuclides.update(p)
-        active_nuclides.update(s for s in SPECIES_MD if s in file_nuclides)
+        active_nuclides.update(
+            s for s in SPECIES_MD
+            if s in file_nuclides and (amax is None or sum(nuc_NZ[s]) <= amax)
+        )
 
     species = _species_order(active_nuclides, nuc_order)
     idx = {s: i for i, s in enumerate(species)}

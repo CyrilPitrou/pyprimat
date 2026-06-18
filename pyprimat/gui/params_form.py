@@ -42,10 +42,10 @@ from pyprimat.network_data import load_network, load_reaction_names
 from pyprimat.gui import custom_rates
 from pyprimat.gui.panels import _equation_unicode
 
-# Networks small enough that unfolding every reaction into a checkbox +
-# uploader row is practical in the sidebar.  'large' (~428 reactions) is
-# excluded per the GUI design (see README/plan: "Large network excluded").
-_CUSTOMISABLE_MAX_REACTIONS = 120
+# Above this reaction count, rendering one checkbox + uploader row per reaction
+# is slow enough in Streamlit to warrant a heads-up caption (it still works).
+# 'large' (~428 reactions) trips this; small/medium stay well under it.
+_CUSTOMISABLE_REACTIONS_WARN = 120
 
 
 # ---------------------------------------------------------------------------
@@ -87,7 +87,7 @@ _FORM_METADATA = {
     "amax": (
         "Nuclear reactions", "Max mass number A (large only)",
         "With network='large', drop reactions involving any nuclide with mass "
-        "number A > amax (must be an integer > 7). Leave unchecked to keep all "
+        "number A > amax (must be an integer >= 7). Leave unchecked to keep all "
         "~59 nuclides.",
     ),
     "nuclear_qed_corrections": (
@@ -260,8 +260,9 @@ def _render_custom_reactions(params):
     Lets the user drop reactions from the selected network and/or substitute a
     rate table for any kept reaction, entirely in-memory (``st.session_state``
     / uploaded-file buffers -- nothing is written to disk, see the module's
-    plan/README). Excluded for ``network="large"`` (~428 reactions is too many
-    to unfold into checkboxes).
+    plan/README). Available for every network including ``network="large"``
+    (~428 reactions): the large list is rendered too, with a heads-up caption
+    that it may take a moment.
 
     Side effect: when active, sets ``params["custom_network"]`` to a
     JSON-encoded ``{"removed": [...], "replaced": {name: raw_text, ...}}``
@@ -277,13 +278,6 @@ def _render_custom_reactions(params):
     except Exception:
         return
     bare_names = [re.split(r'[, ]+', e, maxsplit=1)[0].strip() for e in reaction_entries]
-
-    if len(bare_names) > _CUSTOMISABLE_MAX_REACTIONS:
-        st.caption(
-            "Customise Reactions is not available for the large network "
-            f"({len(bare_names)} reactions)."
-        )
-        return
 
     def _reset_customisation_state():
         """Drop every uploaded file and removed/kept choice from memory."""
@@ -316,6 +310,15 @@ def _render_custom_reactions(params):
         st.session_state["_customise_was_on"] = False
         return
     st.session_state["_customise_was_on"] = True
+
+    # The large network unfolds into ~428 checkbox+uploader rows; warn that this
+    # is intentional and may take a moment to render, rather than leaving the
+    # user wondering why the sidebar grew so long.
+    if len(bare_names) > _CUSTOMISABLE_REACTIONS_WARN:
+        st.caption(
+            f"This network has {len(bare_names)} reactions; the list below may "
+            "take a moment to render."
+        )
 
     replaced_text = st.session_state.setdefault("_customise_replaced", {})
 
@@ -490,7 +493,7 @@ def render_sidebar_form():
                         )
                         if enabled:
                             params["amax"] = int(st.number_input(
-                                label, min_value=8, value=20, step=1,
+                                label, min_value=7, value=20, step=1,
                                 help=help_text, key="amax_value",
                             ))
                         continue
