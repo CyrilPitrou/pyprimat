@@ -261,6 +261,12 @@ def main():
                             disabled=up_to_date)
 
     if run_clicked:
+        # Instant feedback the moment the click registers -- everything
+        # below this (rebuilding the network, then solving it) can take a
+        # visible moment, especially for the large network, and a plain
+        # button click gives no indication by itself that anything is
+        # happening until the spinner further down actually appears.
+        st.toast("Running BBN…", icon="⏳")
         # Snapshot the current form state; subsequent reruns (e.g. from
         # ticking a nuclide checkbox) reuse this snapshot via
         # st.session_state rather than re-triggering a solve with whatever
@@ -301,8 +307,12 @@ def main():
     with tab_reactions:
         # Always built from the *current* sidebar state (not the last
         # completed run), so this tab reflects in-progress edits immediately.
+        # Loading every rate table for the large network is not instant, so
+        # this gets its own spinner too -- otherwise the tab would sit blank
+        # for a moment with no indication anything is happening.
         try:
-            preview = _build_preview(current_items)
+            with st.spinner("Loading network…"):
+                preview = _build_preview(current_items)
         except (ValueError, RuntimeError) as exc:
             st.error(f"Cannot build this network: {exc}")
         else:
