@@ -30,25 +30,30 @@ Source format (one block per reaction)::
          ...                                   (60 rows, grid 0.001..10)
 
 Output:
-  * ``pyprimat/rates/nuclear/tables/<name>/<name>.txt`` for every *non-decay*
-    reaction (one folder per reaction, ``<name>`` being the
-    ``<reactants>TO<products>``-derived bare name): a header line (``#``
-    comment, ignored by ``numpy.loadtxt``) recording the reaction, its
-    reference and its detailed-balance coefficients, then three columns
-    ``T9  rate  error`` on the 500-point grid.  Alternate-source variants
-    (``--suffix``, e.g. a Parthenope-extracted table) land as a sibling file
-    in the same per-reaction folder, e.g.
-    ``tables/n_p__d_g/n_p__d_g_parthenope3.0.txt``.
+  * ``pyprimat/rates/nuclear/tables/<name>/<name><suffix>.txt`` for every
+    *non-decay* reaction (one folder per reaction, ``<name>`` being the
+    ``<reactants>TO<products>``-derived bare name; ``<suffix>`` defaults to
+    ``"_primat"``, so the shipped PRIMAT-default table is e.g.
+    ``n_p__d_g_primat.txt``): a header line (``#`` comment, ignored by
+    ``numpy.loadtxt``) recording the reaction, its reference and its
+    detailed-balance coefficients, then three columns ``T9  rate  error`` on
+    the 500-point grid.  Alternate-source variants (a different ``--suffix``,
+    e.g. a Parthenope-extracted table) land as a sibling file in the same
+    per-reaction folder, e.g. ``tables/n_p__d_g/n_p__d_g_parthenope3.0.txt``.
   * ``pyprimat/rates/nuclear/tables/decays.txt`` for every radioactive-decay
     reaction (Bm/Bp on the products side): one row each with
     ``name  halflife_s  rate_s^-1  uncertainty  ref`` -- decay rates don't
     depend on T9, so a 500-row table per reaction would be redundant (see
-    :func:`write_decay_file`).
+    :func:`write_decay_file`). Always unsuffixed: ``--suffix`` never applies
+    to it, since ``network_data._load_decay_table`` hardcodes this filename.
   * ``<datadir>/detailed_balance.csv``: reaction, Q, alpha, beta, gamma for all
     reactions (the backward rate is ``alpha * T9**beta * exp(gamma/T9)`` times
     the forward rate).
   * ``pyprimat/rates/nuclear/networks/large.txt``: the reaction names from
-    ``<datadir>/reactions_large.csv``, one per line.
+    ``<datadir>/reactions_large.csv``, one per line, each paired with its
+    explicit filename (``name, name<suffix>.txt``) per ``load_network``'s
+    "never imply the filename" convention -- except decay reactions, written
+    bare (see above).
 
 The naming convention ``<reactants>TO<products>`` (e.g. ``n + p > d + g`` ->
 ``npTOdg``) cleanly separates the initial and final state, removing the
@@ -58,8 +63,7 @@ Usage::
 
     python generate_rates/convert_ac2024_rates.py \
         --input generate_rates/BBNRatesAC2024.dat \
-        --primat generate_rates/PRIMAT-Main.m \
-        --suffix "" 
+        --primat generate_rates/PRIMAT-Main.m
 """
 import argparse
 import math
@@ -111,6 +115,97 @@ def _to_float(token):
 
 def standard_grid():
     return np.logspace(np.log10(GRID_T9_MIN), np.log10(GRID_T9_MAX), GRID_NPTS)
+
+
+# ---------------------------------------------------------------------------
+# Reference-tag expansion
+#
+# BBNRatesAC2024.dat and PRIMAT-Main.m tag each rate's source with a short,
+# cryptic key (e.g. ``And06``, ``CF88``). _REFERENCE_NAMES maps every such key
+# to a human-readable citation, so the headers written into the per-reaction
+# rate tables (write_reaction_file, write_analytic_file) and decays.txt
+# (write_decay_file) name the actual source instead of the bare tag.  Compound
+# tags joining two references with '&' (e.g. ``CF88&MF89``, ``TUNL&Cam08``)
+# are expanded part-by-part by expand_ref below; tags with no entry here
+# (e.g. the cross-reference marker ``=li7pa``) are passed through unchanged.
+# ---------------------------------------------------------------------------
+_REFERENCE_NAMES = {
+    "NACRE": "NACRE, Angulo et al. 1999",
+    "NACRE II": "NACRE, Xu et al. 2010, 2011",
+    "DAACV04": "Descouvemont et al. 2004",
+    "ILCCF10": "Iliadis et al. 2010",
+    "CF88": "Caughlan& Fowler 1988",
+    "MF89": "Malaney& Fowler 1989",
+    "Boy93": "Boyd et al. 1993",
+    "Bal95": "Balbes et al. 1995",
+    "Hei98": "Heil et al. 1998",
+    "Rau94": "Rauscher et al. 1994",
+    "Des99": "Descouvemont 1999",
+    "Bea01": "Beaumel et al. 2001",
+    "Des99Bea01": "Descouvemont 1999 & Beaumel et al. 2001",
+    "Tan03": "Tang et al. 2003",
+    "Tang03": "Tang et al. 2003",
+    "Wan91": "Wang et al. 1991",
+    "Efr96": "Efros et al. 1996",
+    "Wie87": "Wiescher et al. 1987",
+    "Bar97": "Bardayan& Smith 1997",
+    "Bar97C": "Bardayan& Smith 1997",
+    "Koe91": "Koehler& Graff 1991",
+    "And06": "Ando et al. 2006",
+    "Ser04": "Serpico et al. 2004",
+    "Wag69": "Wagoner 1969",
+    "Has09": "Hashimoto et al. 2009",
+    "Has09c": "Hashimoto et al. 2009",
+    "Wie89": "Wiescher et al. 1989",
+    "FK90": "Fukugita& Kajino 1990",
+    "Bru91": "Brune et al. 1991",
+    "Bec92": "Becchetti et al. 1992",
+    "Iga95": "Igashira et al. 1995",
+    "Cyb08": "Cyburt& Davids 2008",
+    "Miz00": "Mizoi et al. 2000",
+    "Nag06": "Nagai et al. 2006",
+    "Men12": "Mendes et al. 2012",
+    "Kaw91": "Kawano et al. 1991",
+    "Cam08": "Camargo et al. 2008",
+    "Ili16": "Iliadis et al. 2016",
+    "Rij19": "Rijal et al. 2019",
+    "Gar21": "Gariazzo et al. 2021",
+    "Yeh22": "Yeh et al. 2022",
+    "Trezzi2017": "Trezzi et al. (Luna) 2017",
+    "Moscoso2021": "Moscoso et al. 2021",
+    # Not in the user-supplied list but heavily used by decays.txt -- names
+    # taken from the source comments right above _ANALYTIC_REACTIONS (Aud03 =
+    # the half-lives PRIMAT-Main.m hard-codes, sourced from Audi 2003; Nubase
+    # = the later NUBASE2020 half-lives used for the Decay-Time-era nuclides).
+    "Aud03": "Audi et al. 2003",
+    "Nubase": "NUBASE2020, Kondev et al. 2021",
+    "Gom17": "Gómez et al. 2017",
+    "deSouza19a": "de Souza et al. 2019",
+    "deSouza19b": "de Souza et al. 2019",
+    "deSouza2020": "de Souza et al. 2020",
+    "TALYS2": "TALYS2, Koning et al. 2023",
+    "Bar16": "Barbagallo et al. 2016",
+    "CGXSV12": "Coc et al. 2012",
+}
+
+
+def expand_ref(ref):
+    """Expand a (possibly compound) AC2024/PRIMAT-Main.m reference tag.
+
+    A plain tag (e.g. ``"CF88"``) is looked up directly in
+    :data:`_REFERENCE_NAMES`. A compound tag joining several references with
+    ``'&'`` (e.g. ``"CF88&MF89"``) is split and each part expanded
+    independently, then rejoined with ``" & "``. Unrecognised tags (no entry
+    in the dict -- e.g. the AC2024 cross-reference marker ``"=li7pa"``) are
+    returned unchanged so nothing is silently lost.
+    """
+    if not ref:
+        return ref
+    if ref in _REFERENCE_NAMES:
+        return _REFERENCE_NAMES[ref]
+    if "&" in ref:
+        return " & ".join(_REFERENCE_NAMES.get(part, part) for part in ref.split("&"))
+    return ref
 
 
 # ---------------------------------------------------------------------------
@@ -255,7 +350,7 @@ def write_reaction_file(block, grid, outdir, suffix=""):
         err  = interp_loglog(block["T9"], block["error"], grid)
     header = (
         f"{' + '.join(block['reactants'])} > {' + '.join(block['products'])}"
-        f"   [{block['name']}]   ref={block['ref']}\n"
+        f"   [{block['name']}]   ref={expand_ref(block['ref'])}\n"
         f"detailed balance: alpha={block['alpha']:.6g} beta={block['beta']:.6g} "
         f"gamma={block['gamma']:.6g}  Q={block['Q']:.6g}\n"
         f"T9                 rate                error"
@@ -264,7 +359,7 @@ def write_reaction_file(block, grid, outdir, suffix=""):
     os.makedirs(reaction_dir, exist_ok=True)
     path = os.path.join(reaction_dir, block["name"] + suffix + ".txt")
     np.savetxt(path, np.column_stack([grid, rate, err]),
-               fmt=["%.6e", "%.6e", "%.6e"], header=header)
+               fmt=["%.6e", "%.6e", "%.6e"], delimiter="   ", header=header)
     return path
 
 
@@ -537,7 +632,7 @@ def write_analytic_file(block, grid, outdir, suffix=""):
     err = block["f"] * np.ones_like(grid)
     header = (
         f"{' + '.join(block['reactants'])} > {' + '.join(block['products'])}"
-        f"   [{block['name']}]   ref={block['ref']}  (analytic, PRIMAT-main.m)\n"
+        f"   [{block['name']}]   ref={expand_ref(block['ref'])}\n"
         f"forward[T9] = {block['expr']}   uncertainty factor f = {block['f']:g}\n"
         f"T9                 rate                error"
     )
@@ -545,7 +640,7 @@ def write_analytic_file(block, grid, outdir, suffix=""):
     os.makedirs(reaction_dir, exist_ok=True)
     path = os.path.join(reaction_dir, block["name"] + suffix + ".txt")
     np.savetxt(path, np.column_stack([grid, rate, err]),
-               fmt=["%.6e", "%.6e", "%.6e"], header=header)
+               fmt=["%.6e", "%.6e", "%.6e"], delimiter="   ", header=header)
     return path
 
 
@@ -598,7 +693,7 @@ def write_decay_file(decay_blocks, outdir, suffix=""):
         # block["rate"] is T9-independent for decays; evaluate at any T9.
         rate = float(np.broadcast_to(blk["rate"](np.array(1.0)), ()))
         halflife_s = math.log(2.0) / rate
-        ref = blk["ref"] or "-"
+        ref = expand_ref(blk["ref"]) or "-"
         lines.append(f"{blk['name']:<16s} {halflife_s:14.6e} {rate:14.6e} "
                       f"{blk['f']:11g}  {ref}")
     path = os.path.join(outdir, "decays" + suffix + ".txt")
@@ -905,7 +1000,7 @@ def unified_reactions(tab_blocks, ana_blocks):
     return list(merged.values())
 
 
-def write_network_files(reactions, tab_blocks, nubase_path, outdir):
+def write_network_files(reactions, tab_blocks, nubase_path, outdir, suffix="_primat"):
     """Write nuclides.csv, reactions_large.csv, detailed_balance.csv and
     large.txt, after the formal conservation check and a detailed-balance
     cross-check.
@@ -919,6 +1014,14 @@ def write_network_files(reactions, tab_blocks, nubase_path, outdir):
       4. Emit the three CSVs PyPRIMAT reads at run time, plus
          ``LARGE_NETWORK_FILE`` (the large-network reaction list, i.e. the
          ``name`` column of ``reactions_large.csv``).
+
+    ``suffix`` (default ``"_primat"``, matching the per-reaction rate files
+    written by :func:`write_reaction_file`/:func:`write_analytic_file`) is
+    appended to each non-decay reaction's filename in ``large.txt``, which
+    ``load_network`` (``pyprimat/network_data.py``) always spells out
+    explicitly rather than implying -- see CLAUDE.md's "Adding a new
+    reaction" section. Decay reactions (Bm/Bp) are written bare: their rate
+    lives in the shared, unsuffixed ``decays.txt``, not a per-reaction file.
     """
     from nuclide_table import (build_nuclide_table, conservation_residual,
                                make_detailed_balance, is_decay)
@@ -992,7 +1095,10 @@ def write_network_files(reactions, tab_blocks, nubase_path, outdir):
     os.makedirs(os.path.dirname(LARGE_NETWORK_FILE), exist_ok=True)
     with open(LARGE_NETWORK_FILE, "w") as f:
         for rxn in sorted_reactions:
-            f.write(f"{rxn['name']}\n")
+            if is_decay(rxn["reactants"], rxn["products"]):
+                f.write(f"{rxn['name']}\n")
+            else:
+                f.write(f"{rxn['name']}, {rxn['name']}{suffix}.txt\n")
 
     with open(os.path.join(outdir, "detailed_balance.csv"), "w") as f:
         f.write("reaction,Q_keV,alpha,beta,gamma\n")
@@ -1179,8 +1285,12 @@ def _parse_args(argv):
                    help="the NUBASE2020 evaluation (nuclide masses and spins)")
     p.add_argument("--datadir", default="pyprimat/rates/nuclear/data",
                    help="the directory for network structure files (.csv)")
-    p.add_argument("--suffix", default="",
-                   help="optional suffix for generated rate files")
+    p.add_argument("--suffix", default="_primat",
+                   help="suffix for generated per-reaction rate files (default "
+                        "'_primat', matching the explicit filenames written into "
+                        "small.txt/large.txt; pass '' for the legacy unsuffixed "
+                        "naming). Never applied to decays.txt, which always keeps "
+                        "its fixed, unsuffixed name (see _load_decay_table).")
     p.add_argument("--primat", default=None,
                    help="re-extract the analytic reactions from this PRIMAT-main.m "
                         "instead of using the hard-coded table (for verification)")
@@ -1243,7 +1353,10 @@ def _generate_analytic(args, grid):
         write_analytic_file(blk, grid, TABDIR, args.suffix)
     if decay_blocks:
         _validate_decay_halflives(decay_blocks, args.nubase)
-        write_decay_file(decay_blocks, TABDIR, args.suffix)
+        # decays.txt is always unsuffixed: network_data._load_decay_table
+        # hardcodes that filename, and the file is shared (one row per decay)
+        # rather than per-reaction, so args.suffix never applies to it.
+        write_decay_file(decay_blocks, TABDIR, "")
     print(f"built {len(ana_blocks)} analytic reactions from {source} "
           f"({len(decay_blocks)} decays -> decays.txt, "
           f"{len(other_blocks)} -> per-reaction tables)")
@@ -1280,7 +1393,7 @@ def main(argv=None):
     #    large.txt) that PyPRIMAT reads at run time to assemble the large
     #    network.
     reactions = unified_reactions(tab_blocks, ana_blocks)
-    write_network_files(reactions, tab_blocks, args.nubase, args.datadir)
+    write_network_files(reactions, tab_blocks, args.nubase, args.datadir, args.suffix)
 
 
 if __name__ == "__main__":

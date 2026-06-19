@@ -264,10 +264,13 @@ def _available_networks():
     'small' is PyPRIMAT's built-in default network and needs no file; the
     other choices are discovered from ``pyprimat/rates/nuclear/networks/*.txt``
     (see ``PyPRConfig.__init__``, which validates ``network`` against exactly
-    these files for any value other than 'small'). When a custom network is
-    active (built via "Create custom network" or restored via "Import custom
-    network"), its title is appended as a synthetic, display-only entry
-    (CUSTOMPOPUP.md §7.2) -- selecting any *other* entry here clears it.
+    these files for any value other than 'small'). Every custom network built
+    or imported *this session* (``_known_custom_networks``, not just the
+    currently-active one) is appended too, as a synthetic, display-only
+    entry (CUSTOMPOPUP.md §7.2): picking one directly from this dropdown
+    re-activates it, so switching to a real network and back to a previously
+    used custom one (e.g. to compare results) works without re-opening the
+    popup.
     """
     names = {"small"}
     try:
@@ -276,9 +279,9 @@ def _available_networks():
     except (FileNotFoundError, ModuleNotFoundError, NotADirectoryError):
         pass
     result = sorted(names)
-    active = st.session_state.get("_active_custom_network")
-    if active and active["title"] not in result:
-        result = result + [active["title"]]
+    for title in st.session_state.get("_known_custom_networks", {}):
+        if title not in result:
+            result.append(title)
     return result
 
 
@@ -287,10 +290,14 @@ def _network_label(network):
     the reaction count.
 
     ``load_reaction_names`` already special-cases 'small' (no file on disk,
-    just the hard-coded :data:`ORDER_SMALL`/``_KEY12_REACTIONS`` list); for the
-    active custom network's synthetic entry, the count comes straight from its
-    stored kept-reaction list instead (there is no on-disk file to read).
+    just the hard-coded :data:`ORDER_SMALL`/``_KEY12_REACTIONS`` list); for
+    any known custom network's synthetic entry, the count comes straight
+    from its stored kept-reaction list instead (there is no on-disk file to
+    read).
     """
+    known = st.session_state.get("_known_custom_networks", {})
+    if network in known:
+        return f"{network} ({len(known[network]['kept'])})"
     active = st.session_state.get("_active_custom_network")
     if active and active["title"] == network:
         return f"{network} ({len(active['kept'])})"
@@ -341,17 +348,131 @@ def _widget_for(key, label, help_text):
 # (CUSTOMPOPUP.md §5-§8)
 # ---------------------------------------------------------------------------
 
+_RESERVED_NETWORK_NAMES = {"small", "small_parthenope", "large"}
+
+
 def _sanitize_filename(title):
     """Turn a free-text network title into a safe zip/filename stem."""
     cleaned = re.sub(r'[^A-Za-z0-9_.-]+', '_', (title or "").strip())
     return cleaned.strip("_") or "custom"
 
 
+_NUCLIDE_NAME_RE = re.compile(r"^([A-Za-z]+)(\d+)$")
+
+
+def _group_nuclides_by_element(nuclides):
+    """One display line per element, isotopes grouped, e.g. ``"He3, He4, He6"``.
+
+    ``n``/``p`` (which don't fit the "<symbol><mass>" naming convention) are
+    kept together on their own leading line. Elements are ordered by their
+    lightest isotope's mass number, matching the mass-number category order
+    used throughout the rest of the dialog.
+    """
+    groups: dict[str, list[tuple[int, str]]] = {}
+    specials = []
+    for name in sorted(nuclides):
+        if name in ("n", "p"):
+            specials.append(name)
+            continue
+        m = _NUCLIDE_NAME_RE.match(name)
+        if not m:
+            specials.append(name)
+            continue
+        symbol, mass = m.group(1), int(m.group(2))
+        groups.setdefault(symbol, []).append((mass, name))
+    lines = []
+    if specials:
+        lines.append(", ".join(specials))
+    for symbol in sorted(groups, key=lambda s: min(mass for mass, _ in groups[s])):
+        isotopes = [n for _, n in sorted(groups[symbol])]
+        lines.append(", ".join(isotopes))
+    return lines
+
+
+def _render_evolved_nuclides_section():
+    """Foldable summary of every nuclide the currently-kept reactions touch.
+
+    Placed right after the "Decays" category: a quick sanity check of what
+    the ``amax``/per-reaction toggles above actually add up to, before
+    committing via "Apply and run BBN".
+    """
+    keep_map = st.session_state["_dialog_keep"]
+    kept = [n for n, is_kept in keep_map.items() if is_kept]
+    nuclides = {"n", "p"}
+    for name in kept:
+        try:
+            react, prod = reaction_stoichiometry(name)
+        except (ValueError, KeyError):
+            continue
+        nuclides.update(s for s in react if s in _cfg().Nuclides)
+        nuclides.update(s for s in prod if s in _cfg().Nuclides)
+    with st.expander(f"Show evolved nuclides ({len(nuclides)})", expanded=False):
+        for line in _group_nuclides_by_element(nuclides):
+            st.markdown(f"- {line}")
+
+
 def _category_nuclide_hint(cat):
     """E.g. ``", He3, t"`` for category 3 -- the nuclides newly unlocked there."""
-    names = sorted(s for s, (n, z) in PyPRConfig.Nuclides.items()
+    names = sorted(s for s, (n, z) in _cfg().Nuclides.items()
                    if n + z == cat and s not in ("n", "p"))
     return (", " + ", ".join(names)) if names else ""
+
+
+def _bump_dialog_gen():
+    """Force every per-reaction widget below to remount on the next render.
+
+    Streamlit widgets keep their *own* persisted value forever once a given
+    key has been used, regardless of any ``value=``/``index=`` passed on a
+    later render -- so mutating the backing ``_dialog_keep``/``_dialog_table_choice``
+    dicts directly (Select all/Deselect all, or rebuilding them when the base
+    network changes) would otherwise have no visible effect, since the widget
+    would just keep showing its own stale state. Embedding this counter in
+    every per-reaction widget key forces a fresh widget (which *does* read our
+    backing dict as its initial value) whenever we bump it.
+    """
+    st.session_state["_dialog_gen"] = st.session_state.get("_dialog_gen", 0) + 1
+
+
+@st.cache_resource(show_spinner=False)
+def _decay_rates():
+    """``{name: (rate_s, f, halflife_s, ref)}`` from ``tables/decays.txt``.
+
+    Backs the popup's dedicated "Decays" category (CUSTOMPOPUP.md follow-up):
+    a decay reaction has no per-reaction rate-table folder (its rate is a
+    single T9-independent row in the shared ``decays.txt``, see
+    :func:`pyprimat.network_data._load_decay_table`), so it must be told apart
+    from a genuinely tableless reaction.
+    """
+    from pyprimat.network_data import _load_decay_table
+    tables_dir = os.path.join(_cfg().data_dir, "rates", "nuclear", "tables")
+    return _load_decay_table(tables_dir)
+
+
+def _is_decay(name):
+    return name in _decay_rates()
+
+
+def _current_table_text(name):
+    """Best-effort raw text of the table currently selected for ``name``.
+
+    Backs each reaction row's "Show rate table" popup: prefers an uploaded
+    override, falls back to reading the chosen on-disk file.
+    """
+    added = st.session_state.get("_dialog_added", {})
+    if name in added:
+        return added[name]
+    choice = st.session_state.get("_dialog_table_choice", {}).get(name)
+    uploaded_for_name = st.session_state.get("_dialog_uploaded_tables", {}).get(name, {})
+    if choice in uploaded_for_name:
+        return uploaded_for_name[choice]
+    if choice:
+        path = os.path.join(_cfg().data_dir, "rates", "nuclear", "tables", name, choice)
+        try:
+            with open(path) as f:
+                return f.read()
+        except OSError:
+            return f"(could not read {choice})"
+    return "(no rate table for this reaction)"
 
 
 def _dialog_superset_entries(dialog_amax):
@@ -425,14 +546,23 @@ def _reset_dialog_reaction_state(base_network, dialog_amax):
     st.session_state["_dialog_table_choice"] = table_choice
     st.session_state["_dialog_uploaded_tables"] = uploaded
     st.session_state["_dialog_added"] = {}
+    st.session_state["_dialog_decay_override"] = {}
+    # Force every reaction-row widget to remount and read the dicts just
+    # rebuilt above -- otherwise the previous base network's toggle/table
+    # widget states (keyed by reaction name, which can repeat across
+    # networks) would silently stick around and the category list would
+    # appear unchanged.
+    _bump_dialog_gen()
 
 
 def _dialog_network_options():
-    """Named networks plus any custom network known this session (§7.4)."""
-    return _available_networks() + [
-        n for n in st.session_state.get("_known_custom_networks", {})
-        if n not in _available_networks()
-    ]
+    """Named networks plus any custom network known this session (§7.4).
+
+    ``_available_networks()`` already includes every known custom network
+    (not just the active one), so this is just an alias kept for the
+    dialog's own readability.
+    """
+    return _available_networks()
 
 
 def _dialog_network_label(name):
@@ -447,6 +577,10 @@ def _resolved_table_exists(name):
     if name in st.session_state.get("_dialog_added", {}):
         return True
     if name in st.session_state.get("_dialog_uploaded_tables", {}):
+        return True
+    if _is_decay(name):
+        # Always resolved: decays.txt supplies a shipped default rate even
+        # with no GUI override (see _dialog_to_custom_network).
         return True
     return bool(available_rate_tables(name, _cfg()))
 
@@ -472,27 +606,50 @@ def _dialog_kept_names():
 
 
 def _dialog_to_custom_network(kept_names):
-    """Build the ``{"removed", "replaced", "added"}`` dict from live dialog state."""
-    dialog_amax = (st.session_state.get("_dialog_amax_value")
-                   if st.session_state.get("_dialog_amax_enabled") else None)
-    superset = {_bare(e) for e in _dialog_superset_entries(dialog_amax)}
+    """Build the ``{"removed", "replaced", "added", "filenames"}`` dict from
+    live dialog state.
+
+    ``removed`` is computed against the *full, unfiltered* large-network
+    reaction list, not the dialog's own ``amax``-filtered view: the dialog's
+    "Limit A" only narrows which rows are shown/toggleable in the popup, it
+    does not express an intent to keep every reaction above that cutoff.
+    Using the filtered view here would silently leave every reaction the
+    user never even saw (anything above the dialog's amax) in the resulting
+    network -- it is neither in ``kept_names`` nor in a filtered ``removed``.
+
+    ``filenames`` (``{name: filename}``, one entry per ``replaced``/``added``
+    reaction that has a real on-disk or uploaded basename -- decay-rate
+    overrides have none, they're not file-backed) is an extra, optional key
+    threaded through ``UpdateNuclearRates``/``load_network`` purely so the
+    Reactions summary tab can show the actual filename instead of a blank
+    "File" column for a customised reaction (see ``network_data.py``'s
+    ``describe_reactions``).
+    """
+    superset = {_bare(e) for e in _dialog_superset_entries(None)}
     kept_set = set(kept_names)
     removed = sorted(superset - kept_set)
 
     table_choice = st.session_state.get("_dialog_table_choice", {})
     uploaded = st.session_state.get("_dialog_uploaded_tables", {})
     added = dict(st.session_state.get("_dialog_added", {}))
+    decay_overrides = st.session_state.get("_dialog_decay_override", {})
 
     cfg = _cfg()
     replaced = {}
+    filenames = {}
     for name in kept_names:
         if name in added:
+            filenames[name] = table_choice.get(name, f"{name} (uploaded)")
+            continue
+        if name in decay_overrides:
+            replaced[name] = custom_rates.decay_override_table_text(name, decay_overrides[name])
             continue
         choice = table_choice.get(name)
-        if choice is None or choice == f"{name}.txt":
+        if choice is None or choice == f"{name}_primat.txt":
             continue   # shipped default, nothing to override
         if choice in uploaded.get(name, {}):
             replaced[name] = uploaded[name][choice]
+            filenames[name] = choice
         else:
             # An on-disk alternate filename (e.g. a "*_parthenope3.0.txt"
             # sibling) -- load_network's custom_tables mechanism only knows
@@ -502,67 +659,131 @@ def _dialog_to_custom_network(kept_names):
                 with open(path) as f:
                     replaced[name] = f.read()
             except OSError:
-                pass
-    return {"removed": removed, "replaced": replaced, "added": added}
+                continue
+            filenames[name] = choice
+    return {"removed": removed, "replaced": replaced, "added": added, "filenames": filenames}
 
 
-def _kept_to_custom_network(kept, replaced):
-    """Build the ``{"removed", "replaced", "added"}`` dict from an imported zip.
+def _request_expander_open(expander_key):
+    """Ask the named ``st.expander`` to be open on the *next* render.
 
-    ``amax`` is re-derived purely from ``kept`` (CUSTOMPOPUP.md §7.1): the
-    heaviest category among ``kept`` reactions, treated as "no filter" once it
-    reaches :data:`AMAX_LARGE`.
+    Like the sidebar's "network" selectbox (see ``_pending_network_label``),
+    an expander's ``key=``-tracked open/closed state cannot be set directly
+    from inside a callback that runs *after* the expander has already been
+    instantiated this same script run (Select all/Deselect all's button is
+    rendered inside the expander it should keep open) -- so this stashes the
+    request for ``render_sidebar_form``/the dialog's top to apply just before
+    that expander is (re-)created.
     """
-    entries = load_reaction_names(_cfg(), "large")
-    bare_names = {_bare(e) for e in entries}
-    implied_amax = max((reaction_category(n) for n in kept), default=AMAX_LARGE)
-    if implied_amax >= AMAX_LARGE:
-        superset = bare_names
-    else:
-        superset = {n for n in bare_names if reaction_category(n) <= implied_amax}
-    kept_set = set(kept)
-    removed = sorted(superset - kept_set)
-    added = {n: replaced[n] for n in kept_set - bare_names if n in replaced}
-    true_replaced = {n: t for n, t in replaced.items() if n not in added}
-    return {"removed": removed, "replaced": true_replaced, "added": added}
+    st.session_state["_dialog_pending_open"] = expander_key
+
+
+def _kept_count(names, keep_map):
+    """Count of ``names`` currently toggled on, reading the *fresh* value.
+
+    On the rerun triggered by clicking a toggle inside this very category,
+    Streamlit already has the new value sitting in
+    ``st.session_state[widget_key]`` before our script body runs -- but
+    ``_dialog_keep[name]`` only gets updated later, as a side effect of
+    :func:`_render_reaction_row`/:func:`_render_decay_row` actually drawing
+    that row.  A category header's "n/total kept" count is computed *before*
+    its rows are drawn (the label has to be known up front to open the
+    ``st.expander``), so reading ``_dialog_keep`` there would show the
+    previous render's count -- always one click stale, which is exactly the
+    "always off by one" bug this guards against.  Checking the widget key
+    first (falling back to ``_dialog_keep`` for a name not yet rendered this
+    generation) picks up the just-clicked value instead.
+    """
+    gen = st.session_state["_dialog_gen"]
+    return sum(
+        1 for n in names
+        if st.session_state.get(f"_dialog_keep_{gen}_{n}", keep_map.get(n, False))
+    )
 
 
 def _render_category(cat, names):
     """One foldable mass-number category: select/deselect-all + reaction rows."""
-    with st.expander(f"Category {cat} (A <= {cat}{_category_nuclide_hint(cat)})",
-                     expanded=False):
+    keep_map = st.session_state["_dialog_keep"]
+    n_kept = _kept_count(names, keep_map)
+    label = f"Category {cat} (A <= {cat}{_category_nuclide_hint(cat)}) -- {n_kept}/{len(names)} kept"
+    expander_key = f"_dialog_expander_cat_{cat}"
+    with st.expander(label, key=expander_key):
         c1, c2 = st.columns(2)
         if c1.button("Select all", key=f"_dialog_selall_{cat}"):
             for n in names:
                 st.session_state["_dialog_keep"][n] = True
+            _bump_dialog_gen()
+            _request_expander_open(expander_key)
             st.rerun()
-        if c2.button("Deselect all", key=f"_dialog_deselall_{cat}"):
+        if c2.button("Unselect all", key=f"_dialog_deselall_{cat}"):
             for n in names:
                 st.session_state["_dialog_keep"][n] = False
+            _bump_dialog_gen()
+            _request_expander_open(expander_key)
             st.rerun()
         for name in names:
             _render_reaction_row(name)
 
 
+def _render_decay_category(names, decay_rates):
+    """Dedicated category for analytic Bm/Bp decay reactions.
+
+    These have no per-reaction rate-table folder (their rate is a single
+    T9-independent row in the shared ``decays.txt``), so they are pulled out
+    of the mass-number categories (where they used to show a misleading
+    "(no table)") into their own group with an editable decay-rate field.
+    """
+    keep_map = st.session_state["_dialog_keep"]
+    n_kept = _kept_count(names, keep_map)
+    label = f"Decays -- {n_kept}/{len(names)} kept"
+    expander_key = "_dialog_expander_decay"
+    with st.expander(label, key=expander_key):
+        c1, c2 = st.columns(2)
+        if c1.button("Select all", key="_dialog_selall_decay"):
+            for n in names:
+                st.session_state["_dialog_keep"][n] = True
+            _bump_dialog_gen()
+            _request_expander_open(expander_key)
+            st.rerun()
+        if c2.button("Unselect all", key="_dialog_deselall_decay"):
+            for n in names:
+                st.session_state["_dialog_keep"][n] = False
+            _bump_dialog_gen()
+            _request_expander_open(expander_key)
+            st.rerun()
+        for name in names:
+            _render_decay_row(name, decay_rates[name])
+
+
 def _render_reaction_row(name):
     """One reaction's toggle + equation + rate-table picker + uploader."""
     keep_map = st.session_state["_dialog_keep"]
+    gen = st.session_state["_dialog_gen"]
     default = keep_map.get(name, False)
     equation = _equation_for(name)
-    tables = available_rate_tables(name, _cfg()) + [
-        b for b in st.session_state["_dialog_uploaded_tables"].get(name, {})
-        if b not in available_rate_tables(name, _cfg())
-    ]
+    disk_tables = available_rate_tables(name, _cfg())
+    uploaded_for_name = set(st.session_state["_dialog_uploaded_tables"].get(name, {}))
+    if name in st.session_state["_dialog_added"]:
+        # A brand-new reaction from "Add new rate" stores its table in
+        # _dialog_added (not _dialog_uploaded_tables), keyed by reaction name
+        # rather than basename -- surface it here under its chosen basename
+        # (_dialog_table_choice[name], set at add time) so the picker doesn't
+        # show a misleading "(no table)" for it.
+        uploaded_for_name.add(st.session_state["_dialog_table_choice"].get(name, f"{name}.txt"))
+    tables = disk_tables + [b for b in uploaded_for_name if b not in disk_tables]
 
-    cols = st.columns([1, 4, 3, 2])
-    keep_map[name] = cols[0].toggle("keep", value=default, key=f"_dialog_keep_{name}",
+    cols = st.columns([1, 3, 3, 2, 2])
+    # `gen` is embedded in every widget key below so that Select all/Deselect
+    # all and a base-network change (both of which mutate the backing dicts
+    # directly) actually take effect -- see _bump_dialog_gen's docstring.
+    keep_map[name] = cols[0].toggle("keep", value=default, key=f"_dialog_keep_{gen}_{name}",
                                     label_visibility="collapsed")
     cols[1].markdown(equation)
     if len(tables) > 1:
         current = st.session_state["_dialog_table_choice"].get(name, tables[0])
         index = tables.index(current) if current in tables else 0
         choice = cols[2].selectbox(
-            "table", tables, key=f"_dialog_table_{name}", index=index,
+            "table", tables, key=f"_dialog_table_{gen}_{name}", index=index,
             label_visibility="collapsed",
         )
         st.session_state["_dialog_table_choice"][name] = choice
@@ -571,11 +792,19 @@ def _render_reaction_row(name):
         if tables:
             st.session_state["_dialog_table_choice"].setdefault(name, tables[0])
 
-    if cols[3].button("Add new rate table", key=f"_dialog_addtable_{name}"):
-        st.session_state[f"_dialog_show_uploader_{name}"] = True
-    if st.session_state.get(f"_dialog_show_uploader_{name}"):
-        up = st.file_uploader("New table", key=f"_dialog_upload_{name}",
-                              label_visibility="collapsed")
+    show_uploader_key = f"_dialog_show_uploader_{name}"
+    if cols[3].button("Add new rate table", key=f"_dialog_addtable_{gen}_{name}"):
+        # Fold/unfold: a second click on the same reaction folds the upload
+        # region back up again, e.g. if the user changed their mind.
+        st.session_state[show_uploader_key] = not st.session_state.get(show_uploader_key, False)
+    with cols[4].popover("Show rate table", use_container_width=True):
+        st.code(_current_table_text(name), language=None)
+
+    if st.session_state.get(show_uploader_key, False):
+        # Rendered on its own full-width line below the row (not squeezed
+        # into one of the narrow columns above), where the dropzone has room
+        # to render normally.
+        up = st.file_uploader(f"New rate table for {name}", key=f"_dialog_upload_{name}")
         if up is not None:
             raw = up.getvalue().decode()
             try:
@@ -586,21 +815,72 @@ def _render_reaction_row(name):
                 basename = up.name
                 st.session_state["_dialog_uploaded_tables"].setdefault(name, {})[basename] = raw
                 st.session_state["_dialog_table_choice"][name] = basename
-                st.session_state[f"_dialog_show_uploader_{name}"] = False
+                st.session_state[show_uploader_key] = False
+                # Force the table-choice selectbox above to remount so it
+                # actually shows the new table selected (see
+                # _bump_dialog_gen's docstring) instead of keeping whatever
+                # it displayed before this upload.
+                _bump_dialog_gen()
                 st.rerun()
 
 
+def _render_decay_row(name, info):
+    """One decay reaction's toggle + equation + editable decay rate.
+
+    Unlike :func:`_render_reaction_row`, there is no rate-table picker (a
+    decay reaction has a single rate, not a per-T9 table) -- instead a
+    ``number_input`` pre-filled from ``decays.txt`` lets the user override the
+    constant decay rate directly.
+    """
+    keep_map = st.session_state["_dialog_keep"]
+    gen = st.session_state["_dialog_gen"]
+    default = keep_map.get(name, False)
+    equation = _equation_for(name)
+    shipped_rate, _f_unc, halflife_s, ref = info
+    overrides = st.session_state["_dialog_decay_override"]
+    current_rate = overrides.get(name, shipped_rate)
+
+    cols = st.columns([1, 4, 3])
+    keep_map[name] = cols[0].toggle("keep", value=default, key=f"_dialog_keep_{gen}_{name}",
+                                    label_visibility="collapsed")
+    cols[1].markdown(f"{equation}  (T½={halflife_s:.4e} s, {ref})")
+    new_rate = cols[2].number_input(
+        "decay rate [1/s]", value=current_rate, format="%.6e",
+        key=f"_dialog_decay_rate_{gen}_{name}", label_visibility="collapsed",
+        help="Constant (T-independent) decay rate = log(2) / half-life "
+             "[s⁻¹]. Editing this overrides the shipped decays.txt value.",
+    )
+    if new_rate != shipped_rate:
+        overrides[name] = new_rate
+    else:
+        overrides.pop(name, None)
+
+
 def _render_add_rate_section(dialog_amax, all_entries):
-    """"Add new rate" pop-up: a brand-new reaction not in the current selection.
+    """"Add new rate": a brand-new reaction not in the current selection.
 
     Two checks beyond the live stoichiometry/conservation validation already
     done by :func:`custom_rates.validate_new_reaction`: the name must not
     already exist in the current selection, and it must not exceed the
     dialog's active ``amax`` -- checked in that order (cheap/no-upload-needed
     check first) before requiring the rate-table upload.
+
+    Uses a plain toggled container rather than ``st.popover``: a popover's
+    open/closed state cannot be set programmatically, so a successful
+    "Add reaction" click could not dismiss it; this flag-controlled container
+    can be collapsed (and is, on success) like any other widget.
     """
     st.divider()
-    with st.popover("Add new rate", use_container_width=True):
+    if st.button("Add new rate", key="_dialog_add_rate_open_btn"):
+        st.session_state["_dialog_add_rate_open"] = True
+    if not st.session_state.get("_dialog_add_rate_open"):
+        return
+
+    with st.container(border=True):
+        st.caption(
+            "Add a reaction that need not be in this network (or in "
+            "PyPRIMAT's catalog at all). Its stoichiometry is read from the name."
+        )
         name = st.text_input("Reaction name", key="_dialog_add_name",
                              placeholder="He3_d__He4_p")
         parsed_ok = False
@@ -613,7 +893,9 @@ def _render_add_rate_section(dialog_amax, all_entries):
                 parsed_ok = True
                 st.success(f"Parsed as: {eq}")
         upload = st.file_uploader("Rate table", key="_dialog_add_table")
-        if st.button("Add reaction", key="_dialog_add_submit", disabled=not parsed_ok):
+        cols = st.columns(2)
+        if cols[0].button("Add reaction", key="_dialog_add_submit",
+                          disabled=not parsed_ok, use_container_width=True):
             bare = name.strip()
             existing = {_bare(e) for e in all_entries} | set(st.session_state["_dialog_added"])
             if bare in existing:
@@ -641,29 +923,45 @@ def _render_add_rate_section(dialog_amax, all_entries):
             st.session_state["_dialog_added"][bare] = raw
             st.session_state["_dialog_keep"][bare] = True
             st.session_state["_dialog_table_choice"][bare] = upload.name
+            st.session_state["_dialog_add_rate_open"] = False
+            st.rerun()
+        if cols[1].button("Cancel", key="_dialog_add_cancel", use_container_width=True):
+            st.session_state["_dialog_add_rate_open"] = False
             st.rerun()
 
 
 def _render_dialog_footer(params, title, base_network, dialog_amax):
-    """"Save custom network" (download) + the very large "Apply and run BBN"."""
+    """Direct "Download network details" zip + "Apply and run BBN", side by side.
+
+    No intermediate "Save" click: the zip is built eagerly from the current
+    toggle/table state on every render, so the download button is always
+    immediately ready (the same amount of work an explicit "Save" button
+    used to gate, just done a render earlier).
+    """
     st.divider()
     kept_names = _dialog_kept_names()
+    custom_network = _dialog_to_custom_network(kept_names)
+    safe_title = _sanitize_filename(title)
+    title_reserved = title.strip() in _RESERVED_NETWORK_NAMES
 
-    if st.button("Save custom network", use_container_width=True, key="_dialog_save"):
-        custom_network = _dialog_to_custom_network(kept_names)
+    cols = st.columns(2)
+    try:
         zip_bytes = custom_rates.export_zip(
-            _cfg(), custom_network, kept_names, network_filename=_sanitize_filename(title))
-        st.session_state["_dialog_zip_bytes"] = zip_bytes
-    if st.session_state.get("_dialog_zip_bytes") is not None:
-        st.download_button(
-            f"Download {title}.zip", data=st.session_state["_dialog_zip_bytes"],
-            file_name=f"{_sanitize_filename(title)}.zip", mime="application/zip",
-            key="_dialog_download", use_container_width=True,
+            _cfg(), custom_network, kept_names, network_filename=safe_title)
+    except Exception as exc:
+        cols[0].error(f"Could not build zip: {exc}")
+    else:
+        cols[0].download_button(
+            f"Download network details ({safe_title}.zip)", data=zip_bytes,
+            file_name=f"{safe_title}.zip", mime="application/zip",
+            key="_dialog_download", use_container_width=True, disabled=title_reserved,
+            help="Save this customisation as a re-importable .zip "
+                 "(networks/<title>.txt + tables/<name>/<filename> for "
+                 "every kept reaction).",
         )
 
-    if st.button("Apply and run BBN", type="primary", use_container_width=True,
-                 key="_dialog_apply"):
-        custom_network = _dialog_to_custom_network(kept_names)
+    if cols[1].button("Apply and run BBN", type="primary", use_container_width=True,
+                      key="_dialog_apply", disabled=title_reserved):
         new_params = dict(params)
         new_params["network"] = "large"
         new_params.pop("amax", None)
@@ -676,6 +974,7 @@ def _render_dialog_footer(params, title, base_network, dialog_amax):
         st.session_state["_known_custom_networks"][title] = {
             "kept": kept_names,
             "tables": {**custom_network.get("replaced", {}), **custom_network.get("added", {})},
+            "custom_network": custom_network,
         }
         # Mirror app.py's "Run BBN" click handler (the bottom of app.main()
         # re-solves unconditionally from these session_state keys on every
@@ -691,30 +990,90 @@ def _render_dialog_footer(params, title, base_network, dialog_amax):
         # render_sidebar_form apply it at the very top of the *next* run.
         st.session_state["_pending_network_label"] = title
         st.session_state["_show_custom_dialog"] = False
-        st.session_state["_dialog_zip_bytes"] = None
         st.rerun()
 
 
-@st.dialog("Create custom network", width="large")
+def _on_custom_dialog_dismiss():
+    """Clear the "open" flag when the user dismisses the dialog via its own
+    "x"/Esc/click-outside (rather than our own buttons).
+
+    Without this, dismissing the dialog that way leaves ``_show_custom_dialog``
+    stuck ``True`` (Streamlit gives no other signal for it), so *any* later
+    full-script rerun -- e.g. changing an unrelated sidebar number -- would
+    see the flag still set and pop the dialog right back open.
+    """
+    st.session_state["_show_custom_dialog"] = False
+
+
+def _on_import_dialog_dismiss():
+    st.session_state["_show_import_dialog"] = False
+
+
+@st.dialog("Create custom network", width="large", on_dismiss=_on_custom_dialog_dismiss)
 def _custom_network_dialog(params):
     st.session_state.setdefault("_dialog_title", "custom")
-    title = st.text_input("Network title", key="_dialog_title")
+    st.session_state.setdefault("_dialog_gen", 0)
+    st.session_state.setdefault("_dialog_decay_override", {})
+
+    # Apply a pending "keep this category expander open" request from a
+    # Select all/Deselect all click on the *previous* run -- see
+    # _request_expander_open's docstring for why this can't be done directly
+    # from inside the button's own click handler.
+    pending_open = st.session_state.pop("_dialog_pending_open", None)
+    if pending_open is not None:
+        st.session_state[pending_open] = True
+
+    # Narrow columns + a trailing spacer keep these inputs from stretching
+    # across the full "large"-width dialog.
+    title_col, _spacer = st.columns([2, 3])
+    title = title_col.text_input(
+        "Network title", key="_dialog_title",
+        help="Name for this custom network -- this is what will appear in "
+             "the sidebar's network dropdown (as \"<title> (<N>)\") once "
+             "applied, and the filename used for the saved .zip/network "
+             "file.",
+    )
+    title_reserved = title.strip() in _RESERVED_NETWORK_NAMES
+    if title_reserved:
+        title_col.error(
+            f"'{title.strip()}' is a built-in network name and cannot be "
+            "used for a custom network -- pick a different title."
+        )
 
     st.markdown("**Select Network to modify**")
-    col1, col2 = st.columns([2, 1])
+    col1, col2, _spacer2 = st.columns([2, 2, 3])
     options = _dialog_network_options()
+    # Default to "small"/amax=7 (a deliberately small, fast-to-browse
+    # starting point) the first time the dialog opens this session; both are
+    # seeded via setdefault *before* their widgets are created below, which is
+    # the safe way to set a widget's initial value in Streamlit (setting it
+    # *after* creation, e.g. from a button handler, is what _pending_open /
+    # _pending_network_label exist to work around elsewhere in this module).
+    st.session_state.setdefault("_dialog_base_network", "small" if "small" in options else options[0])
+    st.session_state.setdefault("_dialog_amax_enabled", True)
+    st.session_state.setdefault("_dialog_amax_value", 7)
     if st.session_state.get("_dialog_base_network") not in options:
         st.session_state["_dialog_base_network"] = options[0]
     base_network = col1.selectbox(
         "Network", options, key="_dialog_base_network",
-        format_func=_dialog_network_label,
+        format_func=_dialog_network_label, label_visibility="collapsed",
+        help="Starting point: selects which reactions below start toggled "
+             "on (every reaction is still individually editable below, "
+             "regardless of this choice).",
     )
-    amax_enabled = col2.checkbox("Limit A", key="_dialog_amax_enabled")
+    amax_col, value_col = col2.columns(2)
+    amax_enabled = amax_col.checkbox(
+        "Limit A", key="_dialog_amax_enabled",
+        help="Restrict to reactions with A <= amax, to reduce the network size.",
+    )
     dialog_amax = None
     if amax_enabled:
-        dialog_amax = int(col2.number_input(
-            "amax", min_value=2, value=st.session_state.get("_dialog_amax_value", 20),
-            key="_dialog_amax_value",
+        # `key` already has a session_state entry by now (seeded above via
+        # setdefault before this widget's first creation), so passing `value`
+        # too would just trigger a Streamlit warning about the value being
+        # set through two different paths for no benefit.
+        dialog_amax = int(value_col.number_input(
+            "amax", min_value=2, key="_dialog_amax_value", label_visibility="collapsed",
         ))
 
     # Reset per-reaction state if the (base_network, amax) pair changed since
@@ -725,17 +1084,28 @@ def _custom_network_dialog(params):
         st.session_state["_dialog_signature"] = sig
 
     all_entries = _dialog_superset_entries(dialog_amax)
-    bare_all = [_bare(e) for e in all_entries]
-    groups = group_reactions_by_category(bare_all + list(st.session_state["_dialog_added"]))
+    bare_all = [_bare(e) for e in all_entries] + list(st.session_state["_dialog_added"])
+    decay_rates = _decay_rates()
+    decay_names = sorted(n for n in bare_all if n in decay_rates)
+    nuclide_names = [n for n in bare_all if n not in decay_rates]
+    groups = group_reactions_by_category(nuclide_names)
 
     for cat in sorted(groups):
         _render_category(cat, groups[cat])
+    if decay_names:
+        _render_decay_category(decay_names, decay_rates)
+
+    _render_evolved_nuclides_section()
+
+    keep_map = st.session_state["_dialog_keep"]
+    total_kept = sum(1 for v in keep_map.values() if v)
+    st.caption(f"**{total_kept} / {len(bare_all)} reactions kept**")
 
     _render_add_rate_section(dialog_amax, all_entries)
     _render_dialog_footer(params, title, base_network, dialog_amax)
 
 
-@st.dialog("Import custom network")
+@st.dialog("Import custom network", on_dismiss=_on_import_dialog_dismiss)
 def _import_dialog():
     fh = st.file_uploader("Custom network zip", type=["zip"], key="_import_dialog_upload")
     if fh is not None:
@@ -746,11 +1116,14 @@ def _import_dialog():
             return
         title = result["title"]
         kept = result["kept"]
+        decay_overrides = result.get("decay_overrides", {})
+        custom_network = custom_rates.kept_to_custom_network(
+            _cfg(), kept, result["replaced"], decay_overrides=decay_overrides)
         st.session_state.setdefault("_known_custom_networks", {})
         st.session_state["_known_custom_networks"][title] = {
-            "kept": kept, "tables": dict(result["replaced"]),
+            "kept": kept, "tables": dict(result["replaced"]), "custom_network": custom_network,
+            "decay_overrides": dict(decay_overrides),
         }
-        custom_network = _kept_to_custom_network(kept, result["replaced"])
         st.session_state["_active_custom_network"] = {
             "title": title, "kept": kept, "custom_network": custom_network,
         }
@@ -760,17 +1133,37 @@ def _import_dialog():
 
 
 def _render_custom_network_buttons(params):
-    """Two buttons, in the "Nuclear reactions" group, opening the popups above."""
+    """Two buttons, stacked, in the "Nuclear reactions" group, opening the
+    popups above.
+
+    Each click explicitly clears the *other* dialog's show-flag as a first
+    line of defence; ``on_dismiss=`` on both ``@st.dialog``s
+    (``_on_custom_dialog_dismiss``/``_on_import_dialog_dismiss``) is the
+    second, clearing the right flag when the user dismisses one via its own
+    close ("x"), Esc, or click-outside, so the flag never gets stuck True --
+    which would otherwise both pop the dialog back open on the next unrelated
+    rerun (e.g. editing a sidebar number) and block opening the other dialog
+    (Streamlit allows only one at a time).
+    """
     st.session_state.setdefault("_known_custom_networks", {})
-    cols = st.columns(2)
-    if cols[0].button("Import custom network", use_container_width=True):
+    if st.button("Import custom network", use_container_width=True,
+                key="_btn_import_custom_network"):
         st.session_state["_show_import_dialog"] = True
-    if cols[1].button("Create custom network", use_container_width=True):
+        st.session_state["_show_custom_dialog"] = False
+    if st.button("Create/modify network", use_container_width=True,
+                key="_btn_create_custom_network"):
+        # Pre-select whichever network is currently active in the sidebar as
+        # the dialog's "Network to modify" -- set directly (not via the
+        # _pending_*-style workaround) because this assignment happens
+        # *before* the dialog (and so its "_dialog_base_network" selectbox)
+        # is instantiated in this very script run.
+        st.session_state["_dialog_base_network"] = st.session_state.get("network", "small")
         st.session_state["_show_custom_dialog"] = True
+        st.session_state["_show_import_dialog"] = False
 
     if st.session_state.get("_show_import_dialog"):
         _import_dialog()
-    if st.session_state.get("_show_custom_dialog"):
+    elif st.session_state.get("_show_custom_dialog"):
         _custom_network_dialog(params)
 
 
@@ -845,17 +1238,28 @@ def render_sidebar_form():
 
                 if key == "network":
                     value = _widget_for(key, label, help_text)
-                    active = st.session_state.get("_active_custom_network")
-                    if active and value == active["title"]:
-                        # Synthetic entry: the underlying network is always
+                    known = st.session_state.get("_known_custom_networks", {})
+                    if value in known:
+                        # Synthetic entry (built/imported this session, not
+                        # necessarily the currently-*active* one -- picking
+                        # any previously-used custom network's name here
+                        # re-activates it, e.g. to switch back to it for a
+                        # comparison run): the underlying network is always
                         # "large", driven entirely by custom_network (§7.2).
+                        custom_network = known[value]["custom_network"]
                         params["network"] = "large"
-                        params["custom_network"] = json.dumps(
-                            active["custom_network"], sort_keys=True)
+                        params["custom_network"] = json.dumps(custom_network, sort_keys=True)
+                        st.session_state["_active_custom_network"] = {
+                            "title": value, "kept": known[value]["kept"],
+                            "custom_network": custom_network,
+                        }
                     else:
+                        active = st.session_state.get("_active_custom_network")
                         if active and value != active["title"]:
-                            # Manually picking a different network abandons
-                            # the active custom network (§7.2).
+                            # Manually picking a real network abandons the
+                            # active custom network for display purposes
+                            # only -- _known_custom_networks (and so the
+                            # ability to switch back to it) is untouched.
                             st.session_state["_active_custom_network"] = None
                         if value != DEFAULT_PARAMS[key]:
                             params[key] = value

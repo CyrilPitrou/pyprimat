@@ -127,13 +127,13 @@ def test_network_label_appends_reaction_count():
 # ---------------------------------------------------------------------------
 
 def _run_bbn(at):
-    """Click the sidebar "Run BBN" button and let the app rerun.
+    """Click the main-area "Run BBN" button and let the app rerun.
 
-    "Run BBN" is no longer the sidebar's only button -- "Import custom
-    network"/"Create custom network" (CUSTOMPOPUP.md §5.2) come first -- so
-    find it by label rather than assuming index 0.
+    "Run BBN" lives above the result tabs (not the sidebar) so it stays
+    visible when the sidebar is folded; "Import custom network"/"Create
+    custom network" (CUSTOMPOPUP.md §5.2) are the sidebar's own buttons.
     """
-    [run_button] = [b for b in at.sidebar.button if b.label == "Run BBN"]
+    [run_button] = [b for b in at.button if b.label == "Run BBN"]
     run_button.click()
     at.run(timeout=120)
     return at
@@ -144,9 +144,10 @@ def test_app_loads_without_error():
     at = AppTest.from_file(APP_PATH)
     at.run(timeout=60)
     assert not at.exception
-    assert {"Run BBN", "Import custom network", "Create custom network"} <= {
+    assert {"Import custom network", "Create/modify network"} <= {
         b.label for b in at.sidebar.button
     }
+    assert "Run BBN" in {b.label for b in at.button}
     # Before any run, the main area shows the "set parameters" placeholder.
     assert any("Run BBN" in info.value for info in at.info)
 
@@ -310,11 +311,15 @@ def test_quick_mc_uncertainty_with_customised_network():
     toggle.set_value(True)
     at.run(timeout=60)
 
-    [create_btn] = [b for b in at.sidebar.button if b.label == "Create custom network"]
+    [create_btn] = [b for b in at.sidebar.button if b.label == "Create/modify network"]
     create_btn.click()
     at.run(timeout=60)
 
-    [ddtp] = [t for t in at.toggle if t.key == "_dialog_keep_d_d__t_p"]
+    # The toggle's key embeds a "_dialog_gen" counter
+    # (params_form._bump_dialog_gen), so match on the name suffix rather than
+    # the exact key.
+    [ddtp] = [t for t in at.toggle if t.key and t.key.endswith("_d_d__t_p")
+             and t.key.startswith("_dialog_keep_")]
     ddtp.set_value(False)
     at.run(timeout=60)
 
@@ -348,5 +353,9 @@ def test_invalid_flag_combination_surfaces_as_error_not_traceback():
     _run_bbn(at)
 
     assert not at.exception
-    assert len(at.error) == 1
-    assert "incomplete_decoupling" in at.error[0].value
+    # The same invalid flag combination now surfaces twice -- once from the
+    # Reactions summary tab's unsolved preview build (app._build_preview),
+    # once from the actual "Run BBN" solve below it -- both as a clean
+    # st.error, never a traceback.
+    assert len(at.error) == 2
+    assert all("incomplete_decoupling" in e.value for e in at.error)

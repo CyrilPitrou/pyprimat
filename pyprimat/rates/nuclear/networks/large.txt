@@ -1,428 +1,428 @@
-B10_He3__C11_d
-B10_He3__C12_p
-B10_He3__N12_n
-B10_He3__N13_g
-B10_a__C12_d
-B10_a__C13_p
-B10_a__N13_n
-B10_a__N14_g
-B10_d__B11_p
-B10_d__C11_n
-B10_d__C12_g
-B10_d__a_a_a
-B10_n__B11_g
-B10_n__Be10_p
-B10_n__a_a_t
-B10_p__Be7_a
-B10_p__C11_g
-B10_p__a_a_He3
-B10_t__B11_d
-B10_t__B12_p
-B10_t__Be9_a
-B10_t__C12_n
-B10_t__C13_g
-B11_He3__B10_a
-B11_He3__C12_d
-B11_He3__C13_p
-B11_He3__N13_n
-B11_He3__N14_g
-B11_a__C14_p
-B11_a__N14_n
-B11_a__N15_g
-B11_d__B12_p
-B11_d__Be9_a
-B11_d__C12_n
-B11_d__C13_g
-B11_n__B12_g
-B11_p__C11_n
-B11_p__C12_g
-B11_p__a_a_a
-B11_t__B13_p
-B11_t__Be10_a
-B11_t__C13_n
-B11_t__C14_g
-B12_He3__B11_a
-B12_He3__C14_p
-B12_He3__N14_n
-B12_He3__N15_g
+B10_He3__C11_d, B10_He3__C11_d_primat.txt
+B10_He3__C12_p, B10_He3__C12_p_primat.txt
+B10_He3__N12_n, B10_He3__N12_n_primat.txt
+B10_He3__N13_g, B10_He3__N13_g_primat.txt
+B10_a__C12_d, B10_a__C12_d_primat.txt
+B10_a__C13_p, B10_a__C13_p_primat.txt
+B10_a__N13_n, B10_a__N13_n_primat.txt
+B10_a__N14_g, B10_a__N14_g_primat.txt
+B10_d__B11_p, B10_d__B11_p_primat.txt
+B10_d__C11_n, B10_d__C11_n_primat.txt
+B10_d__C12_g, B10_d__C12_g_primat.txt
+B10_d__a_a_a, B10_d__a_a_a_primat.txt
+B10_n__B11_g, B10_n__B11_g_primat.txt
+B10_n__Be10_p, B10_n__Be10_p_primat.txt
+B10_n__a_a_t, B10_n__a_a_t_primat.txt
+B10_p__Be7_a, B10_p__Be7_a_primat.txt
+B10_p__C11_g, B10_p__C11_g_primat.txt
+B10_p__a_a_He3, B10_p__a_a_He3_primat.txt
+B10_t__B11_d, B10_t__B11_d_primat.txt
+B10_t__B12_p, B10_t__B12_p_primat.txt
+B10_t__Be9_a, B10_t__Be9_a_primat.txt
+B10_t__C12_n, B10_t__C12_n_primat.txt
+B10_t__C13_g, B10_t__C13_g_primat.txt
+B11_He3__B10_a, B11_He3__B10_a_primat.txt
+B11_He3__C12_d, B11_He3__C12_d_primat.txt
+B11_He3__C13_p, B11_He3__C13_p_primat.txt
+B11_He3__N13_n, B11_He3__N13_n_primat.txt
+B11_He3__N14_g, B11_He3__N14_g_primat.txt
+B11_a__C14_p, B11_a__C14_p_primat.txt
+B11_a__N14_n, B11_a__N14_n_primat.txt
+B11_a__N15_g, B11_a__N15_g_primat.txt
+B11_d__B12_p, B11_d__B12_p_primat.txt
+B11_d__Be9_a, B11_d__Be9_a_primat.txt
+B11_d__C12_n, B11_d__C12_n_primat.txt
+B11_d__C13_g, B11_d__C13_g_primat.txt
+B11_n__B12_g, B11_n__B12_g_primat.txt
+B11_p__C11_n, B11_p__C11_n_primat.txt
+B11_p__C12_g, B11_p__C12_g_primat.txt
+B11_p__a_a_a, B11_p__a_a_a_primat.txt
+B11_t__B13_p, B11_t__B13_p_primat.txt
+B11_t__Be10_a, B11_t__Be10_a_primat.txt
+B11_t__C13_n, B11_t__C13_n_primat.txt
+B11_t__C14_g, B11_t__C14_g_primat.txt
+B12_He3__B11_a, B12_He3__B11_a_primat.txt
+B12_He3__C14_p, B12_He3__C14_p_primat.txt
+B12_He3__N14_n, B12_He3__N14_n_primat.txt
+B12_He3__N15_g, B12_He3__N15_g_primat.txt
 B12__C12_Bm
-B12_a__N15_n
-B12_a__N16_g
-B12_d__B13_p
-B12_d__Be10_a
-B12_d__C13_n
-B12_d__C14_g
-B12_n__B13_g
-B12_p__Be9_a
-B12_p__C12_n
-B12_p__C13_g
-B12_t__Be11_a
-B12_t__C14_n
-B12_t__C15_g
+B12_a__N15_n, B12_a__N15_n_primat.txt
+B12_a__N16_g, B12_a__N16_g_primat.txt
+B12_d__B13_p, B12_d__B13_p_primat.txt
+B12_d__Be10_a, B12_d__Be10_a_primat.txt
+B12_d__C13_n, B12_d__C13_n_primat.txt
+B12_d__C14_g, B12_d__C14_g_primat.txt
+B12_n__B13_g, B12_n__B13_g_primat.txt
+B12_p__Be9_a, B12_p__Be9_a_primat.txt
+B12_p__C12_n, B12_p__C12_n_primat.txt
+B12_p__C13_g, B12_p__C13_g_primat.txt
+B12_t__Be11_a, B12_t__Be11_a_primat.txt
+B12_t__C14_n, B12_t__C14_n_primat.txt
+B12_t__C15_g, B12_t__C15_g_primat.txt
 B13__C13_Bm
 B14__C14_Bm
 B15__C15_Bm
-B8_He3__C10_p
+B8_He3__C10_p, B8_He3__C10_p_primat.txt
 B8__a_a_Bp
-B8_a__C11_p
-B8_a__N12_g
-B8_d__Be7_He3
-B8_d__C10_g
-B8_n__Be7_d
-B8_n__Li6_He3
-B8_n__a_a_p
-B8_p__C9_g
-B8_t__B10_p
-B8_t__Be7_a
-B8_t__C10_n
-B8_t__C11_g
-B8_t__a_a_He3
-Be10_He3__B10_t
-Be10_He3__B11_d
-Be10_He3__B12_p
-Be10_He3__Be9_a
-Be10_He3__C12_n
-Be10_He3__C13_g
+B8_a__C11_p, B8_a__C11_p_primat.txt
+B8_a__N12_g, B8_a__N12_g_primat.txt
+B8_d__Be7_He3, B8_d__Be7_He3_primat.txt
+B8_d__C10_g, B8_d__C10_g_primat.txt
+B8_n__Be7_d, B8_n__Be7_d_primat.txt
+B8_n__Li6_He3, B8_n__Li6_He3_primat.txt
+B8_n__a_a_p, B8_n__a_a_p_primat.txt
+B8_p__C9_g, B8_p__C9_g_primat.txt
+B8_t__B10_p, B8_t__B10_p_primat.txt
+B8_t__Be7_a, B8_t__Be7_a_primat.txt
+B8_t__C10_n, B8_t__C10_n_primat.txt
+B8_t__C11_g, B8_t__C11_g_primat.txt
+B8_t__a_a_He3, B8_t__a_a_He3_primat.txt
+Be10_He3__B10_t, Be10_He3__B10_t_primat.txt
+Be10_He3__B11_d, Be10_He3__B11_d_primat.txt
+Be10_He3__B12_p, Be10_He3__B12_p_primat.txt
+Be10_He3__Be9_a, Be10_He3__Be9_a_primat.txt
+Be10_He3__C12_n, Be10_He3__C12_n_primat.txt
+Be10_He3__C13_g, Be10_He3__C13_g_primat.txt
 Be10__B10_Bm
-Be10_a__C13_n
-Be10_a__C14_g
-Be10_d__B11_n
-Be10_d__B12_g
-Be10_d__Li8_a
-Be10_n__Be11_g
-Be10_p__B11_g
-Be10_p__Li7_a
-Be10_p__a_a_t
-Be10_t__B12_n
-Be10_t__B13_g
-Be10_t__Li9_a
-Be11_He3__B13_p
-Be11_He3__Be10_a
-Be11_He3__C13_n
-Be11_He3__C14_g
+Be10_a__C13_n, Be10_a__C13_n_primat.txt
+Be10_a__C14_g, Be10_a__C14_g_primat.txt
+Be10_d__B11_n, Be10_d__B11_n_primat.txt
+Be10_d__B12_g, Be10_d__B12_g_primat.txt
+Be10_d__Li8_a, Be10_d__Li8_a_primat.txt
+Be10_n__Be11_g, Be10_n__Be11_g_primat.txt
+Be10_p__B11_g, Be10_p__B11_g_primat.txt
+Be10_p__Li7_a, Be10_p__Li7_a_primat.txt
+Be10_p__a_a_t, Be10_p__a_a_t_primat.txt
+Be10_t__B12_n, Be10_t__B12_n_primat.txt
+Be10_t__B13_g, Be10_t__B13_g_primat.txt
+Be10_t__Li9_a, Be10_t__Li9_a_primat.txt
+Be11_He3__B13_p, Be11_He3__B13_p_primat.txt
+Be11_He3__Be10_a, Be11_He3__Be10_a_primat.txt
+Be11_He3__C13_n, Be11_He3__C13_n_primat.txt
+Be11_He3__C14_g, Be11_He3__C14_g_primat.txt
 Be11__B11_Bm
-Be11_a__C14_n
-Be11_a__C15_g
-Be11_d__B12_n
-Be11_d__B13_g
-Be11_d__Be12_p
-Be11_d__Li9_a
-Be11_n__Be12_g
-Be11_p__B11_n
-Be11_p__B12_g
-Be11_p__Be10_d
-Be11_p__Be9_t
-Be11_p__Li8_a
-Be11_t__B13_n
-Be11_t__B14_g
-Be12_He3__B14_p
-Be12_He3__Be11_a
-Be12_He3__C14_n
-Be12_He3__C15_g
+Be11_a__C14_n, Be11_a__C14_n_primat.txt
+Be11_a__C15_g, Be11_a__C15_g_primat.txt
+Be11_d__B12_n, Be11_d__B12_n_primat.txt
+Be11_d__B13_g, Be11_d__B13_g_primat.txt
+Be11_d__Be12_p, Be11_d__Be12_p_primat.txt
+Be11_d__Li9_a, Be11_d__Li9_a_primat.txt
+Be11_n__Be12_g, Be11_n__Be12_g_primat.txt
+Be11_p__B11_n, Be11_p__B11_n_primat.txt
+Be11_p__B12_g, Be11_p__B12_g_primat.txt
+Be11_p__Be10_d, Be11_p__Be10_d_primat.txt
+Be11_p__Be9_t, Be11_p__Be9_t_primat.txt
+Be11_p__Li8_a, Be11_p__Li8_a_primat.txt
+Be11_t__B13_n, Be11_t__B13_n_primat.txt
+Be11_t__B14_g, Be11_t__B14_g_primat.txt
+Be12_He3__B14_p, Be12_He3__B14_p_primat.txt
+Be12_He3__Be11_a, Be12_He3__Be11_a_primat.txt
+Be12_He3__C14_n, Be12_He3__C14_n_primat.txt
+Be12_He3__C15_g, Be12_He3__C15_g_primat.txt
 Be12__B12_Bm
-Be12_a__C15_n
-Be12_a__C16_g
-Be12_d__B13_n
-Be12_d__B14_g
-Be12_p__B12_n
-Be12_p__B13_g
-Be12_p__Be10_t
-Be12_p__Li9_a
-Be12_t__B14_n
-Be12_t__B15_g
-Be7_He3__C10_g
-Be7_He3__a_a_p_p
-Be7_He3__p_p_a_a
+Be12_a__C15_n, Be12_a__C15_n_primat.txt
+Be12_a__C16_g, Be12_a__C16_g_primat.txt
+Be12_d__B13_n, Be12_d__B13_n_primat.txt
+Be12_d__B14_g, Be12_d__B14_g_primat.txt
+Be12_p__B12_n, Be12_p__B12_n_primat.txt
+Be12_p__B13_g, Be12_p__B13_g_primat.txt
+Be12_p__Be10_t, Be12_p__Be10_t_primat.txt
+Be12_p__Li9_a, Be12_p__Li9_a_primat.txt
+Be12_t__B14_n, Be12_t__B14_n_primat.txt
+Be12_t__B15_g, Be12_t__B15_g_primat.txt
+Be7_He3__C10_g, Be7_He3__C10_g_primat.txt
+Be7_He3__a_a_p_p, Be7_He3__a_a_p_p_primat.txt
+Be7_He3__p_p_a_a, Be7_He3__p_p_a_a_primat.txt
 Be7__Li7_Bp
-Be7_a__C11_g
-Be7_d__a_a_p
-Be7_n__Li7_p
-Be7_n__a_a
-Be7_p__B8_g
-Be7_t__B10_g
-Be7_t__Be9_p
-Be7_t__Li6_a
-Be7_t__Li7_He3
-Be7_t__a_a_d
-Be7_t__a_a_n_p
-Be9_He3__B10_d
-Be9_He3__B11_p
-Be9_He3__C11_n
-Be9_He3__C12_g
-Be9_He3__a_a_a
-Be9_a__C12_n
-Be9_a__C13_g
-Be9_d__B10_n
-Be9_d__B11_g
-Be9_d__Be10_p
-Be9_d__Li7_a
-Be9_d__a_a_t
-Be9_n__Be10_g
-Be9_p__B10_g
-Be9_p__Li6_a
-Be9_p__a_a_d
-Be9_p__a_a_p_n
-Be9_t__B11_n
-Be9_t__B12_g
-Be9_t__Be10_d
-Be9_t__Li8_a
+Be7_a__C11_g, Be7_a__C11_g_primat.txt
+Be7_d__a_a_p, Be7_d__a_a_p_primat.txt
+Be7_n__Li7_p, Be7_n__Li7_p_primat.txt
+Be7_n__a_a, Be7_n__a_a_primat.txt
+Be7_p__B8_g, Be7_p__B8_g_primat.txt
+Be7_t__B10_g, Be7_t__B10_g_primat.txt
+Be7_t__Be9_p, Be7_t__Be9_p_primat.txt
+Be7_t__Li6_a, Be7_t__Li6_a_primat.txt
+Be7_t__Li7_He3, Be7_t__Li7_He3_primat.txt
+Be7_t__a_a_d, Be7_t__a_a_d_primat.txt
+Be7_t__a_a_n_p, Be7_t__a_a_n_p_primat.txt
+Be9_He3__B10_d, Be9_He3__B10_d_primat.txt
+Be9_He3__B11_p, Be9_He3__B11_p_primat.txt
+Be9_He3__C11_n, Be9_He3__C11_n_primat.txt
+Be9_He3__C12_g, Be9_He3__C12_g_primat.txt
+Be9_He3__a_a_a, Be9_He3__a_a_a_primat.txt
+Be9_a__C12_n, Be9_a__C12_n_primat.txt
+Be9_a__C13_g, Be9_a__C13_g_primat.txt
+Be9_d__B10_n, Be9_d__B10_n_primat.txt
+Be9_d__B11_g, Be9_d__B11_g_primat.txt
+Be9_d__Be10_p, Be9_d__Be10_p_primat.txt
+Be9_d__Li7_a, Be9_d__Li7_a_primat.txt
+Be9_d__a_a_t, Be9_d__a_a_t_primat.txt
+Be9_n__Be10_g, Be9_n__Be10_g_primat.txt
+Be9_p__B10_g, Be9_p__B10_g_primat.txt
+Be9_p__Li6_a, Be9_p__Li6_a_primat.txt
+Be9_p__a_a_d, Be9_p__a_a_d_primat.txt
+Be9_p__a_a_p_n, Be9_p__a_a_p_n_primat.txt
+Be9_t__B11_n, Be9_t__B11_n_primat.txt
+Be9_t__B12_g, Be9_t__B12_g_primat.txt
+Be9_t__Be10_d, Be9_t__Be10_d_primat.txt
+Be9_t__Li8_a, Be9_t__Li8_a_primat.txt
 C10__B10_Bp
-C11_He3__C10_a
-C11_He3__N13_p
-C11_He3__O14_g
+C11_He3__C10_a, C11_He3__C10_a_primat.txt
+C11_He3__N13_p, C11_He3__N13_p_primat.txt
+C11_He3__O14_g, C11_He3__O14_g_primat.txt
 C11__B11_Bp
-C11_a__N14_p
-C11_a__O15_g
-C11_d__C12_p
-C11_d__N13_g
-C11_n__C12_g
-C11_n__a_a_a
-C11_p__N12_g
-C11_t__B10_a
-C11_t__B11_He3
-C11_t__C12_d
-C11_t__C13_p
-C11_t__N13_n
-C11_t__N14_g
-C12_He3__C11_a
-C12_He3__N14_p
-C12_He3__O15_g
-C12_a__O16_g
-C12_d__C13_p
-C12_d__N14_g
-C12_n__C13_g
-C12_p__N13_g
-C12_t__B11_a
-C12_t__C14_p
-C12_t__N14_n
-C12_t__N15_g
-C13_He3__C12_a
-C13_He3__N15_p
-C13_He3__O15_n
-C13_He3__O16_g
-C13_a__O16_n
-C13_a__O17_g
-C13_d__B11_a
-C13_d__C14_p
-C13_d__N14_n
-C13_d__N15_g
-C13_n__C14_g
-C13_p__N14_g
-C13_t__B12_a
-C13_t__C15_p
-C13_t__N15_n
-C13_t__N16_g
-C14_He3__C13_a
-C14_He3__N16_p
-C14_He3__O16_n
-C14_He3__O17_g
+C11_a__N14_p, C11_a__N14_p_primat.txt
+C11_a__O15_g, C11_a__O15_g_primat.txt
+C11_d__C12_p, C11_d__C12_p_primat.txt
+C11_d__N13_g, C11_d__N13_g_primat.txt
+C11_n__C12_g, C11_n__C12_g_primat.txt
+C11_n__a_a_a, C11_n__a_a_a_primat.txt
+C11_p__N12_g, C11_p__N12_g_primat.txt
+C11_t__B10_a, C11_t__B10_a_primat.txt
+C11_t__B11_He3, C11_t__B11_He3_primat.txt
+C11_t__C12_d, C11_t__C12_d_primat.txt
+C11_t__C13_p, C11_t__C13_p_primat.txt
+C11_t__N13_n, C11_t__N13_n_primat.txt
+C11_t__N14_g, C11_t__N14_g_primat.txt
+C12_He3__C11_a, C12_He3__C11_a_primat.txt
+C12_He3__N14_p, C12_He3__N14_p_primat.txt
+C12_He3__O15_g, C12_He3__O15_g_primat.txt
+C12_a__O16_g, C12_a__O16_g_primat.txt
+C12_d__C13_p, C12_d__C13_p_primat.txt
+C12_d__N14_g, C12_d__N14_g_primat.txt
+C12_n__C13_g, C12_n__C13_g_primat.txt
+C12_p__N13_g, C12_p__N13_g_primat.txt
+C12_t__B11_a, C12_t__B11_a_primat.txt
+C12_t__C14_p, C12_t__C14_p_primat.txt
+C12_t__N14_n, C12_t__N14_n_primat.txt
+C12_t__N15_g, C12_t__N15_g_primat.txt
+C13_He3__C12_a, C13_He3__C12_a_primat.txt
+C13_He3__N15_p, C13_He3__N15_p_primat.txt
+C13_He3__O15_n, C13_He3__O15_n_primat.txt
+C13_He3__O16_g, C13_He3__O16_g_primat.txt
+C13_a__O16_n, C13_a__O16_n_primat.txt
+C13_a__O17_g, C13_a__O17_g_primat.txt
+C13_d__B11_a, C13_d__B11_a_primat.txt
+C13_d__C14_p, C13_d__C14_p_primat.txt
+C13_d__N14_n, C13_d__N14_n_primat.txt
+C13_d__N15_g, C13_d__N15_g_primat.txt
+C13_n__C14_g, C13_n__C14_g_primat.txt
+C13_p__N14_g, C13_p__N14_g_primat.txt
+C13_t__B12_a, C13_t__B12_a_primat.txt
+C13_t__C15_p, C13_t__C15_p_primat.txt
+C13_t__N15_n, C13_t__N15_n_primat.txt
+C13_t__N16_g, C13_t__N16_g_primat.txt
+C14_He3__C13_a, C14_He3__C13_a_primat.txt
+C14_He3__N16_p, C14_He3__N16_p_primat.txt
+C14_He3__O16_n, C14_He3__O16_n_primat.txt
+C14_He3__O17_g, C14_He3__O17_g_primat.txt
 C14__N14_Bm
-C14_a__O18_g
-C14_d__B12_a
-C14_d__N15_n
-C14_d__N16_g
-C14_n__C15_g
-C14_p__N15_g
-C14_t__N16_n
-C14_t__N17_g
+C14_a__O18_g, C14_a__O18_g_primat.txt
+C14_d__B12_a, C14_d__B12_a_primat.txt
+C14_d__N15_n, C14_d__N15_n_primat.txt
+C14_d__N16_g, C14_d__N16_g_primat.txt
+C14_n__C15_g, C14_n__C15_g_primat.txt
+C14_p__N15_g, C14_p__N15_g_primat.txt
+C14_t__N16_n, C14_t__N16_n_primat.txt
+C14_t__N17_g, C14_t__N17_g_primat.txt
 C15__N15_Bm
-C15_a__O18_n
-C15_a__O19_g
-C15_n__C16_g
-C15_p__B12_a
-C15_p__C14_d
-C15_p__N15_n
-C15_p__N16_g
+C15_a__O18_n, C15_a__O18_n_primat.txt
+C15_a__O19_g, C15_a__O19_g_primat.txt
+C15_n__C16_g, C15_n__C16_g_primat.txt
+C15_p__B12_a, C15_p__B12_a_primat.txt
+C15_p__C14_d, C15_p__C14_d_primat.txt
+C15_p__N15_n, C15_p__N15_n_primat.txt
+C15_p__N16_g, C15_p__N16_g_primat.txt
 C16__N16_Bm
 C9__a_a_p_Bp
-C9_a__N12_p
-C9_a__O13_g
-C9_d__C10_p
-C9_n__B8_d
-C9_n__Be7_He3
-C9_n__C10_g
-C9_t__B8_a
-C9_t__C11_p
-C9_t__N12_g
+C9_a__N12_p, C9_a__N12_p_primat.txt
+C9_a__O13_g, C9_a__O13_g_primat.txt
+C9_d__C10_p, C9_d__C10_p_primat.txt
+C9_n__B8_d, C9_n__B8_d_primat.txt
+C9_n__Be7_He3, C9_n__Be7_He3_primat.txt
+C9_n__C10_g, C9_n__C10_g_primat.txt
+C9_t__B8_a, C9_t__B8_a_primat.txt
+C9_t__C11_p, C9_t__C11_p_primat.txt
+C9_t__N12_g, C9_t__N12_g_primat.txt
 F17__O17_Bp
-F17_a__Na21_g
-F17_a__Ne20_p
-F17_n__F18_g
-F17_n__N14_a
-F17_n__O17_p
-F17_p__Ne18_g
+F17_a__Na21_g, F17_a__Na21_g_primat.txt
+F17_a__Ne20_p, F17_a__Ne20_p_primat.txt
+F17_n__F18_g, F17_n__F18_g_primat.txt
+F17_n__N14_a, F17_n__N14_a_primat.txt
+F17_n__O17_p, F17_n__O17_p_primat.txt
+F17_p__Ne18_g, F17_p__Ne18_g_primat.txt
 F18__O18_Bp
-F18_a__Na22_g
-F18_a__Ne21_p
-F18_n__F19_g
-F18_n__N15_a
-F18_n__O18_p
-F18_p__Ne19_g
-F18_p__O15_a
-F19_a__Na23_g
-F19_a__Ne22_p
-F19_n__F20_g
-F19_p__Ne20_g
-F19_p__O16_a
+F18_a__Na22_g, F18_a__Na22_g_primat.txt
+F18_a__Ne21_p, F18_a__Ne21_p_primat.txt
+F18_n__F19_g, F18_n__F19_g_primat.txt
+F18_n__N15_a, F18_n__N15_a_primat.txt
+F18_n__O18_p, F18_n__O18_p_primat.txt
+F18_p__Ne19_g, F18_p__Ne19_g_primat.txt
+F18_p__O15_a, F18_p__O15_a_primat.txt
+F19_a__Na23_g, F19_a__Na23_g_primat.txt
+F19_a__Ne22_p, F19_a__Ne22_p_primat.txt
+F19_n__F20_g, F19_n__F20_g_primat.txt
+F19_p__Ne20_g, F19_p__Ne20_g_primat.txt
+F19_p__O16_a, F19_p__O16_a_primat.txt
 F20__Ne20_Bm
-He3_He3__a_p_p
-He3_a__Be7_g
-He3_d__a_p
-He3_n__a_g
-He3_n__t_p
-He3_t__Li6_g
-He3_t__a_d
-He3_t__a_n_p
+He3_He3__a_p_p, He3_He3__a_p_p_primat.txt
+He3_a__Be7_g, He3_a__Be7_g_primat.txt
+He3_d__a_p, He3_d__a_p_primat.txt
+He3_n__a_g, He3_n__a_g_primat.txt
+He3_n__t_p, He3_n__t_p_primat.txt
+He3_t__Li6_g, He3_t__Li6_g_primat.txt
+He3_t__a_d, He3_t__a_d_primat.txt
+He3_t__a_n_p, He3_t__a_n_p_primat.txt
 He6__Li6_Bm
-Li6_He3__Be7_d
-Li6_He3__a_a_p
-Li6_a__B10_g
-Li6_d__Be7_n
-Li6_d__Li7_p
-Li6_n__Li7_g
-Li6_n__t_a
-Li6_p__Be7_g
-Li6_p__He3_a
-Li6_t__Be9_g
-Li6_t__Li7_d
-Li6_t__Li8_p
-Li6_t__a_a_n
-Li7_He3__B10_g
-Li7_He3__Be9_p
-Li7_He3__Li6_a
-Li7_He3__a_a_d
-Li7_He3__a_a_n_p
-Li7_a__B10_n
-Li7_a__B11_g
-Li7_d__Be9_g
-Li7_d__Li8_p
-Li7_d__a_a_n
-Li7_n__Li8_g
-Li7_p__a_a
-Li7_p__a_a_g
-Li7_t__Be10_g
-Li7_t__Be9_n
-Li7_t__a_a_n_n
-Li8_He3__B10_n
-Li8_He3__B11_g
-Li8_He3__Be10_p
-Li8_He3__Be9_d
-Li8_He3__Li7_a
-Li8_He3__a_a_t
+Li6_He3__Be7_d, Li6_He3__Be7_d_primat.txt
+Li6_He3__a_a_p, Li6_He3__a_a_p_primat.txt
+Li6_a__B10_g, Li6_a__B10_g_primat.txt
+Li6_d__Be7_n, Li6_d__Be7_n_primat.txt
+Li6_d__Li7_p, Li6_d__Li7_p_primat.txt
+Li6_n__Li7_g, Li6_n__Li7_g_primat.txt
+Li6_n__t_a, Li6_n__t_a_primat.txt
+Li6_p__Be7_g, Li6_p__Be7_g_primat.txt
+Li6_p__He3_a, Li6_p__He3_a_primat.txt
+Li6_t__Be9_g, Li6_t__Be9_g_primat.txt
+Li6_t__Li7_d, Li6_t__Li7_d_primat.txt
+Li6_t__Li8_p, Li6_t__Li8_p_primat.txt
+Li6_t__a_a_n, Li6_t__a_a_n_primat.txt
+Li7_He3__B10_g, Li7_He3__B10_g_primat.txt
+Li7_He3__Be9_p, Li7_He3__Be9_p_primat.txt
+Li7_He3__Li6_a, Li7_He3__Li6_a_primat.txt
+Li7_He3__a_a_d, Li7_He3__a_a_d_primat.txt
+Li7_He3__a_a_n_p, Li7_He3__a_a_n_p_primat.txt
+Li7_a__B10_n, Li7_a__B10_n_primat.txt
+Li7_a__B11_g, Li7_a__B11_g_primat.txt
+Li7_d__Be9_g, Li7_d__Be9_g_primat.txt
+Li7_d__Li8_p, Li7_d__Li8_p_primat.txt
+Li7_d__a_a_n, Li7_d__a_a_n_primat.txt
+Li7_n__Li8_g, Li7_n__Li8_g_primat.txt
+Li7_p__a_a, Li7_p__a_a_primat.txt
+Li7_p__a_a_g, Li7_p__a_a_g_primat.txt
+Li7_t__Be10_g, Li7_t__Be10_g_primat.txt
+Li7_t__Be9_n, Li7_t__Be9_n_primat.txt
+Li7_t__a_a_n_n, Li7_t__a_a_n_n_primat.txt
+Li8_He3__B10_n, Li8_He3__B10_n_primat.txt
+Li8_He3__B11_g, Li8_He3__B11_g_primat.txt
+Li8_He3__Be10_p, Li8_He3__Be10_p_primat.txt
+Li8_He3__Be9_d, Li8_He3__Be9_d_primat.txt
+Li8_He3__Li7_a, Li8_He3__Li7_a_primat.txt
+Li8_He3__a_a_t, Li8_He3__a_a_t_primat.txt
 Li8__a_a_Bm
-Li8_a__B11_n
-Li8_a__B12_g
-Li8_d__Be10_g
-Li8_d__Be9_n
-Li8_d__Li7_t
-Li8_d__Li9_p
-Li8_n__Li9_g
-Li8_p__Be9_g
-Li8_p__a_a_n
-Li8_t__Be10_n
-Li8_t__Be11_g
-Li9_He3__B11_n
-Li9_He3__B12_g
-Li9_He3__Be10_d
-Li9_He3__Be11_p
-Li9_He3__Be9_t
-Li9_He3__Li8_a
+Li8_a__B11_n, Li8_a__B11_n_primat.txt
+Li8_a__B12_g, Li8_a__B12_g_primat.txt
+Li8_d__Be10_g, Li8_d__Be10_g_primat.txt
+Li8_d__Be9_n, Li8_d__Be9_n_primat.txt
+Li8_d__Li7_t, Li8_d__Li7_t_primat.txt
+Li8_d__Li9_p, Li8_d__Li9_p_primat.txt
+Li8_n__Li9_g, Li8_n__Li9_g_primat.txt
+Li8_p__Be9_g, Li8_p__Be9_g_primat.txt
+Li8_p__a_a_n, Li8_p__a_a_n_primat.txt
+Li8_t__Be10_n, Li8_t__Be10_n_primat.txt
+Li8_t__Be11_g, Li8_t__Be11_g_primat.txt
+Li9_He3__B11_n, Li9_He3__B11_n_primat.txt
+Li9_He3__B12_g, Li9_He3__B12_g_primat.txt
+Li9_He3__Be10_d, Li9_He3__Be10_d_primat.txt
+Li9_He3__Be11_p, Li9_He3__Be11_p_primat.txt
+Li9_He3__Be9_t, Li9_He3__Be9_t_primat.txt
+Li9_He3__Li8_a, Li9_He3__Li8_a_primat.txt
 Li9__Be9_Bm
 Li9__a_a_n_Bm
-Li9_a__B12_n
-Li9_a__B13_g
-Li9_d__Be10_n
-Li9_d__Be11_g
-Li9_d__Li8_t
-Li9_p__Be10_g
-Li9_p__Be9_n
-Li9_p__He6_a
-Li9_p__Li7_t
-Li9_t__Be11_n
-Li9_t__Be12_g
+Li9_a__B12_n, Li9_a__B12_n_primat.txt
+Li9_a__B13_g, Li9_a__B13_g_primat.txt
+Li9_d__Be10_n, Li9_d__Be10_n_primat.txt
+Li9_d__Be11_g, Li9_d__Be11_g_primat.txt
+Li9_d__Li8_t, Li9_d__Li8_t_primat.txt
+Li9_p__Be10_g, Li9_p__Be10_g_primat.txt
+Li9_p__Be9_n, Li9_p__Be9_n_primat.txt
+Li9_p__He6_a, Li9_p__He6_a_primat.txt
+Li9_p__Li7_t, Li9_p__Li7_t_primat.txt
+Li9_t__Be11_n, Li9_t__Be11_n_primat.txt
+Li9_t__Be12_g, Li9_t__Be12_g_primat.txt
 N12__C12_Bp
-N12_a__O15_p
-N12_n__C11_d
-N12_n__C12_p
-N12_n__N13_g
-N12_p__O13_g
+N12_a__O15_p, N12_a__O15_p_primat.txt
+N12_n__C11_d, N12_n__C11_d_primat.txt
+N12_n__C12_p, N12_n__C12_p_primat.txt
+N12_n__N13_g, N12_n__N13_g_primat.txt
+N12_p__O13_g, N12_p__O13_g_primat.txt
 N13__C13_Bp
-N13_a__F17_g
-N13_n__C12_d
-N13_n__C13_p
-N13_n__N14_g
-N13_p__O14_g
-N14_a__F18_g
-N14_n__C14_p
-N14_n__N15_g
-N14_p__O15_g
-N15_a__F19_g
-N15_n__N16_g
-N15_p__C12_a
-N15_p__O16_g
+N13_a__F17_g, N13_a__F17_g_primat.txt
+N13_n__C12_d, N13_n__C12_d_primat.txt
+N13_n__C13_p, N13_n__C13_p_primat.txt
+N13_n__N14_g, N13_n__N14_g_primat.txt
+N13_p__O14_g, N13_p__O14_g_primat.txt
+N14_a__F18_g, N14_a__F18_g_primat.txt
+N14_n__C14_p, N14_n__C14_p_primat.txt
+N14_n__N15_g, N14_n__N15_g_primat.txt
+N14_p__O15_g, N14_p__O15_g_primat.txt
+N15_a__F19_g, N15_a__F19_g_primat.txt
+N15_n__N16_g, N15_n__N16_g_primat.txt
+N15_p__C12_a, N15_p__C12_a_primat.txt
+N15_p__O16_g, N15_p__O16_g_primat.txt
 N16__O16_Bm
 N17__O16_n_Bm
 Na20__Ne20_Bp
-Na20_n__F17_a
+Na20_n__F17_a, Na20_n__F17_a_primat.txt
 Na21__Ne21_Bp
 Na22__Ne22_Bp
 Ne18__F18_Bp
-Ne18_n__F18_p
-Ne18_n__O15_a
+Ne18_n__F18_p, Ne18_n__F18_p_primat.txt
+Ne18_n__O15_a, Ne18_n__O15_a_primat.txt
 Ne19__F19_Bp
-Ne19_n__F19_p
-Ne19_n__O16_a
-Ne19_p__Na20_g
+Ne19_n__F19_p, Ne19_n__F19_p_primat.txt
+Ne19_n__O16_a, Ne19_n__O16_a_primat.txt
+Ne19_p__Na20_g, Ne19_p__Na20_g_primat.txt
 Ne23__Na23_Bm
 O13__N13_Bp
 O14__N14_Bp
-O14_a__F17_p
-O14_a__Ne18_g
-O14_n__C11_a
-O14_n__C12_He3
-O14_n__N14_p
-O14_n__O15_g
+O14_a__F17_p, O14_a__F17_p_primat.txt
+O14_a__Ne18_g, O14_a__Ne18_g_primat.txt
+O14_n__C11_a, O14_n__C11_a_primat.txt
+O14_n__C12_He3, O14_n__C12_He3_primat.txt
+O14_n__N14_p, O14_n__N14_p_primat.txt
+O14_n__O15_g, O14_n__O15_g_primat.txt
 O15__N15_Bp
-O15_a__Ne19_g
-O15_n__C12_a
-O15_n__N15_p
-O15_n__O16_g
-O16_a__Ne20_g
-O16_n__O17_g
-O16_p__F17_g
-O16_p__N13_a
-O17_a__Ne20_n
-O17_a__Ne21_g
-O17_n__C14_a
-O17_n__O18_g
-O17_p__F18_g
-O17_p__N14_a
-O18_a__Ne22_g
-O18_n__O19_g
-O18_p__F19_g
-O18_p__N15_a
+O15_a__Ne19_g, O15_a__Ne19_g_primat.txt
+O15_n__C12_a, O15_n__C12_a_primat.txt
+O15_n__N15_p, O15_n__N15_p_primat.txt
+O15_n__O16_g, O15_n__O16_g_primat.txt
+O16_a__Ne20_g, O16_a__Ne20_g_primat.txt
+O16_n__O17_g, O16_n__O17_g_primat.txt
+O16_p__F17_g, O16_p__F17_g_primat.txt
+O16_p__N13_a, O16_p__N13_a_primat.txt
+O17_a__Ne20_n, O17_a__Ne20_n_primat.txt
+O17_a__Ne21_g, O17_a__Ne21_g_primat.txt
+O17_n__C14_a, O17_n__C14_a_primat.txt
+O17_n__O18_g, O17_n__O18_g_primat.txt
+O17_p__F18_g, O17_p__F18_g_primat.txt
+O17_p__N14_a, O17_p__N14_a_primat.txt
+O18_a__Ne22_g, O18_a__Ne22_g_primat.txt
+O18_n__O19_g, O18_n__O19_g_primat.txt
+O18_p__F19_g, O18_p__F19_g_primat.txt
+O18_p__N15_a, O18_p__N15_a_primat.txt
 O19__F19_Bm
-O19_a__Ne22_n
-O19_a__Ne23_g
-O19_n__O20_g
-O19_p__F19_n
-O19_p__F20_g
-O19_p__N16_a
+O19_a__Ne22_n, O19_a__Ne22_n_primat.txt
+O19_a__Ne23_g, O19_a__Ne23_g_primat.txt
+O19_n__O20_g, O19_n__O20_g_primat.txt
+O19_p__F19_n, O19_p__F19_n_primat.txt
+O19_p__F20_g, O19_p__F20_g_primat.txt
+O19_p__N16_a, O19_p__N16_a_primat.txt
 O20__F20_Bm
-a_a_a__C12_g_g
-a_a_n__Be9_g
-a_n_n__He6_g
-a_n_p__Li6_g
-d_a__Li6_g
-d_d__He3_n
-d_d__a_g
-d_d__t_p
-d_n__t_g
-d_p__He3_g
-n_p__d_g
-p_p_n__d_p
+a_a_a__C12_g_g, a_a_a__C12_g_g_primat.txt
+a_a_n__Be9_g, a_a_n__Be9_g_primat.txt
+a_n_n__He6_g, a_n_n__He6_g_primat.txt
+a_n_p__Li6_g, a_n_p__Li6_g_primat.txt
+d_a__Li6_g, d_a__Li6_g_primat.txt
+d_d__He3_n, d_d__He3_n_primat.txt
+d_d__a_g, d_d__a_g_primat.txt
+d_d__t_p, d_d__t_p_primat.txt
+d_n__t_g, d_n__t_g_primat.txt
+d_p__He3_g, d_p__He3_g_primat.txt
+n_p__d_g, n_p__d_g_primat.txt
+p_p_n__d_p, p_p_n__d_p_primat.txt
 t__He3_Bm
-t_a__Li7_g
-t_d__a_n
-t_p__a_g
-t_t__a_n_n
+t_a__Li7_g, t_a__Li7_g_primat.txt
+t_d__a_n, t_d__a_n_primat.txt
+t_p__a_g, t_p__a_g_primat.txt
+t_t__a_n_n, t_t__a_n_n_primat.txt

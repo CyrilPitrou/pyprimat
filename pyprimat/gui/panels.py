@@ -216,7 +216,7 @@ def render_reactions_panel(run):
 
     _render_reaction_downloads(run)
 
-    st.subheader(f"Reactions ({len(reactions)} in the {run.cfg.network} network)")
+    st.subheader(f"{len(reactions)} reactions")
     st.caption(
         "Full reaction set of the low-temperature solver. The MT era uses a "
         "fixed 18-reaction subset of these. Sources are the `ref=` labels from "
@@ -252,97 +252,53 @@ def render_reactions_panel(run):
 
 
 def _render_reaction_downloads(run):
-    """Render the "Custom network" export + "Download individual rate tables" sections.
+    """Render the "Export this network" download section.
 
     Placed at the top of the Reactions tab (:func:`render_reactions_panel`),
     *before* the (potentially long, e.g. ~430-row for the large network)
-    reaction list, so these downloads are visible without scrolling.
+    reaction list, so it is visible without scrolling.
 
-    * **Custom network** -- only shown when this run actually used a
-      "Customise Reactions" override (removed/replaced reactions), per the
-      snapshot stashed by ``app.main()`` at "Run BBN" time
-      (``st.session_state["run_custom_network_dict"]``); offers the
-      re-importable zip from :func:`pyprimat.gui.custom_rates.export_zip`.
-    * **Download individual rate tables** -- the ``rates/nuclear/tables/<name>.txt`` rate
-      table for any reaction in the loaded network (read from disk), or, for
-      a reaction with a "custom upload" override, the resampled on-grid table
-      actually fed to the solver
-      (:func:`pyprimat.gui.custom_rates.effective_table_text`) -- so the user
-      can confirm exactly what was used.  An in-table download link is not
-      possible (Streamlit's HTML sanitiser strips ``data:`` hrefs and
-      browsers block ``file://`` ones), and the large network has ~433
-      reactions, so a single "pick a reaction -> download" selectbox is used
-      rather than one button per reaction.
+    Always available -- not just for an actual customisation (a run with no
+    "Create/modify network" override gets an empty
+    ``{"removed": [], "replaced": {}, "added": {}}``, exporting the plain
+    shipped network's reactions/tables verbatim) -- so a user can always grab
+    a self-contained, re-importable snapshot of whatever just ran, even an
+    unmodified ``small``/``large``. ``custom_rates.export_zip`` itself doesn't
+    care whether anything was actually changed.
 
     Parameters
     ----------
     run : pyprimat.PyPR
         An already-solved ``PyPR`` instance.
     """
-    custom_network = st.session_state.get("run_custom_network_dict")
-    if custom_network and (custom_network.get("removed") or custom_network.get("replaced")
-                           or custom_network.get("added")):
-        active = st.session_state.get("_active_custom_network")
-        title = active["title"] if active else "custom"
-        st.markdown("**Custom network**")
-        kept_names = [name for name, equation, source, file
-                      in run.nucl.describe_reactions()
-                      if name not in ("n__p", "n__p")]
-        try:
-            zip_bytes = custom_rates.export_zip(run.cfg, custom_network, kept_names,
-                                                network_filename=title)
-        except Exception as exc:
-            st.warning(f"Could not build the custom-network export: {exc}")
-        else:
-            st.download_button(
-                f"Export custom network (zip)",
-                data=zip_bytes,
-                file_name=f"{title}.zip",
-                mime="application/zip",
-                key="dl_custom_network",
-                help=f"networks/{title}.txt + tables/<name>/<name>_custom.txt, "
-                     "re-importable from the sidebar's \"Import custom network\" button.",
-            )
-
-    st.markdown("**Download individual rate tables**")
-    # Replaced and added reactions both carry an uploaded table (source
-    # "custom upload"); merge them so either can be downloaded as the on-grid
-    # effective table actually fed to the solver.
-    replaced_raw = {**(custom_network or {}).get("replaced", {}),
-                    **(custom_network or {}).get("added", {})}
-    downloadable = {}
-    for name, equation, source, file in run.nucl.describe_reactions():
-        if file is not None:
-            downloadable[f"{name}  ({os.path.basename(file)})"] = ("file", file, name)
-        elif source == "custom upload" and name in replaced_raw:
-            downloadable[f"{name}  (custom upload)"] = ("custom", None, name)
-    if not downloadable:
-        st.caption("This network has no downloadable rate tables.")
-        return
-    choice = st.selectbox(
-        "Rate table", list(downloadable), key="ratefile_choice"
-    )
-    kind, path, name = downloadable[choice]
-    if kind == "file":
-        basename = os.path.basename(path)
-        try:
-            with open(path, "rb") as fh:
-                data = fh.read()
-        except OSError:
-            st.warning(f"Rate table `{basename}` is unavailable.")
-            return
+    custom_network = st.session_state.get("run_custom_network_dict") or {
+        "removed": [], "replaced": {}, "added": {},
+    }
+    active = st.session_state.get("_active_custom_network")
+    title = active["title"] if active else (run.cfg.network if run.cfg.network != "large"
+                                            else "large")
+    st.markdown("**Export this network**")
+    kept_names = [name for name, equation, source, file
+                  in run.nucl.describe_reactions()
+                  if name not in ("n__p", "n__p")]
+    try:
+        zip_bytes = custom_rates.export_zip(run.cfg, custom_network, kept_names,
+                                            network_filename=title)
+    except Exception as exc:
+        st.warning(f"Could not build the network export: {exc}")
     else:
-        basename = f"{name}_custom.txt"
-        T9, rate, err, header = custom_rates.parse_rate_upload(replaced_raw[name])
-        data = custom_rates.effective_table_text(run.cfg, T9, rate, err, name=name,
-                                                  source_header=header)
-    st.download_button(
-        label=f"Download {basename}",
-        data=data,
-        file_name=basename,
-        mime="text/plain",
-        key="ratefile_download",
-    )
+        st.download_button(
+            f"Download network (zip)",
+            data=zip_bytes,
+            file_name=f"{title}.zip",
+            mime="application/zip",
+            key="dl_custom_network",
+            help=f"networks/{title}.txt + tables/<name>/<filename> for every "
+                 "reaction in this run, re-importable from the sidebar's "
+                 "\"Import custom network\" button -- even for an unmodified "
+                 "network, this is a self-contained snapshot of exactly the "
+                 "reactions/tables used.",
+        )
 
 
 def weak_rates_text(run):

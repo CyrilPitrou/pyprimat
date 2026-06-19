@@ -297,8 +297,23 @@ def load_reaction_names(cfg_or_dir, network: str | None = None) -> list[str]:
         ]
 
 
+def _bare_entry(entry: str) -> str:
+    """Strip a network-file entry's optional ``", filename"``/``", rate"``
+    second column, returning just the bare reaction name.
+
+    Every line of ``small.txt``/``large.txt`` (and GUI-exported custom
+    network files) is either a bare name or ``"name, filename.txt"`` (or,
+    for a decay with an overridden rate, ``"name, rate"``) -- see
+    ``load_network``'s pre-parse loop. Callers that only want the reaction
+    name itself (e.g. the module-level catalogs below) go through this
+    helper rather than re-deriving the split inline.
+    """
+    return re.split(r'[, ]+', entry, maxsplit=1)[0].strip()
+
+
 try:
-    _REACTIONS_LARGE = load_reaction_names(_network_dir_from_cwd(), "large")
+    _REACTIONS_LARGE = [_bare_entry(e)
+                        for e in load_reaction_names(_network_dir_from_cwd(), "large")]
 except OSError:
     # Importing documentation tooling outside the repository should still work.
     _REACTIONS_LARGE = []
@@ -1206,10 +1221,10 @@ def available_rate_tables(name: str, cfg) -> list[str]:
 
     Backs the GUI popup's per-reaction "rate table" dropdown
     (CUSTOMPOPUP.md §2.4/§6.4): a reaction with more than one candidate table
-    (e.g. the PRIMAT-default ``n_p__d_g.txt`` plus a
+    (e.g. the PRIMAT-default ``n_p__d_g_primat.txt`` plus a
     ``n_p__d_g_parthenope3.0.txt`` alternate) lets the user pick which one to
-    use. The PRIMAT-default file (``f"{name}.txt"``) is always sorted first
-    when present; the rest follow in alphabetical order.
+    use. The PRIMAT-default file (``f"{name}_primat.txt"``) is always sorted
+    first when present; the rest follow in alphabetical order.
 
     Parameters
     ----------
@@ -1230,7 +1245,7 @@ def available_rate_tables(name: str, cfg) -> list[str]:
     if not os.path.isdir(reaction_dir):
         return []
     files = sorted(f for f in os.listdir(reaction_dir) if f.endswith(".txt"))
-    default = f"{name}.txt"
+    default = f"{name}_primat.txt"
     if default in files:
         files.remove(default)
         files.insert(0, default)
@@ -1298,6 +1313,12 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
     # reaction name ("n_p__d_g") or a "bare_name, filename.txt" pair that points
     # to a non-default rate table.  We extract bare names for the intersection
     # and keep the filename mapping for the rate-table loading loop below.
+    # When no filename is given, default to "<bare>_primat.txt" -- the
+    # PRIMAT-default table written by convert_ac2024_rates.py -- since every
+    # shipped per-reaction folder's plain default file carries that suffix
+    # (small.txt/large.txt normally spell the filename out explicitly; this
+    # fallback only matters for callers that pass bare reaction_names
+    # directly, e.g. the hardcoded ORDER_SMALL/ORDER_MT lists or tests).
     bare_to_file = {}
     bare_names = []
     for entry in selected:
@@ -1306,7 +1327,7 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
             bare, fname = parts[0].strip(), parts[1].strip()
         else:
             bare = entry.strip()
-            fname = bare + ".txt"
+            fname = bare + "_primat.txt"
         bare_names.append(bare)
         bare_to_file[bare] = fname
 
@@ -1402,8 +1423,10 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
     active_nuclides = {"n", "p"}
     weak_indices = {0}
     for name in selected:
-        # Look up the custom filename if provided, otherwise default to name.txt
-        filename = bare_to_file.get(name, name + ".txt")
+        # Look up the custom filename if provided, otherwise default to the
+        # PRIMAT-shipped table's name (see the fallback in the pre-parse loop
+        # above).
+        filename = bare_to_file.get(name, name + "_primat.txt")
 
         if name not in rxn_map:
             raise KeyError(f"reaction {name!r} is not present in reactions_large.csv")
@@ -1497,19 +1520,37 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
             # to the solver.  Checked *before* the decay branch so that an
             # uploaded table wins even for a weak reaction (a brand-new added
             # weak reaction, or a user-replaced decay table).
-            T9_src, rate_src, err_src = custom_tables[name]
-            sources.append("custom upload")
-            files.append(None)
+            # 4-tuple when built from a GUI custom_network with a "filenames"
+            # entry (see UpdateNuclearRates.__init__); a direct (non-GUI)
+            # caller's raw 3-tuple has no filename to show, hence the default.
+            entry = custom_tables[name]
+            T9_src, rate_src, err_src = entry[:3]
+            custom_filename = entry[3] if len(entry) > 3 else None
+            if is_weak:
+                # A decay's override is the synthetic constant-rate table
+                # from custom_rates.decay_override_table_text -- every row
+                # repeats the same overridden rate, so showing "custom
+                # upload" (meaningless for a single T-independent number)
+                # would be less informative than just naming it and quoting
+                # the value, mirroring the unmodified-decay branch below.
+                rate_val = float(np.asarray(rate_src).reshape(-1)[0])
+                sources.append(f"Custom decay rate: {rate_val:.6e} s⁻¹")
+            else:
+                sources.append("custom upload")
+            files.append(custom_filename)
             fwd_median.append(_resample_rate_table(T9_src, rate_src, grid))
             fwd_expsigma.append(_resample_rate_table(T9_src, err_src, grid))
         elif is_weak:
             # Radioactive decay: constant (T9-independent) rate from
             # decays.txt, broadcast onto the master grid -- no rate table,
-            # no resampling (see _load_decay_table's docstring).
+            # no resampling (see _load_decay_table's docstring).  The rate
+            # itself (not just ref/half-life) is the physically meaningful
+            # number to show here, since this row has no per-T9 rate table
+            # to point to.
             if decay_table is None:
                 decay_table = _load_decay_table(tables_dir)
             rate_s, f, halflife_s, ref = decay_table[name]
-            sources.append(f"{ref} (decay, T1/2={halflife_s:.4g} s)")
+            sources.append(f"{rate_s:.6e} s⁻¹  (T1/2={halflife_s:.4g} s, {ref})")
             files.append(os.path.join(tables_dir, "decays.txt"))
             # Convert rate from s^-1 to the natural-unit T9-based convention:
             # the solver calls fill_buffer which uses rates in units of the
@@ -1684,6 +1725,10 @@ class UpdateNuclearRates:
               its stoichiometry (and detailed-balance reverse rate) from the
               name and the nuclide tables; its forward rate comes from the
               uploaded table, just like ``"replaced"``.
+            - ``"filenames"`` (optional): dict ``name -> filename`` naming the
+              on-disk/uploaded basename behind a ``"replaced"``/``"added"``
+              entry, display-only (used by :meth:`NetworkDefinition.describe_reactions`'s
+              "File" column; absent entries just show no filename).
 
             ``None`` (default) reproduces the standard, uncustomised network.
             Never applies to the weak ``n__p`` reaction (handled by a separate
@@ -1702,11 +1747,17 @@ class UpdateNuclearRates:
             # added names are appended to the selected reaction list below.
             added = custom_network.get("added", {})
             added_names = list(added)
+            # Optional, display-only: the GUI's per-reaction filename/upload
+            # basename (CUSTOMPOPUP.md), threaded through purely so
+            # describe_reactions() can show it in the Reactions summary tab's
+            # "File" column instead of leaving it blank for a customised
+            # reaction.  Absent for direct (non-GUI) custom_network dicts.
+            filenames = custom_network.get("filenames", {})
             for name, raw_text in {**custom_network.get("replaced", {}), **added}.items():
                 data = np.loadtxt(io.StringIO(raw_text), unpack=True)
                 T9_src, rate_src = data[0], data[1]
                 err_src = data[2] if data.shape[0] > 2 else np.zeros_like(rate_src)
-                custom_tables[name] = (T9_src, rate_src, err_src)
+                custom_tables[name] = (T9_src, rate_src, err_src, filenames.get(name))
 
         self._selected_names = [n for n in load_reaction_names(cfg, cfg.network)
                                  if re.split(r'[, ]+', n, maxsplit=1)[0].strip() not in removed]

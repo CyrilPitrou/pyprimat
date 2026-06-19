@@ -1,12 +1,12 @@
-n_p__d_g
-d_p__He3_g
-d_d__He3_n
-d_d__t_p
-t_p__a_g
-t_d__a_n
-t_a__Li7_g
-He3_n__t_p
-He3_d__a_p
-He3_a__Be7_g
-Be7_n__Li7_p
-Li7_p__a_a
+n_p__d_g, n_p__d_g_primat.txt
+d_p__He3_g, d_p__He3_g_primat.txt
+d_d__He3_n, d_d__He3_n_primat.txt
+d_d__t_p, d_d__t_p_primat.txt
+t_p__a_g, t_p__a_g_primat.txt
+t_d__a_n, t_d__a_n_primat.txt
+t_a__Li7_g, t_a__Li7_g_primat.txt
+He3_n__t_p, He3_n__t_p_primat.txt
+He3_d__a_p, He3_d__a_p_primat.txt
+He3_a__Be7_g, He3_a__Be7_g_primat.txt
+Be7_n__Li7_p, Be7_n__Li7_p_primat.txt
+Li7_p__a_a, Li7_p__a_a_primat.txt

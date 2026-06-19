@@ -22,13 +22,18 @@ pre-resampled -- so :func:`pyprimat.network_data.load_network`'s
 solve time and when previewing/exporting the "effective" (on-grid) table.
 """
 import io
+import math
 import os
+import re
 import zipfile
 
 import numpy as np
 import streamlit as st
 
-from pyprimat.network_data import _resample_rate_table, reaction_stoichiometry
+from pyprimat.network_data import (
+    _resample_rate_table, reaction_stoichiometry, load_reaction_names,
+    _load_decay_table,
+)
 
 
 def validate_new_reaction(name):
@@ -177,11 +182,70 @@ def effective_table_text(cfg, T9, rate, err, name="custom", source_header=()):
                         cfg.rate_grid_npts)
     rate_grid = _resample_rate_table(T9, rate, grid)
     err_grid = _resample_rate_table(T9, err, grid)
-    lines = list(source_header) if source_header else [f"# ref=custom upload ({name})"]
-    lines.append(f"# custom rate (reinterpolated): {name}")
+    # Provenance line first, then a long "#"-fence so it's visually obvious
+    # that whatever the *original* uploaded file's own header said (preserved
+    # verbatim below) is a separate, prior provenance -- not something
+    # PyPRIMAT itself wrote.
+    lines = [
+        f"# {name}: imported into PyPRIMAT and reinterpolated onto the master T9 grid",
+        "#" * 70,
+    ]
+    lines.extend(source_header)
     for t9, r, e in zip(grid, rate_grid, err_grid):
-        lines.append(f"{t9:.6e} {r:.6e} {e:.6e}")
+        lines.append(f"{t9:.6e}   {r:.6e}   {e:.6e}")
     return "\n".join(lines)
+
+
+def decay_override_table_text(name, rate_s):
+    """Synthetic constant-rate table text for a user-overridden decay rate.
+
+    Decay rates are T9-independent (see ``_load_decay_table``); routing an
+    override through ``load_network``'s existing ``custom_tables`` mechanism
+    (checked *before* the decays.txt branch, so an override always wins, see
+    ``load_network``'s rate-loading loop) needs at least 4 points for the
+    cubic log-log resampling in :func:`pyprimat.network_data._resample_rate_table`,
+    so this repeats the same rate across a handful of grid points rather than
+    using decays.txt's single-row format. Used both to feed the solver and
+    (rarely, if a decay override could not be expressed via the dedicated
+    ``tables/decays.txt`` zip entry -- see :func:`export_zip`) as a fallback
+    table representation.
+    """
+    grid = (1.0e-3, 1.0e-2, 1.0e-1, 1.0, 10.0)
+    lines = [f"# {name}: decay rate overridden in PyPRIMAT (was log(2)/halflife)"]
+    lines += [f"{t9:.6e}   {rate_s:.6e}   {1.0:.6e}" for t9 in grid]
+    return "\n".join(lines)
+
+
+def _shipped_table_dir(cfg, name):
+    return os.path.join(cfg.data_dir, "rates", "nuclear", "tables", name)
+
+
+def _match_shipped_file(cfg, name, raw_text):
+    """If ``raw_text`` is byte-identical to an on-disk ``tables/<name>/*.txt``
+    file, return that file's basename; else ``None``.
+
+    Distinguishes "the user picked an existing alternate shipped table from
+    the dropdown" (e.g. a ``*_parthenope3.0.txt`` sibling) -- which keeps its
+    real name and content unaltered -- from "the user actually uploaded new
+    content", which gets the ``_newnetwork`` treatment in :func:`export_zip`.
+    """
+    folder = _shipped_table_dir(cfg, name)
+    try:
+        candidates = os.listdir(folder)
+    except OSError:
+        return None
+    for fname in candidates:
+        if not fname.endswith(".txt"):
+            continue
+        try:
+            with open(os.path.join(folder, fname)) as f:
+                if f.read() == raw_text:
+                    return fname
+        except OSError:
+            continue
+    return None
+
+
 
 
 def export_zip(cfg, custom_network, kept_names, network_filename="custom"):
@@ -211,34 +275,102 @@ def export_zip(cfg, custom_network, kept_names, network_filename="custom"):
     -------
     bytes
         Zip file contents with ``networks/<network_filename>.txt`` (one
-        reaction name per line, using the ``name, name_custom.txt`` syntax for
-        reactions carrying an uploaded table -- see ``load_network``'s
-        ``bare_to_file`` parsing) and one ``tables/<name>/<name>_custom.txt``
-        per such reaction (the resampled, on-grid table from
-        :func:`effective_table_text`, per-reaction-folder layout matching the
-        shipped ``rates/nuclear/tables/<name>/`` tree). Replaced and added
-        reactions are written identically; on re-import they are told apart by
-        whether the name belongs to the selected network.
+        reaction name per line; every per-reaction-table reaction is written
+        as ``name, <filename>`` -- the filename is *always* explicit, never
+        implied, even for an unmodified shipped default) and one
+        ``tables/<name>/<filename>`` per such reaction:
+
+        * An unmodified reaction (still using a shipped table, default or an
+          alternate like ``*_parthenope3.0.txt``) keeps its real, unaltered
+          filename and content -- so picking an existing alternate from the
+          dropdown is never confused with a genuine edit.
+        * A genuinely new/uploaded/edited table is written as
+          ``<name>_newnetwork.txt``, with the PyPRIMAT-provenance header from
+          :func:`effective_table_text`.
+        * A decay reaction (Bm/Bp, rate from the shared ``decays.txt``, not a
+          per-reaction file) has no table file at all; if its rate has been
+          overridden the network-file line is instead ``name, <rate_s>`` --
+          a bare number where every other reaction has a filename. There is
+          no separate ``decays.txt`` entry in the zip: ``rate_s`` *is* the
+          override, right there in the line that names the reaction.
+
+        The zip is fully self-contained: *every* kept reaction's table is
+        included, not just replaced/added ones, so it reproduces the exact
+        network even on an install whose shipped tables might differ.
     """
     # Replaced (override a kept reaction) and added (brand-new) reactions are
     # both backed by an uploaded table, so they are written to the zip the same
     # way -- merge them into one map of custom tables.
     custom_tables = {**custom_network.get("replaced", {}),
                      **custom_network.get("added", {})}
+    decay_table = _load_decay_table(os.path.join(cfg.data_dir, "rates", "nuclear", "tables"))
+
+    # Decay-reaction overrides are pulled out of custom_tables here: they get
+    # their rate written inline in the network file, not a per-reaction
+    # table file.
+    decay_overrides = {}
+    for name in list(custom_tables):
+        if name in decay_table:
+            raw_text = custom_tables.pop(name)
+            try:
+                T9, rate, err, header = parse_rate_upload(raw_text)
+                decay_overrides[name] = float(np.asarray(rate).reshape(-1)[0])
+            except (ValueError, IndexError):
+                pass
+
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         lines = []
         for name in kept_names:
+            if name in decay_table:
+                if name in decay_overrides:
+                    lines.append(f"{name}, {decay_overrides[name]:.6e}")
+                else:
+                    lines.append(name)
+                continue
             if name in custom_tables:
-                lines.append(f"{name}, {name}_custom.txt")
-            else:
+                raw_text = custom_tables[name]
+                shipped_name = _match_shipped_file(cfg, name, raw_text)
+                if shipped_name is not None:
+                    # Just an existing shipped table picked from the
+                    # dropdown -- not an edit. The shipped default already
+                    # carries the "_primat" suffix on disk (see
+                    # convert_ac2024_rates.py), so it reads unambiguously as
+                    # "PyPRIMAT's own rate"; an already-distinctly-named
+                    # alternate (e.g. "*_parthenope3.0.txt") keeps its name.
+                    lines.append(f"{name}, {shipped_name}")
+                    zf.writestr(f"tables/{name}/{shipped_name}", raw_text)
+                    continue
+                try:
+                    T9, rate, err, header = parse_rate_upload(raw_text)
+                    table_text = effective_table_text(cfg, T9, rate, err, name=name,
+                                                       source_header=header)
+                except ValueError:
+                    table_text = raw_text
+                # Genuinely new/edited content is suffixed with *this*
+                # custom network's own title, not a generic placeholder, so
+                # several exported networks' tables never collide if ever
+                # inspected side by side.
+                fname = f"{name}_{network_filename}.txt"
+                lines.append(f"{name}, {fname}")
+                zf.writestr(f"tables/{name}/{fname}", table_text)
+                continue
+            # Unmodified shipped-default reaction: copy its on-disk table
+            # verbatim (no resampling needed, it is already a valid rate
+            # file) under its own real name, so the zip does not depend on
+            # the importing install's own shipped tables/<name>/ folder.
+            path = os.path.join(cfg.data_dir, "rates", "nuclear", "tables", name,
+                                f"{name}_primat.txt")
+            try:
+                with open(path) as f:
+                    table_text = f.read()
+            except OSError:
                 lines.append(name)
+                continue
+            fname = f"{name}_primat.txt"
+            lines.append(f"{name}, {fname}")
+            zf.writestr(f"tables/{name}/{fname}", table_text)
         zf.writestr(f"networks/{network_filename}.txt", "\n".join(lines) + "\n")
-        for name, raw_text in custom_tables.items():
-            T9, rate, err, header = parse_rate_upload(raw_text)
-            table_text = effective_table_text(cfg, T9, rate, err, name=name,
-                                              source_header=header)
-            zf.writestr(f"tables/{name}/{name}_custom.txt", table_text)
     return buf.getvalue()
 
 
@@ -253,23 +385,31 @@ def import_zip(fh):
     Returns
     -------
     dict
-        ``{"kept": [name, ...], "replaced": {name: raw_text, ...}, "title": str}``.
+        ``{"kept": [name, ...], "replaced": {name: raw_text, ...},
+        "decay_overrides": {name: rate_s, ...}, "title": str}``.
         Removal is implicit: the single file under ``networks/`` only lists
         the reactions that were *kept*, so any reaction of the selected
         network absent from ``kept`` is treated as removed by the caller.
         Brand-new (added) reactions also appear in ``kept`` with their table
         in ``replaced``; the caller tells them apart from replacements by
         checking which ``kept`` names do *not* belong to the selected
-        network.  ``title`` is the network file's basename (without
-        ``.txt``), recovered without needing a separate metadata file.
+        network.  ``replaced`` carries one entry per kept reaction that has a
+        per-reaction table file in the zip (shipped-default, alternate, or
+        genuinely new -- see :func:`export_zip`); decay reactions have no
+        such file and instead contribute to ``decay_overrides`` if their
+        network-file line carries a bare number (the overridden rate)
+        instead of a filename. ``title`` is the network file's basename
+        (without ``.txt``), recovered without needing a separate metadata
+        file.
     """
     replaced = {}
+    decay_overrides = {}
     try:
         zf = zipfile.ZipFile(fh)
     except zipfile.BadZipFile:
         raise ValueError(
             "the uploaded file is not a valid zip archive (expected one "
-            "produced by the 'Save custom network' button)."
+            "produced by the 'Download network details' button)."
         ) from None
     with zf:
         net_files = [info.filename for info in zf.infolist()
@@ -287,13 +427,84 @@ def import_zip(fh):
             line = line.strip()
             if not line:
                 continue
-            bare = line.split(",", 1)[0].strip()
+            parts = re.split(r'[, ]+', line, maxsplit=1)
+            bare = parts[0].strip()
             kept_names.append(bare)
+            if len(parts) > 1:
+                # A decay reaction's overridden rate is written directly as
+                # a bare number in the spot every other reaction uses for a
+                # filename (see export_zip) -- no separate decays.txt entry.
+                try:
+                    decay_overrides[bare] = float(parts[1].strip())
+                except ValueError:
+                    pass  # it's a filename, not a rate; handled below.
         for info in zf.infolist():
-            if info.filename.startswith("tables/") and info.filename.endswith("_custom.txt"):
-                bare = os.path.basename(info.filename)[: -len("_custom.txt")]
+            if info.filename.startswith("tables/") and info.filename.count("/") == 2:
+                # "tables/<name>/<filename>" -- any per-reaction table file,
+                # default-named, alternate-shipped, or genuinely new.
+                bare = info.filename.split("/")[1]
                 replaced[bare] = zf.read(info.filename).decode()
-    return {"kept": kept_names, "replaced": replaced, "title": title}
+    return {"kept": kept_names, "replaced": replaced,
+            "decay_overrides": decay_overrides, "title": title}
+
+
+def kept_to_custom_network(cfg, kept, replaced, decay_overrides=None):
+    """Build the ``{"removed", "replaced", "added"}`` dict from an imported zip.
+
+    Shared by both the sidebar's "Import custom network" dialog
+    (``pyprimat.gui.params_form``) and the post-run Reactions tab's own
+    importer (``pyprimat.gui.panels``) -- lives here, not in ``params_form``,
+    so ``panels`` can call it without a circular import (``params_form``
+    already imports from ``panels``).
+
+    ``removed`` is computed against the *full, unfiltered* large-network
+    reaction list -- not some amax-restricted view -- so that every
+    catalog reaction absent from ``kept`` is actually excluded from the
+    solved network. (An earlier version derived an "implied amax" from the
+    heaviest category among ``kept`` and only marked reactions *within* that
+    band as removed; every reaction above it was then neither removed nor
+    kept, so ``UpdateNuclearRates`` silently treated "not removed" as "keep"
+    and the imported network solved with hundreds of unwanted extra
+    reactions -- this is why that derivation is gone.)
+
+    Parameters
+    ----------
+    cfg : PyPRConfig
+        Used only to resolve ``rates/nuclear/networks/large.txt``.
+    kept : sequence[str]
+        Reaction names kept in the imported network.
+    replaced : dict[str, str]
+        ``{name: raw_table_text}`` for every reaction the zip carried a table
+        for (CUSTOMPOPUP.md's zip format now includes one for *every* kept
+        reaction, not just genuinely customised ones -- see ``export_zip``).
+    decay_overrides : dict[str, float], optional
+        ``{name: rate_s}`` parsed from the zip's ``tables/decays.txt`` (see
+        :func:`import_zip`). Only entries that actually differ from the
+        shipped ``decays.txt`` rate are turned into a synthetic
+        ``replaced`` table entry (:func:`decay_override_table_text`) --
+        an unmodified decay reaction needs no override at all.
+
+    Returns
+    -------
+    dict
+        ``{"removed": [...], "replaced": {...}, "added": {...}}``, the shape
+        ``UpdateNuclearRates`` expects.
+    """
+    entries = load_reaction_names(cfg, "large")
+    bare_names = {re.split(r'[, ]+', e, maxsplit=1)[0].strip() for e in entries}
+    kept_set = set(kept)
+    removed = sorted(bare_names - kept_set)
+    added = {n: replaced[n] for n in kept_set - bare_names if n in replaced}
+    true_replaced = {n: t for n, t in replaced.items() if n not in added}
+    if decay_overrides:
+        shipped = _load_decay_table(os.path.join(cfg.data_dir, "rates", "nuclear", "tables"))
+        for name, rate_s in decay_overrides.items():
+            shipped_entry = shipped.get(name)
+            if shipped_entry is None or not math.isclose(
+                rate_s, shipped_entry[0], rel_tol=1e-9, abs_tol=0.0
+            ):
+                true_replaced[name] = decay_override_table_text(name, rate_s)
+    return {"removed": removed, "replaced": true_replaced, "added": added}
 
 
 def import_single(fh, reaction_name):

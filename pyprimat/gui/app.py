@@ -201,6 +201,31 @@ def _quick_mc(params_items, num_mc, run):
     return mc
 
 
+@st.cache_resource(show_spinner=False)
+def _build_preview(params_items):
+    """Construct (but do not ``solve()``) a ``PyPR`` for ``params_items``.
+
+    Backs the Reactions summary tab, which must always reflect whatever the
+    sidebar currently shows -- even before "Run BBN" is first clicked, and
+    even after the sidebar has been changed since the last completed run.
+    ``PyPR.__init__`` alone (no ``solve()``) already builds the compiled
+    MT/LT networks and their rate tables (see ``CLAUDE.md``'s "Execution
+    flow"), which is all :func:`pyprimat.gui.panels.render_reactions_panel`
+    needs; skipping the (potentially many-second) ODE integration keeps this
+    cheap enough to rerun on every sidebar tweak. Cached the same way as
+    :func:`_solve` so repeatedly viewing the same configuration is instant.
+
+    ``params_items`` is the same sorted-items encoding as :func:`_solve`'s
+    (``params`` straight from ``render_sidebar_form``, which already embeds
+    a JSON ``"custom_network"`` entry when a custom network is active --
+    see its "network" branch).
+    """
+    params = dict(params_items)
+    custom_network_json = params.pop("custom_network", None)
+    custom_network = json.loads(custom_network_json) if custom_network_json else None
+    return PyPR(params=params, custom_network=custom_network)
+
+
 def main():
     st.title("⚛️ PyPRIMAT")
     st.caption(
@@ -209,15 +234,31 @@ def main():
     )
     st.markdown(
         "PyPRIMAT computes primordial light-element abundances (D, He3, He4, "
-        "Li7, ...) and the effective number of neutrinos N_eff. \n\n"
-        " It integrates the coupled cosmological-background and nuclear-reaction-network "
-        "equations of Big Bang Nucleosynthesis. \n\n"
-        "Download the [source code](https://github.com/CyrilPitrou/pyprimat) and cite [publication](https://arxiv.org/abs/1801.08023) if you use it."
+        "Li7, ...) after Big Bang Nucleosynthesis."
     )
 
     params, quick_mc, mc_samples = render_sidebar_form()
-    run_clicked = st.sidebar.button("Run BBN", type="primary", width="stretch")
     _render_footer()
+
+    # `params` already carries a JSON "custom_network" entry when one is
+    # active (set by render_sidebar_form's "network" branch), so comparing
+    # its sorted items against the last-run snapshot (`st.session_state
+    # ["params"]`, set below exactly the same way) tells whether the
+    # sidebar's *exact* current configuration has already been solved --
+    # changing anything (including just re-picking the same custom network)
+    # makes this False again until "Run BBN" is clicked anew.
+    current_items = tuple(sorted(params.items()))
+    stored_params = st.session_state.get("params")
+    up_to_date = (stored_params is not None
+                 and tuple(sorted(stored_params.items())) == current_items)
+
+    # Above the result tabs (not in the sidebar) so it stays visible even
+    # when the sidebar is folded; left at its natural (content-sized) width
+    # rather than stretched across the full column. "Shaded" (secondary,
+    # disabled) once the current configuration is already solved -- nothing
+    # left to run until something changes.
+    run_clicked = st.button("Run BBN", type=("secondary" if up_to_date else "primary"),
+                            disabled=up_to_date)
 
     if run_clicked:
         # Snapshot the current form state; subsequent reruns (e.g. from
@@ -235,12 +276,54 @@ def main():
         active = st.session_state.get("_active_custom_network")
         st.session_state["run_custom_network_dict"] = (
             active["custom_network"] if active else None)
+        stored_params = st.session_state["params"]
+        up_to_date = True
 
-    stored_params = st.session_state.get("params")
-    if stored_params is None:
-        st.info("Set parameters in the sidebar, then click **Run BBN**.")
+    # The active tab is forced via a "_tabs_gen"-keyed remount (st.tabs's
+    # `default=` is otherwise only honoured the very first time a given key
+    # is used, same quirk as every other key-tracked widget -- see
+    # params_form._bump_dialog_gen's docstring for the general pattern):
+    # whenever "up to date" flips, bump the generation so the new `default`
+    # actually takes effect instead of being ignored in favour of whichever
+    # tab the user last had open.
+    if st.session_state.get("_tabs_up_to_date") != up_to_date:
+        st.session_state["_tabs_up_to_date"] = up_to_date
+        st.session_state["_tabs_gen"] = st.session_state.get("_tabs_gen", 0) + 1
+    default_tab = "Final abundances" if up_to_date else "Reactions summary"
+    tabs_gen = st.session_state.get("_tabs_gen", 0)
+
+    tab_reactions, tab_results, tab_evolution, tab_downloads = st.tabs(
+        ["Reactions summary", "Final abundances", "Abundance evolution",
+         "Output tables"],
+        default=default_tab, key=f"_main_tabs_{tabs_gen}",
+    )
+
+    with tab_reactions:
+        # Always built from the *current* sidebar state (not the last
+        # completed run), so this tab reflects in-progress edits immediately.
+        try:
+            preview = _build_preview(current_items)
+        except (ValueError, RuntimeError) as exc:
+            st.error(f"Cannot build this network: {exc}")
+        else:
+            panels.render_reactions_panel(preview)
+
+    if not up_to_date:
+        not_run_msg = (
+            "This tab will appear once **Run BBN** has solved the current "
+            "configuration."
+        )
+        with tab_results:
+            st.info(not_run_msg)
+        with tab_evolution:
+            st.info(not_run_msg)
+        with tab_downloads:
+            st.info(not_run_msg)
+        if st.session_state.get("params") is None:
+            st.info("Set parameters in the sidebar, then click **Run BBN**.")
         return
 
+    stored_params = st.session_state["params"]
     # st.cache_resource requires hashable arguments; a sorted tuple of items
     # is both hashable and order-independent (so key ordering in the params
     # dict never causes a spurious cache miss).
@@ -261,12 +344,17 @@ def main():
         st.error(f"PyPRIMAT run failed: {exc}")
         return
 
-    network = stored_params.get("network", "small")
-    omegabh2 = stored_params.get("Omegabh2", 0.022425)
-    st.caption(
-        f"network = `{network}`, Ωᵇ h² = {omegabh2:g} "
-        f"(solved in {elapsed:.2f} s)"
-    )
+    if run_clicked:
+        # The "Run BBN" button's own disabled/shaded state (and the active
+        # tab's `default=`) were rendered earlier in *this exact* script run,
+        # using the pre-click `up_to_date` -- Streamlit's top-down model means
+        # they can't retroactively reflect the solve that just succeeded
+        # below them. One extra rerun (cheap: _solve is cache_resource'd, so
+        # it's an instant cache hit) is the only way to have the button
+        # actually look shaded and the tab actually switch to "Final
+        # abundances" immediately after this same click, rather than only on
+        # the next unrelated interaction.
+        st.rerun()
 
     mc = None
     if st.session_state.get("quick_mc", False):
@@ -274,14 +362,11 @@ def main():
         with st.spinner(f"Running {num_mc}-sample quick MC uncertainty…"):
             mc = _quick_mc(params_items, num_mc, run)
 
-    tab_results, tab_evolution, tab_reactions, tab_downloads = st.tabs(
-        ["Final abundances", "Abundance evolution", "Reactions", "Output"])
     with tab_results:
+        st.caption(f"(solved in {elapsed:.2f} s)")
         panels.render_results_panel(run, mc=mc)
     with tab_evolution:
         panels.render_evolution_panel(run)
-    with tab_reactions:
-        panels.render_reactions_panel(run)
     with tab_downloads:
         panels.render_downloads_panel(run, time_evolution_tsv, background_tsv)
 
@@ -291,6 +376,10 @@ def _render_footer():
     st.sidebar.caption(
         "PyPRIMAT and this GUI are developed by "
         "[Cyril Pitrou](https://www2.iap.fr/users/pitrou/)."
+    )
+    st.sidebar.caption(
+        "Download the [source code](https://github.com/CyrilPitrou/pyprimat) "
+        "and cite the [publication](https://arxiv.org/abs/1801.08023) if you use it."
     )
 
 
