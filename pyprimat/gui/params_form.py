@@ -530,6 +530,15 @@ def _reset_dialog_reaction_state(base_network, dialog_amax):
     if base_network in known:
         info = known[base_network]
         for name in info["kept"]:
+            # A custom network's own "kept" list was built against *its own*
+            # amax (or none at all); re-applying the dialog's current amax
+            # here too is what actually shrinks the kept set when the user
+            # lowers "Limit A" while a custom network is the base -- without
+            # this, every one of its reactions stayed "kept" regardless of
+            # amax, while the rows shown above (filtered by amax) and the
+            # totals caption below disagreed (e.g. "41/17 kept").
+            if dialog_amax is not None and reaction_category(name) > dialog_amax:
+                continue
             keep[name] = True
             raw = info.get("tables", {}).get(name)
             if raw is not None:
