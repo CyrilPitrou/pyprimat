@@ -708,7 +708,11 @@ def _render_category(cat, names):
     label = f"Category {cat} (A <= {cat}{_category_nuclide_hint(cat)}) -- {n_kept}/{len(names)} kept"
     expander_key = f"_dialog_expander_cat_{cat}"
     with st.expander(label, key=expander_key):
-        c1, c2 = st.columns(2)
+        # Narrow, content-sized columns + a trailing spacer keep the two
+        # buttons right next to each other instead of "Select all" sitting
+        # at the far left of a half-width column and "Unselect all" at the
+        # far left of the other half (i.e. visually far apart).
+        c1, c2, _spacer = st.columns([1, 1, 4])
         if c1.button("Select all", key=f"_dialog_selall_{cat}"):
             for n in names:
                 st.session_state["_dialog_keep"][n] = True
@@ -738,7 +742,11 @@ def _render_decay_category(names, decay_rates):
     label = f"Decays -- {n_kept}/{len(names)} kept"
     expander_key = "_dialog_expander_decay"
     with st.expander(label, key=expander_key):
-        c1, c2 = st.columns(2)
+        # Narrow, content-sized columns + a trailing spacer keep the two
+        # buttons right next to each other instead of "Select all" sitting
+        # at the far left of a half-width column and "Unselect all" at the
+        # far left of the other half (i.e. visually far apart).
+        c1, c2, _spacer = st.columns([1, 1, 4])
         if c1.button("Select all", key="_dialog_selall_decay"):
             for n in names:
                 st.session_state["_dialog_keep"][n] = True
