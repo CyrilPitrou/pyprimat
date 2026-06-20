@@ -23,12 +23,13 @@ dY/dt and the Jacobian with two small kernels.  These tests check that:
 import numpy as np
 import pytest
 
-from pyprimat.network_data import (phase_network, network_rhs, network_jacobian,
+from pyprimat.network_data import (phase_network,
                           ORDER_SMALL, ORDER_MT, ORDER_LT, load_network,
                           SPECIES_SMALL, SPECIES_MD)
 from pyprimat.network_builder import (compile_network, NetworkKernels,
                                  check_conservation)
 from pyprimat.config import PyPRConfig
+from _oracles import network_rhs, network_jacobian
 
 # ORDER_LT is now the *full* large-network order (429 entries spanning nuclides
 # up to A=23), which does not pair with SPECIES_MD (A<=8 only).  For the
