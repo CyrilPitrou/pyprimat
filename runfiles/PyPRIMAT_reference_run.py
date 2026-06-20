@@ -13,6 +13,8 @@ Key choices versus the standard run:
   - T_end         = 0.001 MeV (same as standard; already the default)
   - sampling_temperature_per_decade = 2000  (denser background grid)
   - numerical_precision = 1e-10  (tighter ODE tolerances)
+  - rate_grid_npts = 4000  (denser nuclear-rate master grid; explicit so this
+    reference is decoupled from whatever PyPRConfig's routine-run default is)
   - sampling_nTOp_per_decade = 125  (denser n<->p rate tables)
   - These settings change the n<->p weak-rate fingerprint relative to the
     shipped rates/weak/*.txt cache (see pyprimat.weak_rates), so the rates
@@ -53,6 +55,9 @@ MyOptions = {
     # Background thermodynamics
     "T_start_cosmo_MeV":          100.0,   # [MeV]  wider integration range
     "sampling_temperature_per_decade":     2000,    # denser grid for a(T) and t(a)
+
+    # Nuclear rate tables
+    "rate_grid_npts":             4000,    # denser master T9 grid (see module docstring)
 
     # ODE solver
     "numerical_precision":        1e-10,   # rtol for all solve_ivp calls

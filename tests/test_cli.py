@@ -27,10 +27,13 @@ def test_cli_default_summary(capsys):
     # spectral_distortions=True (IDEAS2.md item 2) and
     # nuclear_qed_corrections=True (the default).  Pins refreshed after the
     # weak-rates update (commits 4c5b8e0/d8bd969/78c9572/521cf4d): both
-    # shifts are within the CLAUDE.md tolerances above.
+    # shifts are within the CLAUDE.md tolerances above. Refreshed again after
+    # raising the rate_grid_npts (500->1000) and sampling_temperature_per_decade
+    # (400->600) defaults for precision (see CLAUDE.md's validation section);
+    # both shifts remain within the same tolerances.
     assert "Neff       = 3.04397730" in out
-    assert "YP (BBN)   = 0.24699670" in out
-    assert "D/H        = 2.4349840e-05" in out
+    assert "YP (BBN)   = 0.24699914" in out
+    assert "D/H        = 2.4349992e-05" in out
     assert "Li6/Li7" not in out
 
 
@@ -40,8 +43,8 @@ def test_cli_json_matches_default_summary(capsys):
     assert rc == 0
     results = json.loads(capsys.readouterr().out)
     assert results["Neff"]   == pytest.approx(3.0439772986, rel=1e-8)
-    assert results["YPBBN"]  == pytest.approx(0.2469967043, rel=1e-8)
-    assert results["DoH"]    == pytest.approx(2.4349840434e-05, rel=1e-8)
+    assert results["YPBBN"]  == pytest.approx(0.2469991398, rel=1e-8)
+    assert results["DoH"]    == pytest.approx(2.4349992006e-05, rel=1e-8)
     assert "Li6oLi7" not in results
 
 

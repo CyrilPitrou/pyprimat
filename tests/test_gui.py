@@ -188,10 +188,12 @@ def test_default_run_matches_cli_reference():
     ratios = _markdown_table_rows(ratios_md.value)
     # These pins were last refreshed after the weak-rates update (commits
     # 4c5b8e0/d8bd969/78c9572/521cf4d); the shifts are within the CLAUDE.md
-    # tolerance (mirrors test_cli.py::test_cli_default_summary).
+    # tolerance (mirrors test_cli.py::test_cli_default_summary). Refreshed
+    # again after raising the rate_grid_npts/sampling_temperature_per_decade
+    # defaults (see test_cli.py::test_cli_default_summary).
     assert ratios[r"$N_{\text{eff}}$"] == ["3.04397730"]
-    assert ratios[r"$Y_P\ (\text{BBN})$"] == ["0.24699670"]
-    assert ratios[r"$\text{D}/\text{H}$"] == ["2.4349840e-05"]
+    assert ratios[r"$Y_P\ (\text{BBN})$"] == ["0.24699914"]
+    assert ratios[r"$\text{D}/\text{H}$"] == ["2.4349992e-05"]
 
     # Per-nuclide final-abundance Markdown table (render_results_panel).
     [abundances_md] = [

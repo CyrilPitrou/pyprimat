@@ -93,7 +93,7 @@ DEFAULT_PARAMS: dict = {
     # ---- background thermodynamics ----------------------------------------
     "T_start_cosmo_MeV":          40.0,
     "T_end_MeV":                  1.e-3,  # end temperature for nuclear integration [MeV]; default 0.001 MeV ≈ 11.6 MK
-    "sampling_temperature_per_decade": 400,  # points per decade of T for the background a(T)/t(T) grid
+    "sampling_temperature_per_decade": 600,  # points per decade of T for the background a(T)/t(T) grid
 
     # ---- n <--> p weak rates ----------------------------------------------
     # rates/weak/nTOp_*.txt carry a fingerprint header recording the config
@@ -175,7 +175,7 @@ DEFAULT_PARAMS: dict = {
     # different grids (e.g. via --keep-source-grid in convert_ac2024_rates.py,
     # or from external sources) are all resampled onto this common grid so that
     # fill_buffer's single searchsorted path remains valid.
-    "rate_grid_npts":             500,        # number of points in the master T9 grid
+    "rate_grid_npts":             1000,       # number of points in the master T9 grid
     "rate_grid_T9_min":          1.0e-3,     # minimum T9 [GK] on the master grid
     "rate_grid_T9_max":          10.0,       # maximum T9 [GK] on the master grid
 
