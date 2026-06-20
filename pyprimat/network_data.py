@@ -1252,76 +1252,38 @@ def available_rate_tables(name: str, cfg) -> list[str]:
     return files
 
 
-def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
-                  custom_tables=None):
-    """Build the selected network from its text reaction list.
+def _parse_network_entries(reaction_names, network_label):
+    """Split raw network-file entries into bare names + alternate-table map.
 
-    Parameters
-    ----------
-    cfg : PyPRConfig
-        Configuration with repository paths and temperature boundaries.
-    subset_file : str, optional
-        Legacy filename or modern filename.  When omitted, ``cfg.network`` picks
-        ``small.txt``, ``medium.txt`` or ``large.txt``.
-    era : {"MT", "LT"}
-        ``"MT"`` keeps only the intersection with :data:`ORDER_MT`; ``"LT"``
-        keeps the full selected list.
-    reaction_names : sequence[str], optional
-        Direct reaction list, mainly for tests.  Also the mechanism used to
-        *remove* a reaction for a GUI "custom network": simply omit its entry
-        from the list passed here (no separate removal parameter is needed).
-    custom_tables : dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]], optional
-        Per-reaction rate-table override: ``name -> (T9_src, rate_src, err_src)``
-        raw arrays (not yet resampled onto the master grid).  When a reaction's
-        bare name is a key of this dict, its forward-rate table is taken from
-        these arrays (run through the same :func:`_resample_rate_table` log-log
-        cubic interpolation as the on-disk tables) instead of from
-        ``rates/nuclear/tables/<name>.txt``.  Used by the GUI's "Customise
-        Reactions" panel to substitute a user-uploaded rate table without
-        writing anything to disk.
+    Each entry is either a bare reaction name (``"n_p__d_g"``) or a
+    ``"bare_name, filename.txt"`` pair pointing at a non-default rate table.
+    Literal duplicate entries (e.g. the same line twice in a network file)
+    are rejected rather than silently dropped, since a duplicate is far more
+    likely to be a copy-paste mistake than an intentional no-op.
 
-    Returns
-    -------
-    NetworkDefinition
-        Species, stoichiometry, rate tables and detailed-balance coefficients in
-        the exact order expected by the solver buffer.
+    Args:
+        reaction_names: sequence[str], the raw entries (one per network-file
+            line, or the hardcoded ORDER_SMALL/ORDER_MT list).
+        network_label: str, used only in the duplicate-entry error message.
 
-    Example
-    -------
-    >>> net = load_network(PyPRConfig({"network": "large", "amax": 8}), era="LT")
-    >>> len(net.names)  # n__p + 67 thermonuclear reactions (A <= 8)
-    68
+    Returns:
+        (bare_names, bare_to_file): bare_names is reaction_names with any
+        ", filename.txt" suffix stripped; bare_to_file maps each bare name to
+        its rate-table filename, defaulting to "<bare>_primat.txt" (the
+        PRIMAT-default table written by convert_ac2024_rates.py) when no
+        filename was given.
     """
-    if custom_tables is None:
-        custom_tables = {}
-    if reaction_names is None:
-        reaction_names = load_reaction_names(cfg, subset_file or cfg.network)
-    # Reject literal duplicate entries (e.g. the same line twice in a network
-    # file) rather than silently dropping the repeat -- a duplicate is far
-    # more likely to be a copy-paste mistake than an intentional no-op.
     seen_entries = set()
     for entry in reaction_names:
         if entry in seen_entries:
             raise ValueError(
                 f"reaction entry {entry!r} is already present in network "
-                f"{getattr(cfg, 'network', subset_file)!r} (duplicate line "
-                f"in the network file)")
+                f"{network_label!r} (duplicate line in the network file)")
         seen_entries.add(entry)
-    selected = list(reaction_names)
 
-    # Pre-parse entries before the MT intersection: each entry is either a bare
-    # reaction name ("n_p__d_g") or a "bare_name, filename.txt" pair that points
-    # to a non-default rate table.  We extract bare names for the intersection
-    # and keep the filename mapping for the rate-table loading loop below.
-    # When no filename is given, default to "<bare>_primat.txt" -- the
-    # PRIMAT-default table written by convert_ac2024_rates.py -- since every
-    # shipped per-reaction folder's plain default file carries that suffix
-    # (small.txt/large.txt normally spell the filename out explicitly; this
-    # fallback only matters for callers that pass bare reaction_names
-    # directly, e.g. the hardcoded ORDER_SMALL/ORDER_MT lists or tests).
     bare_to_file = {}
     bare_names = []
-    for entry in selected:
+    for entry in reaction_names:
         parts = re.split(r'[, ]+', entry, maxsplit=1)
         if len(parts) > 1:
             bare, fname = parts[0].strip(), parts[1].strip()
@@ -1330,83 +1292,119 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
             fname = bare + "_primat.txt"
         bare_names.append(bare)
         bare_to_file[bare] = fname
+    return bare_names, bare_to_file
 
-    tables_dir, data_dir, nuc_order, nuc_NZ, db, rxn_map = _reaction_catalog(cfg.data_dir)
 
-    # Brand-new reactions added via the GUI "Customise Reactions" panel: any
-    # selected reaction whose bare name is *absent* from the shipped catalog
-    # (reactions_large.csv) but whose forward rate is supplied through
-    # ``custom_tables``.  Its stoichiometry is derived from the name itself
-    # (the "a_b__c_d" syntax, via :func:`reaction_stoichiometry`) and its
-    # reverse-rate (alpha, beta, gamma) coefficients from nuclide data
-    # (:func:`compute_detailed_balance_coefficients`), then injected into the
-    # catalog so the rest of this function treats the new reaction exactly like
-    # a shipped one.  ``rxn_map``/``db`` come from the lru_cached
-    # :func:`_reaction_catalog`, so we copy them before injecting to avoid
-    # poisoning the cache shared with other networks/calls.
+def _inject_custom_reactions(bare_names, custom_tables, rxn_map, db, cfg):
+    """Add brand-new reactions (GUI "Customise Reactions" panel) to the catalog.
+
+    A brand-new reaction is any selected bare name *absent* from the shipped
+    catalog (``reactions_large.csv``) but whose forward rate is supplied
+    through ``custom_tables``.  Its stoichiometry is derived from the name
+    itself (the "a_b__c_d" syntax, via :func:`reaction_stoichiometry`) and its
+    reverse-rate (alpha, beta, gamma) coefficients from nuclide data
+    (:func:`compute_detailed_balance_coefficients`), then injected into the
+    catalog so the rest of :func:`load_network` treats the new reaction
+    exactly like a shipped one.
+
+    Args:
+        bare_names: list[str], bare reaction names selected for this network.
+        custom_tables: dict[str, tuple], see load_network's docstring.
+        rxn_map, db: dicts from the lru_cached :func:`_reaction_catalog`.
+        cfg: PyPRConfig instance (passed to the detailed-balance helper).
+
+    Returns:
+        (rxn_map, db): the same dicts, copied (not mutated in place) and
+        extended with the new reactions, to avoid poisoning the cache shared
+        with other networks/calls. Returned unchanged (same objects) when
+        there is nothing to inject.
+    """
     new_names = [n for n in bare_names if n not in rxn_map and n in custom_tables]
-    if new_names:
-        rxn_map = dict(rxn_map)
-        db = dict(db)
-        for n in new_names:
+    if not new_names:
+        return rxn_map, db
+
+    rxn_map = dict(rxn_map)
+    db = dict(db)
+    for n in new_names:
+        try:
+            react_counts, prod_counts = reaction_stoichiometry(n)
+        except (ValueError, KeyError) as exc:
+            # Unparseable name, unknown nuclide token, or a stoichiometry
+            # that does not conserve baryon number/charge: surface a clear
+            # message naming the offending reaction.
+            raise ValueError(f"cannot add reaction {n!r}: {exc}") from exc
+        # Re-serialise to the CSV "A+B" field form used by reactions_large.csv
+        # so that _side_counts (applied below to every reaction) handles
+        # lepton bookkeeping and multiplicities uniformly.
+        rfield = "+".join(s for s, c in react_counts.items() for _ in range(int(c)))
+        pfield = "+".join(s for s, c in prod_counts.items() for _ in range(int(c)))
+        rxn_map[n] = (rfield, pfield)
+        # Give the new reaction a physical reverse rate via detailed balance
+        # when it is purely nuclear (no emitted lepton); weak additions are
+        # left reverse-rate-free (abg = 0), mirroring the decay default.
+        rcounts, dZr = _side_counts(rfield)
+        pcounts, dZp = _side_counts(pfield)
+        if dZp - dZr == 0:
+            reactants = [s for s, c in rcounts.items() for _ in range(int(c))]
+            products = [s for s, c in pcounts.items() for _ in range(int(c))]
             try:
-                react_counts, prod_counts = reaction_stoichiometry(n)
-            except (ValueError, KeyError) as exc:
-                # Unparseable name, unknown nuclide token, or a stoichiometry
-                # that does not conserve baryon number/charge: surface a clear
-                # message naming the offending reaction.
-                raise ValueError(f"cannot add reaction {n!r}: {exc}") from exc
-            # Re-serialise to the CSV "A+B" field form used by reactions_large.csv
-            # so that _side_counts (applied below to every reaction) handles
-            # lepton bookkeeping and multiplicities uniformly.
-            rfield = "+".join(s for s, c in react_counts.items() for _ in range(int(c)))
-            pfield = "+".join(s for s, c in prod_counts.items() for _ in range(int(c)))
-            rxn_map[n] = (rfield, pfield)
-            # Give the new reaction a physical reverse rate via detailed balance
-            # when it is purely nuclear (no emitted lepton); weak additions are
-            # left reverse-rate-free (abg = 0), mirroring the decay default.
-            rcounts, dZr = _side_counts(rfield)
-            pcounts, dZp = _side_counts(pfield)
-            if dZp - dZr == 0:
-                reactants = [s for s, c in rcounts.items() for _ in range(int(c))]
-                products = [s for s, c in pcounts.items() for _ in range(int(c))]
-                try:
-                    db[n] = compute_detailed_balance_coefficients(reactants, products, cfg)
-                except Exception:
-                    # Missing spin/mass data for one of the nuclides: fall back
-                    # to a forward-only reaction rather than failing the run.
-                    pass
+                db[n] = compute_detailed_balance_coefficients(reactants, products, cfg)
+            except Exception:
+                # Missing spin/mass data for one of the nuclides: fall back
+                # to a forward-only reaction rather than failing the run.
+                pass
+    return rxn_map, db
 
-    # cfg.amax: if set, drop any reaction whose stoichiometry involves a nuclide
-    # with mass number A = N + Z > amax.  Applies to *any* network (not just
-    # "large" -- small/medium-sized networks simply have no reaction above the
-    # cutoff, so the filter is a no-op for them).
-    #
-    # This filtering must happen *before* the MT/LT era branch below, not only
-    # inside the `parsed` loop: the MT-era intersection (next block) used to
-    # test against the *unfiltered* `bare_names`, so an MT-era solve could
-    # still try to run a reaction that the LT era would have dropped for
-    # amax -- e.g. network="small", amax=2 would let the MT era keep
-    # `n_p__d_g` only in principle, but any other small-network amax<11
-    # reaction would have leaked through the old unfiltered intersection.
-    # Filtering once here, before both era branches, fixes that and lets the
-    # `parsed` loop below drop its own (now redundant) per-name amax check.
-    amax = getattr(cfg, "amax", None)
-    if amax is not None:
-        filtered_bare_names = []
-        for name in bare_names:
-            if name not in rxn_map:
-                raise KeyError(f"reaction {name!r} is not present in reactions_large.csv")
-            react, _ = _side_counts(rxn_map[name][0])
-            prod, _ = _side_counts(rxn_map[name][1])
-            all_nuclides = set(react) | set(prod)
-            if any(sum(nuc_NZ[s]) > amax for s in all_nuclides if s in nuc_NZ):
-                continue
-            filtered_bare_names.append(name)
-        bare_names = filtered_bare_names
 
+def _apply_amax_filter(bare_names, rxn_map, nuc_NZ, amax):
+    """Drop reactions involving a nuclide with mass number A > amax.
+
+    Applies to *any* network (not just "large" -- small/medium-sized networks
+    simply have no reaction above the cutoff, so the filter is a no-op for
+    them).  Must run *before* the MT/LT era branch in :func:`load_network`,
+    not only inside its per-reaction parsing loop: the MT-era intersection
+    tests against the *filtered* bare names, so an MT-era solve cannot try to
+    run a reaction that the LT era would have dropped for amax.
+
+    Args:
+        bare_names: list[str], bare reaction names before filtering.
+        rxn_map: dict, bare name -> (reactants_field, products_field).
+        nuc_NZ: dict, nuclide name -> (N, Z).
+        amax: int or None; None disables the filter (returns bare_names as-is).
+
+    Returns:
+        list[str], the filtered bare names (new list; input is not mutated).
+    """
+    if amax is None:
+        return bare_names
+    filtered_bare_names = []
+    for name in bare_names:
+        if name not in rxn_map:
+            raise KeyError(f"reaction {name!r} is not present in reactions_large.csv")
+        react, _ = _side_counts(rxn_map[name][0])
+        prod, _ = _side_counts(rxn_map[name][1])
+        all_nuclides = set(react) | set(prod)
+        if any(sum(nuc_NZ[s]) > amax for s in all_nuclides if s in nuc_NZ):
+            continue
+        filtered_bare_names.append(name)
+    return filtered_bare_names
+
+
+def _select_era_reactions(era, cfg, bare_names):
+    """Restrict the (already amax-filtered) bare names to the requested era.
+
+    Args:
+        era: "MT" or "LT" (case-insensitive).
+        cfg: PyPRConfig instance (only ``cfg.network`` is read).
+        bare_names: list[str], amax-filtered bare reaction names.
+
+    Returns:
+        (era, selected): era upper-cased; selected is the era-restricted list
+        of bare names, in the fixed ORDER_SMALL/ORDER_MT order for "MT", or
+        ``bare_names`` unchanged for "LT".
+    """
     era = era.upper()
-    if era == "MT" and getattr(cfg, "network", None) == "small":
+    if era == "MT" and cfg.network == "small":
         allowed = set(bare_names)
         selected = [name for name in ORDER_SMALL
                     if name not in _WEAK_NTOP_NAMES and name in allowed]
@@ -1418,14 +1416,30 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
         selected = bare_names
     else:
         raise ValueError(f"era must be 'MT' or 'LT', got {era!r}")
+    return era, selected
 
+
+def _parse_reaction_sides(selected, bare_to_file, rxn_map):
+    """Resolve each selected reaction's reactant/product side counts.
+
+    Args:
+        selected: list[str], era-restricted bare reaction names.
+        bare_to_file: dict, bare name -> rate-table filename.
+        rxn_map: dict, bare name -> (reactants_field, products_field).
+
+    Returns:
+        (parsed, active_nuclides): parsed is a list of
+        ``(name, filename, react, prod, is_weak, net_lepton_dZ)`` tuples
+        (react/prod are Counter-like dicts of nuclide -> multiplicity,
+        excluding Bm/Bp leptons); active_nuclides is the set of all nuclides
+        (plus "n", "p") appearing in any selected reaction.
+    """
     parsed = []
     active_nuclides = {"n", "p"}
-    weak_indices = {0}
     for name in selected:
         # Look up the custom filename if provided, otherwise default to the
-        # PRIMAT-shipped table's name (see the fallback in the pre-parse loop
-        # above).
+        # PRIMAT-shipped table's name (see the fallback in
+        # _parse_network_entries above).
         filename = bare_to_file.get(name, name + "_primat.txt")
 
         if name not in rxn_map:
@@ -1439,55 +1453,90 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
         net_lepton_dZ = lepton_dZ_p - lepton_dZ_r
         is_weak = (net_lepton_dZ != 0)
 
-        # `selected` is already amax-filtered (see above), so no per-name
-        # amax check is needed here.
+        # `selected` is already amax-filtered, so no per-name amax check is
+        # needed here.
         parsed.append((name, filename, react, prod, is_weak, net_lepton_dZ))
         active_nuclides.update(react)
         active_nuclides.update(prod)
+    return parsed, active_nuclides
 
-    if era == "MT" and getattr(cfg, "network", None) != "small":
-        # The MT era historically carries a fixed set of nuclides through the
-        # solver even when only a subset of reactions is active.  For standard
-        # networks this is all of SPECIES_MD (12 nuclides).  For custom
-        # networks we only add SPECIES_MD members that actually appear in the
-        # file's full reaction list (before the MT intersection), so we don't
-        # carry columns for species that are completely absent from the network.
-        #
-        # The amax filter must apply here too: SPECIES_MD includes Li8 and B8
-        # (both A=8) and Li6/He6 (A=6).  With e.g. amax=7 the LT network drops
-        # the A>7 species, so carrying them through the MT era would leave the
-        # solver unable to map the MT-era columns onto the LT abundance layout
-        # by name (KeyError 'Li8').  Dropping them from the MT species set as
-        # well keeps the two eras consistent.
-        file_nuclides: set[str] = {"n", "p"}
-        for bn in bare_names:
-            if bn in rxn_map:
-                r, _ = _side_counts(rxn_map[bn][0])
-                p, _ = _side_counts(rxn_map[bn][1])
-                file_nuclides.update(r)
-                file_nuclides.update(p)
-        active_nuclides.update(
-            s for s in SPECIES_MD
-            if s in file_nuclides and (amax is None or sum(nuc_NZ[s]) <= amax)
-        )
 
-    species = _species_order(active_nuclides, nuc_order)
-    idx = {s: i for i, s in enumerate(species)}
-    N = np.array([nuc_NZ[s][0] for s in species], dtype=int)
-    Z = np.array([nuc_NZ[s][1] for s in species], dtype=int)
+def _extend_mt_species(era, cfg, bare_names, rxn_map, nuc_NZ, amax, active_nuclides):
+    """Add the fixed MT-era species set (SPECIES_MD) to active_nuclides.
 
-    # Master T9 grid: all tables are resampled onto this grid at load time so
-    # that fill_buffer's single searchsorted path is always valid, regardless of
-    # the grid used when generating the rate files (e.g. --keep-source-grid).
-    grid = np.logspace(np.log10(cfg.rate_grid_T9_min),
-                       np.log10(cfg.rate_grid_T9_max),
-                       cfg.rate_grid_npts)
+    The MT era historically carries a fixed set of nuclides through the
+    solver even when only a subset of reactions is active. For standard
+    networks this is all of SPECIES_MD (12 nuclides). For custom networks we
+    only add SPECIES_MD members that actually appear in the file's full
+    reaction list (before the MT intersection), so we don't carry columns for
+    species that are completely absent from the network. The amax filter
+    must apply here too, to keep the MT and LT eras' species lists consistent
+    (e.g. amax=7 drops Li8/B8 from the LT network; carrying them through the
+    MT era would leave the solver unable to map MT columns onto the LT
+    abundance layout by name).
 
+    Args:
+        era: "MT" or "LT" (already upper-cased).
+        cfg: PyPRConfig instance (only ``cfg.network`` is read).
+        bare_names: list[str], amax-filtered bare reaction names (the full
+            network's list, before the MT intersection).
+        rxn_map: dict, bare name -> (reactants_field, products_field).
+        nuc_NZ: dict, nuclide name -> (N, Z).
+        amax: int or None.
+        active_nuclides: set[str], mutated in place to add the MT species.
+
+    Returns:
+        None (mutates ``active_nuclides`` in place); a no-op unless
+        ``era == "MT"`` and ``cfg.network != "small"``.
+    """
+    if not (era == "MT" and cfg.network != "small"):
+        return
+    file_nuclides: set[str] = {"n", "p"}
+    for bn in bare_names:
+        if bn in rxn_map:
+            r, _ = _side_counts(rxn_map[bn][0])
+            p, _ = _side_counts(rxn_map[bn][1])
+            file_nuclides.update(r)
+            file_nuclides.update(p)
+    active_nuclides.update(
+        s for s in SPECIES_MD
+        if s in file_nuclides and (amax is None or sum(nuc_NZ[s]) <= amax)
+    )
+
+
+def _build_rate_tables(parsed, idx, custom_tables, tables_dir, grid, cfg, db):
+    """Assemble the per-reaction rate tables, stoichiometry and provenance.
+
+    This is the core "fill in the columns" step of :func:`load_network`:
+    for each parsed reaction (in order, after the ``n__p`` weak conversion
+    prepended at index 0) it resolves the forward-rate table (custom upload /
+    decay / on-disk thermonuclear table), resamples it onto the master grid,
+    and looks up or computes its detailed-balance (alpha, beta, gamma)
+    coefficients.
+
+    Args:
+        parsed: list of ``(name, filename, react, prod, is_weak,
+            net_lepton_dZ)`` tuples from :func:`_parse_reaction_sides`.
+        idx: dict, species name -> index in the solver's abundance vector.
+        custom_tables: dict, see load_network's docstring.
+        tables_dir: str, path to rates/nuclear/tables/.
+        grid: np.ndarray, master T9 grid (log-spaced).
+        cfg: PyPRConfig instance.
+        db: dict, bare name -> (alpha, beta, gamma) detailed-balance triple.
+
+    Returns:
+        (names, network, weak_indices, lepton_dZ_list, sources, files,
+         fwd_median, fwd_expsigma, abg): names/network/... are aligned lists
+        with index 0 = the n__p weak conversion (prepended here);
+        fwd_median/fwd_expsigma are 2D arrays (n_reactions, grid.size); abg is
+        (n_reactions, 3).
+    """
     # n__p: net lepton dZ = -1 (Bm on products, Z_Bm = -1).
     # This balances the +1 nuclear dZ (n→p converts Z=0 to Z=1), making the
     # reaction electrically neutral to check_conservation.
-    names = ["n__p" if _RATE_SYNTAX_ == "spaced" else "n__p"]
+    names = ["n__p"]
     network = [({idx["n"]: 1}, {idx["p"]: 1})]
+    weak_indices = {0}
     lepton_dZ_list = [-1]   # index 0 = n__p (electron emitted: dZ = -1)
     # Provenance label per reaction, read from each table's header (ref= field).
     # n__p has no rate table here (its weak rates are supplied at solve time), so
@@ -1587,7 +1636,7 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
         # that detailed balance is enforced -- relevant only at temperatures
         # comparable to the decay Q-value (keV range), far below BBN.
         if is_weak and name not in db:
-            if getattr(cfg, "decay_reverse_rates", False):
+            if cfg.decay_reverse_rates:
                 # Derive (alpha, beta, gamma) from nuclide masses/spins.
                 # react_names / prod_names already exclude Bm/Bp leptons
                 # (from _side_counts), so pass them directly.
@@ -1619,32 +1668,155 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
     fwd_median = np.asarray(fwd_median)
     fwd_expsigma = np.asarray(fwd_expsigma)
     abg = np.asarray(abg)
+    return (names, network, weak_indices, lepton_dZ_list, sources, files,
+            fwd_median, fwd_expsigma, abg)
 
-    # Apply QED corrections to radiative-capture rates when requested.
-    # The correction (Pitrou & Pospelov 2020) accounts for pair-production in the
-    # final-state photon.  Multiplying into fwd_median makes the corrected value
-    # the new median so that p_* and NP_delta_* variations work relative to it.
-    if getattr(cfg, "nuclear_qed_corrections", False):
-        for i, rname in enumerate(names[1:]):   # names[0] is n__p, handled separately
-            factor = _qed_nuclear_rescale(rname, grid)
-            if factor is not None:
-                fwd_median[i] *= factor
 
-    # Active forward rates (initially median)
-    fwd = fwd_median.copy()
+def _apply_nuclear_qed(names, fwd_median, grid, cfg):
+    """Rescale radiative-capture forward rates by the QED correction factor.
 
-    # Build the reverse-rate cap: bwd is clamped so it never exceeds the value
-    # it would have had at T_nucl (the nucleosynthesis onset temperature).
-    # Below T_nucl the exp(γ/T9) factor of exothermic reverse rates can grow
-    # by many orders of magnitude, producing a stiff "blow-up" for heavy nuclides
-    # in the large network that would prevent BDF convergence.  Pinning the cap
-    # at T_nucl preserves detailed balance near BBN onset and removes the low-T
-    # divergence safely (see module docstring for the large-network caveats).
+    The correction (Pitrou & Pospelov 2020) accounts for pair-production in
+    the final-state photon.  Multiplying into ``fwd_median`` makes the
+    corrected value the new median so that ``p_*``/``NP_delta_*`` rate
+    variations apply relative to it.
+
+    Args:
+        names: list[str], reaction names (index 0 is "n__p", skipped: the
+            weak conversion has no radiative-capture QED correction).
+        fwd_median: np.ndarray (n_reactions, grid.size), mutated in place.
+        grid: np.ndarray, master T9 grid.
+        cfg: PyPRConfig instance.
+
+    Returns:
+        None (mutates ``fwd_median`` in place); a no-op unless
+        ``cfg.nuclear_qed_corrections`` is True.
+    """
+    if not cfg.nuclear_qed_corrections:
+        return
+    for i, rname in enumerate(names[1:]):   # names[0] is n__p, handled separately
+        factor = _qed_nuclear_rescale(rname, grid)
+        if factor is not None:
+            fwd_median[i] *= factor
+
+
+def _reverse_rate_cap(grid, abg, fwd, cfg):
+    """Cap each reaction's reverse rate at its value at T_nucl.
+
+    Below T_nucl (the nucleosynthesis onset temperature) the ``exp(γ/T9)``
+    factor of exothermic reverse rates can grow by many orders of magnitude,
+    producing a stiff "blow-up" for heavy nuclides in the large network that
+    would prevent BDF convergence. Pinning the cap at T_nucl preserves
+    detailed balance near BBN onset and removes the low-T divergence safely
+    (see the module docstring for the large-network caveats).
+
+    Args:
+        grid: np.ndarray, master T9 grid (log-spaced).
+        abg: np.ndarray (n_reactions, 3), (alpha, beta, gamma) per reaction.
+        fwd: np.ndarray (n_reactions, grid.size), forward rates on the grid.
+        cfg: PyPRConfig instance (``cfg.T_nucl`` in K).
+
+    Returns:
+        np.ndarray (n_reactions,), the reverse-rate cap per reaction.
+    """
     j = int(np.searchsorted(grid, cfg.T_nucl / 1.0e9))  # index of T9 ≈ T_nucl/10⁹
     j = min(max(j, 0), grid.size - 1)
     a_, b_, g_ = abg[:, 0], abg[:, 1], abg[:, 2]
     T9c = grid[j]                              # T9 at the capping temperature
-    bwd_cap = a_ * T9c ** b_ * np.exp(np.minimum(g_ / T9c, _EXP_CAP)) * fwd[:, j]
+    return a_ * T9c ** b_ * np.exp(np.minimum(g_ / T9c, _EXP_CAP)) * fwd[:, j]
+
+
+def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
+                  custom_tables=None):
+    """Build the selected network from its text reaction list.
+
+    Parameters
+    ----------
+    cfg : PyPRConfig
+        Configuration with repository paths and temperature boundaries.
+    subset_file : str, optional
+        Legacy filename or modern filename.  When omitted, ``cfg.network`` picks
+        ``small.txt``, ``medium.txt`` or ``large.txt``.
+    era : {"MT", "LT"}
+        ``"MT"`` keeps only the intersection with :data:`ORDER_MT`; ``"LT"``
+        keeps the full selected list.
+    reaction_names : sequence[str], optional
+        Direct reaction list, mainly for tests.  Also the mechanism used to
+        *remove* a reaction for a GUI "custom network": simply omit its entry
+        from the list passed here (no separate removal parameter is needed).
+    custom_tables : dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]], optional
+        Per-reaction rate-table override: ``name -> (T9_src, rate_src, err_src)``
+        raw arrays (not yet resampled onto the master grid).  When a reaction's
+        bare name is a key of this dict, its forward-rate table is taken from
+        these arrays (run through the same :func:`_resample_rate_table` log-log
+        cubic interpolation as the on-disk tables) instead of from
+        ``rates/nuclear/tables/<name>.txt``.  Used by the GUI's "Customise
+        Reactions" panel to substitute a user-uploaded rate table without
+        writing anything to disk.
+
+    Returns
+    -------
+    NetworkDefinition
+        Species, stoichiometry, rate tables and detailed-balance coefficients in
+        the exact order expected by the solver buffer.
+
+    Example
+    -------
+    >>> net = load_network(PyPRConfig({"network": "large", "amax": 8}), era="LT")
+    >>> len(net.names)  # n__p + 67 thermonuclear reactions (A <= 8)
+    68
+
+    Implementation
+    --------------
+    This function only sequences the named steps below (each independently
+    unit-tested): parse the network-file entries, resolve/inject custom rate
+    tables, apply the ``amax`` cutoff, intersect with the requested era,
+    resolve each reaction's stoichiometry, determine the active species set,
+    build the per-reaction rate tables on the master T9 grid, apply nuclear
+    QED rescaling, and compute the reverse-rate cap.
+    """
+    if custom_tables is None:
+        custom_tables = {}
+    if reaction_names is None:
+        reaction_names = load_reaction_names(cfg, subset_file or cfg.network)
+
+    bare_names, bare_to_file = _parse_network_entries(
+        reaction_names, subset_file or cfg.network)
+
+    tables_dir, data_dir, nuc_order, nuc_NZ, db, rxn_map = _reaction_catalog(cfg.data_dir)
+
+    rxn_map, db = _inject_custom_reactions(bare_names, custom_tables, rxn_map, db, cfg)
+
+    amax = cfg.amax
+    bare_names = _apply_amax_filter(bare_names, rxn_map, nuc_NZ, amax)
+
+    era, selected = _select_era_reactions(era, cfg, bare_names)
+
+    parsed, active_nuclides = _parse_reaction_sides(selected, bare_to_file, rxn_map)
+
+    _extend_mt_species(era, cfg, bare_names, rxn_map, nuc_NZ, amax, active_nuclides)
+
+    species = _species_order(active_nuclides, nuc_order)
+    idx = {s: i for i, s in enumerate(species)}
+    N = np.array([nuc_NZ[s][0] for s in species], dtype=int)
+    Z = np.array([nuc_NZ[s][1] for s in species], dtype=int)
+
+    # Master T9 grid: all tables are resampled onto this grid at load time so
+    # that fill_buffer's single searchsorted path is always valid, regardless of
+    # the grid used when generating the rate files (e.g. --keep-source-grid).
+    grid = np.logspace(np.log10(cfg.rate_grid_T9_min),
+                       np.log10(cfg.rate_grid_T9_max),
+                       cfg.rate_grid_npts)
+
+    (names, network, weak_indices, lepton_dZ_list, sources, files,
+     fwd_median, fwd_expsigma, abg) = _build_rate_tables(
+        parsed, idx, custom_tables, tables_dir, grid, cfg, db)
+
+    _apply_nuclear_qed(names, fwd_median, grid, cfg)
+
+    # Active forward rates (initially median)
+    fwd = fwd_median.copy()
+
+    bwd_cap = _reverse_rate_cap(grid, abg, fwd, cfg)
 
     return NetworkDefinition(species, N, Z, network, weak_indices, names, grid,
                              fwd, fwd_median, fwd_expsigma, abg, bwd_cap,
