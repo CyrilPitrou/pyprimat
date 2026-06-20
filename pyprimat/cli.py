@@ -12,16 +12,48 @@ need (baryon density, extra relativistic species, network choice) so a
 
     pyprimat --Omegabh2 0.02242 --network large --amax 8
 
-Anything not exposed as a flag here can still be reached by writing a short
-script that builds a ``params`` dict (see ``runfiles/PyPRIMAT_run.py`` for
-the full set of ``PyPRConfig`` keys) and calling ``pyprimat.PyPR`` directly.
+Anything not exposed as a named flag here can still be set without writing a
+script, via the (intentionally undocumented in ``--help``, to keep the
+printed help short) ``--set KEY=VALUE`` escape hatch, repeatable for any
+``PyPRConfig`` key (including ``p_<reaction>``/``NP_delta_<reaction>``
+rate-variation keys), e.g.::
+
+    pyprimat --set T_end_MeV=1e-4 --set decay_era=True --set network=large
+
+Values are parsed with ``ast.literal_eval`` (so ``True``/``False``/``None``,
+numbers, and quoted strings all work); anything that fails to parse as a
+Python literal is kept as a plain string (e.g. ``--set network=large``).
 """
 import argparse
+import ast
 import json
 import sys
 import time
 
 from . import PyPR, __version__
+
+
+def _parse_set_value(raw: str):
+    """Parse the value half of a ``--set KEY=VALUE`` CLI argument.
+
+    Tries ``ast.literal_eval`` first, so numeric, boolean, ``None``, and
+    quoted-string values are converted to the right Python type (e.g.
+    ``"True"`` -> ``True``, ``"1e-4"`` -> ``1e-4``). Falls back to the raw
+    string unchanged when it is not a valid Python literal (e.g. an
+    unquoted network name like ``large``), since ``PyPRConfig`` string
+    parameters (``network``, ``custom_background``, ...) are passed this way.
+
+    Example
+    -------
+        >>> _parse_set_value("1e-4")
+        0.0001
+        >>> _parse_set_value("large")
+        'large'
+    """
+    try:
+        return ast.literal_eval(raw)
+    except (ValueError, SyntaxError):
+        return raw
 
 
 def _build_parser():
@@ -37,6 +69,9 @@ def _build_parser():
         prog="pyprimat",
         description="Run a Big Bang Nucleosynthesis computation with "
                      "PyPRIMAT and print the resulting Neff/abundances.",
+        epilog="Any other PyPRConfig parameter (including p_<reaction>/"
+               "NP_delta_<reaction> rate variations) can be set with "
+               "repeated --set KEY=VALUE, e.g. --set T_end_MeV=1e-4.",
     )
     # `version` action prints the string and exits before any computation;
     # the version itself comes from the installed distribution metadata via
@@ -82,6 +117,15 @@ def _build_parser():
         "--verbose", action="store_true",
         help="Enable PyPRIMAT's internal progress messages (timings, cache hits, ...).",
     )
+    # Generic escape hatch: lets any PyPRConfig key (including p_<reaction>/
+    # NP_delta_<reaction>) be set from the CLI without a dedicated flag.
+    # help=SUPPRESS keeps it out of --help, per the handful of named flags
+    # above being the only ones intended to show there; see the module
+    # docstring for usage.
+    parser.add_argument(
+        "--set", action="append", dest="set_params", metavar="KEY=VALUE",
+        default=[], help=argparse.SUPPRESS,
+    )
     return parser
 
 
@@ -125,6 +169,11 @@ def main(argv=None):
             params[key] = value
     if args.verbose:
         params["verbose"] = True
+    for entry in args.set_params:
+        if "=" not in entry:
+            parser.error(f"--set {entry!r}: expected KEY=VALUE")
+        key, _, raw_value = entry.partition("=")
+        params[key] = _parse_set_value(raw_value)
 
     start_time = time.time()
     results = PyPR(params=params).PyPRresults()
