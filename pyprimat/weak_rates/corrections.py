@@ -1,76 +1,42 @@
 # -*- coding: utf-8 -*-
 """
-weak_rates.py — n ↔ p weak interaction rates for PyPRIMAT
-==========================================================
+weak_rates.corrections — n<->p rate correction terms (Born/CCR/FM/SD/CCRTh)
+===============================================================================
 
-Computes the seven n ↔ p reactions (neutron beta-decay and the six related
-processes) that drive the neutron-to-proton ratio during BBN.
+The physical correction terms applied in sequence to the Born n<->p rate
+(Phys. Rep. §III, PRIMAT-Main.m §IV.B), controlled by cfg flags
+(sgnq = +1: n->p; sgnq = -1: p->n):
 
-Physics
--------
-All six weak processes (Phys. Rep. Eq. 68) are combined into a single forward
-rate Γ_{n→p} and its reverse Γ_{p→n}.  In the Born (infinite-nucleon-mass)
-approximation, the forward rate is (Phys. Rep. Eqs. 77–78):
-
-    Γ_{n→p} = K ∫₀^∞ p² dp [χ₊(E) + χ₊(−E)]
-
-with the chi function (Phys. Rep. Eq. 81):
-
-    χ₊(E) = (E_ν)² g_ν(E_ν, ξ_ν) × g(-E, x)
-    E_ν ≡ E − Δ/mₑ,   g(E) ≡ 1/(eˢ+1)
-
-where E = ε/mₑ (dimensionless electron energy), x = mₑ/(kB Tγ),
-ξ_ν = μ_ν/T_ν (neutrino degeneracy), and
-K = 4G_W²(1+3g_A²) / (2π)³ (Phys. Rep. Eq. 83).
-
-Corrections applied in sequence (sgnq = +1: n→p; sgnq = −1: p→n),
-controlled by four cfg flags (mirroring PRIMAT-Main.m §IV.B):
-
-  _L_BORN    — Born approximation (Eqs. 77–78).  Active when
+  _L_BORN    — Born approximation (Eqs. 77-78).  Active when
                cfg.radiative_corrections=False.
-  _L_CCR     — Born integrand × R(b,y,E) [Coulomb × T=0 resummed radiative
+  _L_CCR     — Born integrand x R(b,y,E) [Coulomb x T=0 resummed radiative
                corrections, Phys. Rep. Eq. 101; R from Czarnecki et al. 2004].
                Active when cfg.radiative_corrections=True (replaces _L_BORN).
-  _L_FMCCR   — Finite-nucleon-mass correction × R × Coulomb (Phys. Rep. §III.G,
+  _L_FMCCR   — Finite-nucleon-mass correction x R x Coulomb (Phys. Rep. §III.G,
                Fokker-Planck expansion to first order in T/m_N).  Active when
                cfg.finite_mass_corrections=True and cfg.radiative_corrections=True.
   _L_FMNoCCR — Finite-nucleon-mass correction without Coulomb/radiative factors.
                Active when cfg.finite_mass_corrections=True and
                cfg.radiative_corrections=False.
   _L_CCRTh   — Finite-temperature radiative corrections (Phys. Rep. §III.H;
-               Brown & Sawyer 2001, Eqs. 5.10–5.15).  Active when
+               Brown & Sawyer 2001, Eqs. 5.10-5.15).  Active when
                cfg.thermal_corrections=True; uses vegas or scipy.dblquad;
                results cached to rates/weak/*.txt.
   _L_SD      — Spectral-distortion correction (Born-level chi): replaces the
-               Fermi-Dirac g_ν with the actual distribution f_ν from NEVO.
+               Fermi-Dirac g_nu with the actual distribution f_nu from NEVO.
                Active when dFDneu_func is supplied and
                cfg.radiative_corrections=False.
-  _L_SD_CCR  — Spectral-distortion correction with Coulomb × radiative factor.
+  _L_SD_CCR  — Spectral-distortion correction with Coulomb x radiative factor.
                Active when dFDneu_func is supplied and
                cfg.radiative_corrections=True.
+  _L_SD_FMCCR / _L_SD_FMNoCCR — Finite-nucleon-mass correction to the
+               spectral-distortion channel (generate_rates/PRIMAT-Main-gray.m's
+               deltaChiFM).  Active when dFDneu_moments is supplied (analytic
+               distortion mode) together with cfg.finite_mass_corrections.
 
-Normalisation: K is obtained from the free neutron decay rate 1/τ_n rather
-than from GF/Vud/gA directly (Phys. Rep. Eqs. 89–91), giving better precision.
-The factor λ₀ encodes the phase-space integral over the neutron decay spectrum.
-
-Fermi-Dirac helper table
-------------------------
-The FD_nu_eNpM functions compute Fermi-Dirac-related integrands appearing
-in the finite-nucleon-mass Fokker-Planck expansion (Phys. Rep. App. B.2,
-PRIMAT-Main.m ~line 1270).  Their arguments are always
-(E, phi, x) with E = ε_ν/mₑ (dimensionless), phi = ξ_ν = μ_ν/T_ν,
-x = mₑ/(kB T) (inverse temperature ratio):
-
-  FD_nu3(E, phi, x)    — g_ν(xE, phi) = 1/(e^{xE−phi}+1)   [plain neutrino FD]
-  FD2(E, x)            — g(xE) = 1/(e^{xE}+1)               [electron/positron FD]
-  FD_nu_e2p0(E, phi, x) — E² × g_ν                           [FD × E²]
-  FD_nu_e3p0(E, phi, x) — E³ × g_ν                           [FD × E³]
-  FD_nu_e2p1(E, phi, x) — (∂/∂x)[x² g_ν] type combination   [1st FP order]
-  FD_nu_e3p1(E, phi, x) — E-weighted 1st-order FP term
-  FD_nu_e4p1(E, phi, x) — E²-weighted 1st-order FP term
-  FD_nu_e2p2(E, phi, x) — 2nd-order FP combination × E⁰
-  FD_nu_e3p2(E, phi, x) — 2nd-order FP combination × E
-  FD_nu_e4p2(E, phi, x) — 2nd-order FP combination × E²
+:func:`_correction_terms` combines the active subset into one additive list
+for :func:`weak_rates.api.ComputeWeakRates`; :func:`_build_rate_context`
+builds the shared :class:`_RateContext` threaded through every term above.
 
 Reference
 ---------
@@ -86,261 +52,20 @@ from scipy.special import gamma as scipy_gamma, spence
 from scipy.integrate import quad
 from scipy.interpolate import interp1d
 
-from .cache_utils import fingerprint_hash, write_cache_with_fingerprint
+from . import integrands
+from .integrands import exp_cutoff
+from .cache import n_points_per_decade, _thermal_fingerprint
+from ..cache_utils import fingerprint_hash, write_cache_with_fingerprint
 
-__all__ = ['ComputeWeakRates', 'InterpolateWeakRates', 'RecomputeWeakRates', 'ComputeFn']
-
-exp_cutoff = 3e+2
-
-# ---------------------------------------------------------------------------
-# Fingerprinted cache for the n<->p weak-rate tables
-# ---------------------------------------------------------------------------
-# Bump this whenever a code change alters the *numerical content* of the
-# cached files for a fixed configuration (new physics term, changed formula,
-# different file layout, ...).  Bumping it invalidates every existing cache
-# file regardless of its fingerprint.
-#
-# v1: forward and backward rates stored together in nTOp_<hash>.txt (hash in
-# filename, rates in units of 1/tau_n, clamped below 1e-28 to zero).
-# Fingerprints simplified: thermal uses only the T range, incomplete-decoupling
-# flag, and NEVO file selection; weak-rate drops sampling_temperature_per_decade,
-# nevo_grid_file, external_scale_factor, thermal_corrections and
-# thermal_fingerprint_hash.  tau_n_flag renamed to tau_n_normalization.
-# v2: sampling_nTOp/sampling_nTOp_thermal (total grid points) replaced by
-# sampling_nTOp_per_decade/sampling_nTOp_thermal_per_decade (points per decade
-# of T), so the grid density now stays fixed when T_end_MeV changes the span.
-# v3: the n<->p rate table nTOp_<hash>.txt now stores ONLY the non-thermal
-# rate (Born + finite-mass + CCR + spectral-distortion); the finite-temperature
-# radiative correction (CCRTh) is kept in its own nTOp_thermal_<hash>.txt and
-# recombined at point of use (RecomputeWeakRates), matching the fingerprint
-# which never included thermal_corrections.  The CCRTh table content also
-# changed: the n->p direction is now clamped to 0 below ~10^8.2 K (see
-# _L_CCRTh_compute) to remove a spurious infrared-divergent bremsstrahlung
-# residual.  Both changes invalidate every v2 cache file.
-WEAK_RATE_FORMAT_VERSION = 1
-
-# Config fields entering the weak-rate fingerprint (nTOp_<hash>.txt).
-# DeltaNeff is deliberately NOT listed: it only shifts the time-temperature
-# relation Tg(t) and does not affect the rate integrand at fixed Tg (in decoupling approximation).
-# In principle if we consider a DeltaNeff with incomplete decoupling we must also consider the associated NEVO file.
-# We need to review the interplay between NEVO and PyPRIMAT.
-# Note  that spectral distortions and incomplete decoupling effects are expected to have a small effect on weak rates.
-_WEAK_RATE_BG_FIELDS = [
-    "radiative_corrections",
-    "finite_mass_corrections",
-    "munuOverTnu",
-    "QED_corrections",
-    "incomplete_decoupling",
-    "spectral_distortions",
-    "analytic_distortions",
-    "delta_xi_nu",
-    "y_SZ",
-    "T_start_cosmo_MeV",
-    "T_end_MeV",
-    "sampling_nTOp_per_decade",
-    "nevo_file",
-    "nevo_spectral_file",
-    "nevo_file_prefix",
+__all__ = [
+    'FermiCoulomb', 'RadCorrResum', 'ComputeFn',
+    '_N_GL', '_GL_NODES', '_GL_WEIGHTS',
+    '_RateContext', '_chi_func', '_fermi_stat', '_quad_grid',
+    '_L_BORN', '_L_CCR', '_chi_func_fm_v', '_L_FMCCR', '_L_FMNoCCR',
+    '_L_SD', '_L_SD_CCR', '_chi_func_sd_fm_v', '_vectorize_moments',
+    '_L_SD_FMCCR', '_L_SD_FMNoCCR', '_L_CCRTh_interpolants',
+    '_correction_terms', '_build_rate_context', '_thermal_correction_interpolants',
 ]
-
-# Config fields entering the thermal-correction fingerprint
-# (nTOp_thermal_<hash>.txt).  Only the temperature range and sampling, the neutrino
-# decoupling mode (with or without QED corrections), and the NEVO thermo/spectral table selection matter for
-# the double-integral over (E, k) that defines the finite-temperature
-# radiative correction.
-# When improving the interpolay with NEVO this could be improved. 
-_THERMAL_BG_FIELDS = [
-    "T_end_MeV",
-    "T_start_cosmo_MeV",
-    "sampling_nTOp_thermal_per_decade",
-    "QED_corrections",
-    "incomplete_decoupling",
-    "nevo_file",
-    "nevo_file_prefix"
-]
-
-
-def n_points_per_decade(per_decade, T_lo, T_hi):
-    """Number of log-spaced grid points spanning [T_lo, T_hi] at a fixed
-    density of ``per_decade`` points per decade of T.
-
-    Used so that ``sampling_nTOp_per_decade``/``sampling_nTOp_thermal_per_decade``
-    keep a constant grid resolution even if ``T_end_MeV`` (and hence the
-    number of decades spanned) changes, unlike the old total-point-count
-    parametrisation.
-
-    Args:
-        per_decade: float, desired points per decade of T.
-        T_lo, T_hi: float, grid endpoints [K], T_hi > T_lo.
-
-    Returns:
-        int, number of points (at least 2).
-    """
-    decades = np.log10(T_hi / T_lo)
-    return max(2, int(round(per_decade * decades)))
-
-
-def _thermal_fingerprint(cfg):
-    """Fingerprint dict for the thermal radiative-correction cache file
-    ``nTOp_thermal_<hash>.txt``.
-
-    Only the fields that actually affect the finite-temperature double
-    integral (Brown & Sawyer 2001) are included: the temperature integration
-    range, the neutrino-to-photon temperature ratio T_ν(T_γ) (fixed by the
-    NEVO table selection), and the thermal-correction grid density.
-
-    Args:
-        cfg: PyPRConfig instance.
-
-    Returns:
-        dict, JSON-serialisable.
-    """
-    fp = {"format_version": WEAK_RATE_FORMAT_VERSION,
-          "sampling_nTOp_thermal_per_decade": cfg.sampling_nTOp_thermal_per_decade}
-    for key in _THERMAL_BG_FIELDS:
-        fp[key] = getattr(cfg, key)
-    return fp
-
-
-def _weak_rate_fingerprint(cfg):
-    """Fingerprint dict for the n<->p weak-rate cache file ``nTOp_<hash>.txt``.
-
-    ``cfg.tau_n_normalization``/``cfg.tau_n`` are deliberately excluded: the
-    stored rates are in units of 1/τ_n (Fn already applied inside
-    :func:`ComputeWeakRates`), so only 1/tau_n needs multiplying after
-    loading — the cached values themselves are tau_n-independent.
-
-    The thermal-correction cache has its own hash-named file and is not
-    folded in here: the two caches are independent, and ``thermal_corrections``
-    itself does not affect the stored non-thermal rates.
-
-    Args:
-        cfg: PyPRConfig instance.
-
-    Returns:
-        dict, JSON-serialisable; pass to :func:`fingerprint_hash` for the hash.
-    """
-    fp = {"format_version":          WEAK_RATE_FORMAT_VERSION,
-          "sampling_nTOp_per_decade": cfg.sampling_nTOp_per_decade,
-          "radiative_corrections":   cfg.radiative_corrections,
-          "finite_mass_corrections": cfg.finite_mass_corrections}
-    for key in _WEAK_RATE_BG_FIELDS:
-        fp[key] = getattr(cfg, key)
-    return fp
-
-
-# ---------------------------------------------------------------------------
-# Fermi-Dirac helper functions — JIT-compiled when numba is available.
-# These capture nothing from any enclosing scope (only the module-level
-# exp_cutoff constant), so they can live at module level and be wrapped
-# with @njit.  Call _setup_fd_impls(cfg.numba_installed) before first use.
-# ---------------------------------------------------------------------------
-
-def FD_nu3(E, phi, x):
-    return 1. / (np.exp(x * E - phi) + 1.) if (x * E - phi) < exp_cutoff else 0.
-
-def FD2(E, x):
-    return 1. / (np.exp(x * E) + 1.) if (x * E) < exp_cutoff else 0.
-
-def FD_nu_e2p0(E, phi, x):
-    return E**2 / (np.exp(x * E - phi) + 1.) if (x * E - phi) < exp_cutoff else 0.
-
-def FD_nu_e3p0(E, phi, x):
-    return E**3 / (np.exp(x * E - phi) + 1.) if (x * E - phi) < exp_cutoff else 0.
-
-def FD_nu_e4p2(E, phi, x):
-    if (2. * phi < exp_cutoff) and (E * x + phi < exp_cutoff) and (2. * E * x < exp_cutoff):
-        return (E**2 * np.exp(phi) * ((24. - E * x * (E * x + 8.)) * np.exp(E * x + phi)
-                + np.exp(2 * E * x) * (E * x - 6.) * (E * x - 2.) + 12 * np.exp(2 * phi))
-                / (np.exp(E * x) + np.exp(phi))**3)
-    return 0.
-
-def FD_nu_e2p2(E, phi, x):
-    if (3. * phi < exp_cutoff) and (2 * E * x + phi < exp_cutoff) and (E * x < exp_cutoff):
-        return (((E * x * (E * x - 4.) + 2.) * np.exp(2 * E * x + phi)
-                 + (4. - E * x * (E * x + 4.)) * np.exp(E * x + 2 * phi)
-                 + 2 * np.exp(3 * phi))
-                / (np.exp(E * x) + np.exp(phi))**3)
-    return 0.
-
-def FD_nu_e4p1(E, phi, x):
-    if (phi < exp_cutoff) and (E * x < exp_cutoff):
-        return (np.exp(phi) * E**3 * (4 * np.exp(phi) + np.exp(E * x) * (4. - E * x))
-                / (np.exp(E * x) + np.exp(phi))**2)
-    return 0.
-
-def FD_nu_e2p1(E, phi, x):
-    if (phi < exp_cutoff) and (E * x < exp_cutoff):
-        return (np.exp(phi) * E * (2 * np.exp(phi) + np.exp(E * x) * (2. - E * x))
-                / (np.exp(E * x) + np.exp(phi))**2)
-    return 0.
-
-def FD_nu_e3p1(E, phi, x):
-    if (phi < exp_cutoff) and (E * x < exp_cutoff):
-        return (np.exp(phi) * E**2 * (3 * np.exp(phi) + np.exp(E * x) * (3. - E * x))
-                / (np.exp(E * x) + np.exp(phi))**2)
-    return 0.
-
-def FD_nu_e3p2(E, phi, x):
-    if (2. * phi < exp_cutoff) and (E * x + phi < exp_cutoff) and (2. * E * x < exp_cutoff):
-        return (E * np.exp(phi)
-                * ((12. - E * x * (E * x + 6.)) * np.exp(E * x + phi)
-                   + np.exp(2. * E * x) * (E * x * (E * x - 6.) + 6.)
-                   + 6 * np.exp(2. * phi))
-                / (np.exp(E * x) + np.exp(phi))**3)
-    return 0.
-
-
-# Pristine (pure-Python) implementations, kept aside so _setup_fd_impls can
-# re-wrap from scratch if called again with a different numba_installed value
-# (otherwise a second PyPRConfig with the opposite setting would silently
-# keep reusing whichever variant -- jitted or not -- was installed first).
-_FD_IMPLS_ORIG = dict(
-    FD_nu3=FD_nu3, FD2=FD2, FD_nu_e2p0=FD_nu_e2p0, FD_nu_e3p0=FD_nu_e3p0,
-    FD_nu_e4p2=FD_nu_e4p2, FD_nu_e2p2=FD_nu_e2p2, FD_nu_e4p1=FD_nu_e4p1,
-    FD_nu_e2p1=FD_nu_e2p1, FD_nu_e3p1=FD_nu_e3p1, FD_nu_e3p2=FD_nu_e3p2,
-)
-
-# Remembers which numba_installed value the module-level FD_* names were last
-# wrapped for; None means "not yet set up".
-_fd_impls_numba = None
-
-
-def _setup_fd_impls(numba_installed):
-    global FD_nu3, FD2, FD_nu_e2p0, FD_nu_e3p0, FD_nu_e4p2, FD_nu_e2p2, \
-           FD_nu_e4p1, FD_nu_e2p1, FD_nu_e3p1, FD_nu_e3p2, _fd_impls_numba
-    if _fd_impls_numba == numba_installed:
-        return
-    _fd_impls_numba = numba_installed
-    # Always start from the pristine pure-Python implementations so this is
-    # idempotent regardless of which way numba_installed flips.
-    FD_nu3      = _FD_IMPLS_ORIG['FD_nu3']
-    FD2         = _FD_IMPLS_ORIG['FD2']
-    FD_nu_e2p0  = _FD_IMPLS_ORIG['FD_nu_e2p0']
-    FD_nu_e3p0  = _FD_IMPLS_ORIG['FD_nu_e3p0']
-    FD_nu_e4p2  = _FD_IMPLS_ORIG['FD_nu_e4p2']
-    FD_nu_e2p2  = _FD_IMPLS_ORIG['FD_nu_e2p2']
-    FD_nu_e4p1  = _FD_IMPLS_ORIG['FD_nu_e4p1']
-    FD_nu_e2p1  = _FD_IMPLS_ORIG['FD_nu_e2p1']
-    FD_nu_e3p1  = _FD_IMPLS_ORIG['FD_nu_e3p1']
-    FD_nu_e3p2  = _FD_IMPLS_ORIG['FD_nu_e3p2']
-    if not numba_installed:
-        return
-    try:
-        from numba import njit
-        FD_nu3      = njit(FD_nu3)
-        FD2         = njit(FD2)
-        FD_nu_e2p0  = njit(FD_nu_e2p0)
-        FD_nu_e3p0  = njit(FD_nu_e3p0)
-        FD_nu_e4p2  = njit(FD_nu_e4p2)
-        FD_nu_e2p2  = njit(FD_nu_e2p2)
-        FD_nu_e4p1  = njit(FD_nu_e4p1)
-        FD_nu_e2p1  = njit(FD_nu_e2p1)
-        FD_nu_e3p1  = njit(FD_nu_e3p1)
-        FD_nu_e3p2  = njit(FD_nu_e3p2)
-    except ImportError:
-        pass
-
 
 # ---------------------------------------------------------------------------
 # Coulomb + radiative correction factors
@@ -451,8 +176,12 @@ def RadCorrResum(b, y, en, cfg):
     mp = cfg.mp * cfg.MeV
     Q  = mn - mp                   # neutron–proton mass difference
 
-    # atanh(b)/b → 1 as b→0 (Taylor: atanh(b)/b = 1 + b²/3 + …)
-    Rd = 1. if b == 0 else np.arctanh(b) / b
+    # atanh(b)/b → 1 as b→0 (Taylor: atanh(b)/b = 1 + b²/3 + …); np.where
+    # (rather than a Python if/else) makes this work elementwise when b is
+    # an array too, so this one function serves both the scalar quad/dblquad
+    # calls and the Gauss-Legendre array grid -- no separate "_v" twin.
+    b_safe = np.where(b == 0., 1., b)
+    Rd = np.where(b == 0., 1., np.arctanh(b_safe) / b_safe)
     # Sirlin's outer radiative function g(b,y,E) [Phys. Rep. Eq. 103]
     Sirlin = (3. * np.log(mp / me) - 3. / 4.
               + 4. * (Rd - 1.) * (y / (3. * en) - 3. / 2. + np.log(2. * y))
@@ -540,7 +269,7 @@ def ComputeFn(cfg):
         _FD_nu_e{2,3,4}p{1,2} helper functions: every term carrying an
         explicit 1/x prefactor vanishes -- those are the genuinely thermal
         pieces -- while the terms without a 1/x prefactor have finite limits,
-        e.g. FD_nu_e4p1(enu,0,znu) -> 4*enu**3, FD_nu_e2p1 -> 2*enu,
+        e.g. integrands.FD_nu_e4p1(enu,0,znu) -> 4*enu**3, FD_nu_e2p1 -> 2*enu,
         FD_nu_e3p1 -> 3*enu**2) reproduces exactly the four terms below, with
         M equal to whatever mass _chi_func_fm_v uses at sgnq=+1, i.e. mp, not
         mn.  Using mn/me here (an earlier, inconsistent choice) introduced a
@@ -632,138 +361,6 @@ _N_GL = 160
 _GL_NODES, _GL_WEIGHTS = np.polynomial.legendre.leggauss(_N_GL)
 
 
-def _fd_vec(arg):
-    """Vectorised Fermi-Dirac occupation 1/(e^arg + 1) with the FD_* tail cutoff.
-
-    numpy-array counterpart of the scalar :func:`FD2`/:func:`FD_nu3` cutoff:
-    returns 0 wherever ``arg >= exp_cutoff`` (the produced-particle energy is so
-    far in the Boltzmann tail that the occupation underflows), matching the
-    scalar functions' ``if arg < exp_cutoff`` guard element-wise.
-    """
-    arg = np.asarray(arg, dtype=float)
-    out = np.zeros_like(arg)
-    m = arg < exp_cutoff
-    out[m] = 1. / (np.exp(arg[m]) + 1.)
-    return out
-
-
-# Plain FD occupations (vectorised twins of FD_nu3 / FD2 / FD_nu_e{2,3}p0).
-def _FD_nu3_v(E, phi, x):
-    return _fd_vec(x * E - phi)
-
-def _FD2_v(E, x):
-    return _fd_vec(x * E)
-
-def _FD_nu_e2p0_v(E, phi, x):
-    return E**2 * _fd_vec(x * E - phi)
-
-def _FD_nu_e3p0_v(E, phi, x):
-    return E**3 * _fd_vec(x * E - phi)
-
-
-# Fokker-Planck combinations (vectorised twins of FD_nu_e{2,3,4}p{1,2}).  Each
-# reproduces the algebra of its scalar twin above exactly; the scalar
-# ``if <guard>: return <expr>; return 0.`` becomes ``np.where(<guard>, <expr>,
-# 0.)`` so the same overflow guard zeroes the tail element-wise.  Inside the
-# kept region every exponent stays < exp_cutoff so the expressions are finite;
-# np.errstate silences the harmless overflow/invalid warnings produced while the
-# masked-out tail (where the result is discarded) is evaluated.
-def _FD_nu_e4p2_v(E, phi, x):
-    Ex = E * x
-    guard = (2. * phi < exp_cutoff) & (Ex + phi < exp_cutoff) & (2. * Ex < exp_cutoff)
-    with np.errstate(over='ignore', invalid='ignore'):
-        ephi = np.exp(phi)
-        expr = (E**2 * ephi * ((24. - Ex * (Ex + 8.)) * np.exp(Ex + phi)
-                + np.exp(2 * Ex) * (Ex - 6.) * (Ex - 2.) + 12 * np.exp(2 * phi))
-                / (np.exp(Ex) + ephi)**3)
-        return np.where(guard, expr, 0.)
-
-def _FD_nu_e2p2_v(E, phi, x):
-    Ex = E * x
-    guard = (3. * phi < exp_cutoff) & (2 * Ex + phi < exp_cutoff) & (Ex < exp_cutoff)
-    with np.errstate(over='ignore', invalid='ignore'):
-        ephi = np.exp(phi)
-        expr = (((Ex * (Ex - 4.) + 2.) * np.exp(2 * Ex + phi)
-                 + (4. - Ex * (Ex + 4.)) * np.exp(Ex + 2 * phi)
-                 + 2 * np.exp(3 * phi))
-                / (np.exp(Ex) + ephi)**3)
-        return np.where(guard, expr, 0.)
-
-def _FD_nu_e4p1_v(E, phi, x):
-    Ex = E * x
-    guard = (phi < exp_cutoff) & (Ex < exp_cutoff)
-    with np.errstate(over='ignore', invalid='ignore'):
-        ephi = np.exp(phi)
-        expr = (ephi * E**3 * (4 * ephi + np.exp(Ex) * (4. - Ex))
-                / (np.exp(Ex) + ephi)**2)
-        return np.where(guard, expr, 0.)
-
-def _FD_nu_e2p1_v(E, phi, x):
-    Ex = E * x
-    guard = (phi < exp_cutoff) & (Ex < exp_cutoff)
-    with np.errstate(over='ignore', invalid='ignore'):
-        ephi = np.exp(phi)
-        expr = (ephi * E * (2 * ephi + np.exp(Ex) * (2. - Ex))
-                / (np.exp(Ex) + ephi)**2)
-        return np.where(guard, expr, 0.)
-
-def _FD_nu_e3p1_v(E, phi, x):
-    Ex = E * x
-    guard = (phi < exp_cutoff) & (Ex < exp_cutoff)
-    with np.errstate(over='ignore', invalid='ignore'):
-        ephi = np.exp(phi)
-        expr = (ephi * E**2 * (3 * ephi + np.exp(Ex) * (3. - Ex))
-                / (np.exp(Ex) + ephi)**2)
-        return np.where(guard, expr, 0.)
-
-def _FD_nu_e3p2_v(E, phi, x):
-    Ex = E * x
-    guard = (2. * phi < exp_cutoff) & (Ex + phi < exp_cutoff) & (2. * Ex < exp_cutoff)
-    with np.errstate(over='ignore', invalid='ignore'):
-        ephi = np.exp(phi)
-        expr = (E * ephi
-                * ((12. - Ex * (Ex + 6.)) * np.exp(Ex + phi)
-                   + np.exp(2. * Ex) * (Ex * (Ex - 6.) + 6.)
-                   + 6 * np.exp(2. * phi))
-                / (np.exp(Ex) + ephi)**3)
-        return np.where(guard, expr, 0.)
-
-
-def _RadCorrResum_v(b, y, en, cfg):
-    """Vectorised resummed T=0 radiative correction factor R(b, y, en).
-
-    Array counterpart of :func:`RadCorrResum`; identical algebra, only the
-    scalar ``b == 0`` branch of ``atanh(b)/b`` becomes a ``np.where`` (the
-    Gauss-Legendre nodes are interior so b > 0 in practice, but the guard keeps
-    the function total).  scipy's ``spence`` and numpy ufuncs are already
-    array-safe, so no other change is needed.
-    """
-    mA        = 1.2e+3 * cfg.MeV
-    Agndecay  = -0.34
-    Cndecay   =  0.891
-    deltand   = -0.00043
-    Lndecay   =  1.02094
-    Sndecay   =  1.02248
-    NLLndecay = -0.0001
-
-    me = cfg.me * cfg.MeV
-    mp = cfg.mp * cfg.MeV
-    mn = cfg.mn * cfg.MeV
-    Q  = mn - mp
-
-    b_safe = np.where(b == 0., 1., b)
-    Rd = np.where(b == 0., 1., np.arctanh(b_safe) / b_safe)
-    Sirlin = (3. * np.log(mp / me) - 3. / 4.
-              + 4. * (Rd - 1.) * (y / (3. * en) - 3. / 2. + np.log(2. * y))
-              + Rd * (2. * (1. + b**2) + y**2 / (6. * en**2) - 4. * b * Rd)
-              - (4. / b) * spence(1. - (2 * b) / (1. + b)))
-    return ((1. + cfg.alphaem / (2. * np.pi) * (Sirlin - 3. * np.log(mp / (2 * Q))))
-            * (Lndecay + (cfg.alphaem / np.pi) * Cndecay
-               + cfg.alphaem / (2 * np.pi) * deltand * 2 * np.pi / cfg.alphaem)
-            * (Sndecay + 1. / (134. * 2. * np.pi) * (np.log(mp / mA) + Agndecay)
-               + NLLndecay))
-
-
 # ---------------------------------------------------------------------------
 # Main rate computation
 # ---------------------------------------------------------------------------
@@ -815,10 +412,14 @@ def _chi_func(ctx, E, x, znu, sgnq):
 
     chi_+/-(E) = (E_nu)^2 g_nu(E_nu, xi_nu) g(-E, x), with E_nu = E - sgnq*Q/me.
     Used by _L_BORN and _L_CCR (the latter multiplies it by the Coulomb and
-    radiative correction factors).
+    radiative correction factors).  Works for both scalar E (the
+    scipy.quad/dblquad calls in _L_CCRTh_interpolants) and array E (the
+    Gauss-Legendre rate-integral grid below) since FD_nu3/FD2 are themselves
+    scalar-and-array-capable -- no separate vectorised twin needed.
     """
     Q, me, xi_nu = ctx.Q, ctx.me, ctx.xi_nu
-    return FD_nu3(E - sgnq * (Q / me), sgnq * xi_nu, znu) * FD2(-E, x) * (E - sgnq * (Q / me))**2
+    enu = E - sgnq * (Q / me)
+    return integrands.FD_nu3(enu, sgnq * xi_nu, znu) * integrands.FD2(-E, x) * enu**2
 
 
 def _fermi_stat(ctx, sgnq, sgnE, b):
@@ -832,14 +433,8 @@ def _fermi_stat(ctx, sgnq, sgnE, b):
 
 
 # ---------------------------------------------------------------------------
-# Vectorised chi function and quadrature grid
+# Quadrature grid
 # ---------------------------------------------------------------------------
-
-def _chi_func_v(ctx, E, x, znu, sgnq):
-    """Vectorised chi_+/-(E) (Phys. Rep. Eq. 81); array twin of :func:`_chi_func`."""
-    Q, me, xi_nu = ctx.Q, ctx.me, ctx.xi_nu
-    enu = E - sgnq * (Q / me)
-    return _FD_nu3_v(enu, sgnq * xi_nu, znu) * _FD2_v(-E, x) * enu**2
 
 
 def _quad_grid(ctx, T_arr):
@@ -852,7 +447,7 @@ def _quad_grid(ctx, T_arr):
     actual infinity -- instead we truncate at a finite p_max(T) and rely on
     Gauss-Legendre (GL) on the *finite* interval [0, p_max(T)].  This is valid
     only because the integrand is forced to underflow well before p_max: every
-    term carries a Fermi-Dirac factor FD2(-E,x) / FD_nu3(...) that decays like
+    term carries a Fermi-Dirac factor integrands.FD2(-E,x) / integrands.FD_nu3(...) that decays like
     exp(-x p) at large p for T > 0 (x = m_e/(kB T)).  Choosing
     p_max = max(7, 30/x) keeps exp(-x p_max) <~ exp(-30) ~ 1e-13 at low T,
     i.e. the tail beyond p_max is below double-precision noise, so replacing
@@ -966,8 +561,8 @@ def _L_BORN(ctx, T_arr, sgnq):
     """
     p, w, x, xnu = _quad_grid(ctx, T_arr)
     E = np.sqrt(p**2 + 1.)
-    integ = p**2 * (_chi_func_v(ctx, E, x, xnu, sgnq)
-                    + _chi_func_v(ctx, -E, x, xnu, sgnq))
+    integ = p**2 * (_chi_func(ctx, E, x, xnu, sgnq)
+                    + _chi_func(ctx, -E, x, xnu, sgnq))
     return np.sum(w * integ, axis=1)
 
 
@@ -986,11 +581,11 @@ def _L_CCR(ctx, T_arr, sgnq):
     p, w, x, xnu = _quad_grid(ctx, T_arr)
     E = np.sqrt(p**2 + 1.)
     b = p / E
-    integ = p**2 * (_chi_func_v(ctx, E, x, xnu, sgnq)
-                    * _RadCorrResum_v(b, np.abs(sgnq * Q / me - E), E, cfg)
+    integ = p**2 * (_chi_func(ctx, E, x, xnu, sgnq)
+                    * RadCorrResum(b, np.abs(sgnq * Q / me - E), E, cfg)
                     * _fermi_stat(ctx, sgnq, 1, b)
-                    + _chi_func_v(ctx, -E, x, xnu, sgnq)
-                    * _RadCorrResum_v(b, np.abs(sgnq * Q / me + E), E, cfg)
+                    + _chi_func(ctx, -E, x, xnu, sgnq)
+                    * RadCorrResum(b, np.abs(sgnq * Q / me + E), E, cfg)
                     * _fermi_stat(ctx, sgnq, -1, b))
     return np.sum(w * integ, axis=1)
 
@@ -1003,11 +598,10 @@ def _chi_func_fm_v(ctx, en, pe, x, znu, sgnq):
     """Vectorised chi_FM: finite-nucleon-mass correction to chi_+/-
     (Phys. Rep. §III.G, Fokker-Planck expansion to first order in T/m_N).
 
-    Array twin of the former scalar ``_chi_func_fm``: identical algebra with
-    the vectorised FD helpers (``_FD_nu_e*_v``).  f_1, f_2, f_3 are the
-    Fokker-Planck expansion coefficients built from g_A and
-    delta_kappa = kappa_p - kappa_n; M_sgnq is the average nucleon mass shifted
-    by +/-Q, in units of m_e.
+    No separate scalar twin exists (this term was always evaluated on the
+    array grid).  f_1, f_2, f_3 are the Fokker-Planck expansion coefficients
+    built from g_A and delta_kappa = kappa_p - kappa_n; M_sgnq is the average
+    nucleon mass shifted by +/-Q, in units of m_e.
     """
     me, mn, mp, Q = ctx.me, ctx.mn, ctx.mp, ctx.Q
     gA, deltakappa = ctx.gA, ctx.deltakappa
@@ -1016,20 +610,20 @@ def _chi_func_fm_v(ctx, en, pe, x, znu, sgnq):
     f_2 = ((1. - sgnq * gA)**2. - 2. * deltakappa * sgnq * gA) / (1. + 3. * gA**2)
     f_3 = (gA**2 - 1.) / (1. + 3. * gA**2)
     enu    = en - sgnq * Q / me
-    FD2_en = _FD2_v(-en, x)
-    return (f_1 * _FD_nu_e2p0_v(enu, 0., znu) * FD2_en * (pe**2 / (M_sgnq * en))
-            + f_2 * _FD_nu_e3p0_v(enu, 0., znu) * FD2_en * (-1. / M_sgnq)
+    FD2_en = integrands.FD2(-en, x)
+    return (f_1 * integrands.FD_nu_e2p0(enu, 0., znu) * FD2_en * (pe**2 / (M_sgnq * en))
+            + f_2 * integrands.FD_nu_e3p0(enu, 0., znu) * FD2_en * (-1. / M_sgnq)
             + (f_1 + f_2 + f_3) / (2. * x * M_sgnq)
-              * (_FD_nu_e4p2_v(enu, 0., znu) * FD2_en + _FD_nu_e2p2_v(enu, 0., znu) * FD2_en * pe**2)
+              * (integrands.FD_nu_e4p2(enu, 0., znu) * FD2_en + integrands.FD_nu_e2p2(enu, 0., znu) * FD2_en * pe**2)
             + (f_1 + f_2 + f_3) / (2. * M_sgnq)
-              * (_FD_nu_e4p1_v(enu, 0., znu) * FD2_en + _FD_nu_e2p1_v(enu, 0., znu) * FD2_en * pe**2)
+              * (integrands.FD_nu_e4p1(enu, 0., znu) * FD2_en + integrands.FD_nu_e2p1(enu, 0., znu) * FD2_en * pe**2)
             - (f_1 + f_2) / (x * M_sgnq)
-              * (_FD_nu_e3p1_v(enu, 0., znu) * FD2_en + _FD_nu_e2p1_v(enu, 0., znu) * FD2_en * pe**2 / (-en))
-            - f_3 * 3. / (x * M_sgnq) * _FD_nu_e2p0_v(enu, 0., znu) * FD2_en
-            + f_3 / (3 * M_sgnq) * _FD_nu_e3p1_v(enu, 0., znu) * FD2_en * pe**2 / en
-            + f_3 * 2. / (2. * x * 3. * M_sgnq) * _FD_nu_e3p2_v(enu, 0., znu) * FD2_en * pe**2 / en
+              * (integrands.FD_nu_e3p1(enu, 0., znu) * FD2_en + integrands.FD_nu_e2p1(enu, 0., znu) * FD2_en * pe**2 / (-en))
+            - f_3 * 3. / (x * M_sgnq) * integrands.FD_nu_e2p0(enu, 0., znu) * FD2_en
+            + f_3 / (3 * M_sgnq) * integrands.FD_nu_e3p1(enu, 0., znu) * FD2_en * pe**2 / en
+            + f_3 * 2. / (2. * x * 3. * M_sgnq) * integrands.FD_nu_e3p2(enu, 0., znu) * FD2_en * pe**2 / en
             - (f_1 + f_2 + f_3) * 3. / (2. * x) * (1. - (mn / mp)**sgnq)
-              * (_FD_nu_e2p1_v(enu, 0., znu) * FD2_en))
+              * (integrands.FD_nu_e2p1(enu, 0., znu) * FD2_en))
 
 
 def _L_FMCCR(ctx, T_arr, sgnq):
@@ -1043,10 +637,10 @@ def _L_FMCCR(ctx, T_arr, sgnq):
     E = np.sqrt(p**2 + 1.)
     b = p / E
     integ = p**2 * (_chi_func_fm_v(ctx, E, p, x, xnu, sgnq)
-                    * _RadCorrResum_v(b, np.abs(sgnq * Q / me - E), E, cfg)
+                    * RadCorrResum(b, np.abs(sgnq * Q / me - E), E, cfg)
                     * _fermi_stat(ctx, sgnq, 1, b)
                     + _chi_func_fm_v(ctx, -E, p, x, xnu, sgnq)
-                    * _RadCorrResum_v(b, np.abs(sgnq * Q / me + E), E, cfg)
+                    * RadCorrResum(b, np.abs(sgnq * Q / me + E), E, cfg)
                     * _fermi_stat(ctx, sgnq, -1, b))
     return np.sum(w * integ, axis=1)
 
@@ -1064,7 +658,7 @@ def _L_FMNoCCR(ctx, T_arr, sgnq):
 
     The Fokker-Planck chi_FM function (_chi_func_fm_v) is identical to the
     one used in _L_FMCCR; the only difference is the absence of the
-    FermiCoulomb (_fermi_stat) and RadCorrResum (_RadCorrResum_v) factors.
+    FermiCoulomb (_fermi_stat) and RadCorrResum factors.
     """
     p, w, x, xnu = _quad_grid(ctx, T_arr)
     E = np.sqrt(p**2 + 1.)
@@ -1099,7 +693,7 @@ def _L_SD(ctx, T_arr, sgnq, dFDneu_func):
         # delta_chi(en) = dFDneu(en - sgnq*Q/me) * g(-en, x) * (en - sgnq*Q/me)^2,
         # the chi function with dFDneu (deviation from FD) in place of g_nu.
         en_nu = en - sgnq * (ctx.Q / ctx.me)
-        return dfd(en_nu, x, xnu, sgnq) * _FD2_v(-en, x) * en_nu**2
+        return dfd(en_nu, x, xnu, sgnq) * integrands.FD2(-en, x) * en_nu**2
 
     integ = p**2 * (delta_chi(E) + delta_chi(-E))
     return np.sum(w * integ, axis=1)
@@ -1132,14 +726,120 @@ def _L_SD_CCR(ctx, T_arr, sgnq, dFDneu_func):
     def delta_chi(en):
         # SD chi: replace g_nu in the Born chi function with the deviation δf/f_FD.
         en_nu = en - sgnq * (Q / me)
-        return dfd(en_nu, x, xnu, sgnq) * _FD2_v(-en, x) * en_nu**2
+        return dfd(en_nu, x, xnu, sgnq) * integrands.FD2(-en, x) * en_nu**2
 
     integ = p**2 * (delta_chi(E)
-                    * _RadCorrResum_v(b, np.abs(sgnq * Q / me - E), E, cfg)
+                    * RadCorrResum(b, np.abs(sgnq * Q / me - E), E, cfg)
                     * _fermi_stat(ctx, sgnq, 1, b)
                     + delta_chi(-E)
-                    * _RadCorrResum_v(b, np.abs(sgnq * Q / me + E), E, cfg)
+                    * RadCorrResum(b, np.abs(sgnq * Q / me + E), E, cfg)
                     * _fermi_stat(ctx, sgnq, -1, b))
+    return np.sum(w * integ, axis=1)
+
+
+# ---------------------------------------------------------------------------
+# _L_SD_FMCCR / _L_SD_FMNoCCR -- SD-FM: finite-nucleon-mass correction to the
+# spectral-distortion channel (analytic-distortion mode only)
+# ---------------------------------------------------------------------------
+
+def _chi_func_sd_fm_v(ctx, en, pe, x, znu, sgnq, dFDneu_moments_v):
+    """Vectorised delta_chi_FM: finite-nucleon-mass correction to the
+    spectral-distortion channel (Phys. Rep. §III.G algebra applied to the
+    distortion deviation rather than the plain Fermi-Dirac).
+
+    Mirrors generate_rates/PRIMAT-Main-gray.m's ``deltaChiFM`` (lines
+    ~1712-1725), which is :func:`_chi_func_fm_v` with every plain-FD moment
+    ``FDνe{n}p{k}[enu,phi,znu]`` (here ``FD_nu_e{n}p{k}(enu, 0., znu)``)
+    replaced by the corresponding *distortion* moment
+    ``dFDneue{n}p{k}[enu,phi,x,znu,sgnq]`` -- i.e. en^n times the k-th
+    en-derivative of the analytic μ+y+gray distortion δf (PyPRIMAT's
+    ``dFDneu_func``), instead of en^n times the plain Fermi-Dirac occupation.
+    Same f_1, f_2, f_3 Fokker-Planck coefficients and M_sgnq as
+    :func:`_chi_func_fm_v`; the substitution is purely mechanical (term by
+    term), which is why the two functions are kept structurally identical
+    rather than refactored into one with a moment-source parameter -- a
+    line-by-line diff against ``_chi_func_fm_v`` is the easiest way to audit
+    this for transcription errors.
+
+    ``dFDneu_moments_v`` is the dict of *vectorised* energy-moment functions
+    ``pyprimat.neutrino_history.AnalyticDistortion.dFDneu_moments`` (keys
+    "e2p0", "e3p0", "e2p1", "e3p1", "e4p1", "e2p2", "e3p2", "e4p2"), each
+    called as ``moment(enu, x, znu, sgnq)`` (the "x" argument is unused by the
+    analytic distortion -- present only for interface parity with
+    dFDneu_func, see neutrino_history._dFDneu_analytic's docstring).
+    """
+    me, mn, mp, Q = ctx.me, ctx.mn, ctx.mp, ctx.Q
+    gA, deltakappa = ctx.gA, ctx.deltakappa
+    M_sgnq = (mp + mn - sgnq * Q) / (2 * me)
+    f_1 = ((1. + sgnq * gA)**2. + 2. * deltakappa * sgnq * gA) / (1. + 3. * gA**2)
+    f_2 = ((1. - sgnq * gA)**2. - 2. * deltakappa * sgnq * gA) / (1. + 3. * gA**2)
+    f_3 = (gA**2 - 1.) / (1. + 3. * gA**2)
+    enu    = en - sgnq * Q / me
+    FD2_en = integrands.FD2(-en, x)
+    m = dFDneu_moments_v
+    return (f_1 * m["e2p0"](enu, x, znu, sgnq) * FD2_en * (pe**2 / (M_sgnq * en))
+            + f_2 * m["e3p0"](enu, x, znu, sgnq) * FD2_en * (-1. / M_sgnq)
+            + (f_1 + f_2 + f_3) / (2. * x * M_sgnq)
+              * (m["e4p2"](enu, x, znu, sgnq) * FD2_en + m["e2p2"](enu, x, znu, sgnq) * FD2_en * pe**2)
+            + (f_1 + f_2 + f_3) / (2. * M_sgnq)
+              * (m["e4p1"](enu, x, znu, sgnq) * FD2_en + m["e2p1"](enu, x, znu, sgnq) * FD2_en * pe**2)
+            - (f_1 + f_2) / (x * M_sgnq)
+              * (m["e3p1"](enu, x, znu, sgnq) * FD2_en + m["e2p1"](enu, x, znu, sgnq) * FD2_en * pe**2 / (-en))
+            - f_3 * 3. / (x * M_sgnq) * m["e2p0"](enu, x, znu, sgnq) * FD2_en
+            + f_3 / (3 * M_sgnq) * m["e3p1"](enu, x, znu, sgnq) * FD2_en * pe**2 / en
+            + f_3 * 2. / (2. * x * 3. * M_sgnq) * m["e3p2"](enu, x, znu, sgnq) * FD2_en * pe**2 / en
+            - (f_1 + f_2 + f_3) * 3. / (2. * x) * (1. - (mn / mp)**sgnq)
+              * (m["e2p1"](enu, x, znu, sgnq) * FD2_en))
+
+
+def _vectorize_moments(dFDneu_moments):
+    """np.vectorize every scalar moment callable once per call site.
+
+    The moments dict's callables branch internally on the sign of ``en``
+    (see neutrino_history._make_moment), so -- like dFDneu_func in
+    :func:`_L_SD`/:func:`_L_SD_CCR` -- they cannot be expressed in closed
+    numpy form and are wrapped individually instead.
+    """
+    return {key: np.vectorize(f) for key, f in dFDneu_moments.items()}
+
+
+def _L_SD_FMCCR(ctx, T_arr, sgnq, dFDneu_moments):
+    """SD-FM correction (finite-mass x spectral-distortion) x Coulomb x radiative.
+
+    Mirrors PRIMAT-Main-gray.m ``λnTOpSDFMCCR``/``λpTOnSDFMCCR``.  Used when
+    cfg.spectral_distortions=True, cfg.analytic_distortions=True,
+    cfg.finite_mass_corrections=True and cfg.radiative_corrections=True (see
+    _correction_terms).  Analytic-distortion mode only (see this module's
+    SD-FM section header): ``dFDneu_moments`` is only ever non-None when
+    ``cfg.analytic_distortions`` -- the NEVO-table distortion has no closed-
+    form en-derivative.
+    """
+    cfg, me, Q = ctx.cfg, ctx.me, ctx.Q
+    p, w, x, xnu = _quad_grid(ctx, T_arr)
+    E = np.sqrt(p**2 + 1.)
+    b = p / E
+    moments_v = _vectorize_moments(dFDneu_moments)
+    integ = p**2 * (_chi_func_sd_fm_v(ctx, E, p, x, xnu, sgnq, moments_v)
+                    * RadCorrResum(b, np.abs(sgnq * Q / me - E), E, cfg)
+                    * _fermi_stat(ctx, sgnq, 1, b)
+                    + _chi_func_sd_fm_v(ctx, -E, p, x, xnu, sgnq, moments_v)
+                    * RadCorrResum(b, np.abs(sgnq * Q / me + E), E, cfg)
+                    * _fermi_stat(ctx, sgnq, -1, b))
+    return np.sum(w * integ, axis=1)
+
+
+def _L_SD_FMNoCCR(ctx, T_arr, sgnq, dFDneu_moments):
+    """SD-FM correction (finite-mass x spectral-distortion) WITHOUT Coulomb/radiative factors.
+
+    Mirrors PRIMAT-Main-gray.m ``λnTOpSDFM``/``λpTOnSDFM``.  Used when
+    cfg.spectral_distortions=True, cfg.analytic_distortions=True,
+    cfg.finite_mass_corrections=True and cfg.radiative_corrections=False.
+    """
+    p, w, x, xnu = _quad_grid(ctx, T_arr)
+    E = np.sqrt(p**2 + 1.)
+    moments_v = _vectorize_moments(dFDneu_moments)
+    integ = p**2 * (_chi_func_sd_fm_v(ctx,  E, p, x, xnu, sgnq, moments_v)
+                    + _chi_func_sd_fm_v(ctx, -E, p, x, xnu, sgnq, moments_v))
     return np.sum(w * integ, axis=1)
 
 
@@ -1185,12 +885,12 @@ def _L_CCRTh_interpolants(ctx):
         try:
             import vegas
             _have_vegas = True
-            n_eval = getattr(cfg, 'vegas_n_eval', 20000)
-            n_itn  = getattr(cfg, 'vegas_n_itn',  20)
+            n_eval = cfg.vegas_n_eval
+            n_itn  = cfg.vegas_n_itn
         except ImportError:
             _have_vegas = False
             from scipy.integrate import dblquad
-            _epsrel_th = getattr(cfg, 'epsrel_thermal', 1.e-2)
+            _epsrel_th = cfg.epsrel_thermal
             import warnings
             warnings.warn(
                 "vegas not found: falling back to scipy.integrate.dblquad for thermal "
@@ -1489,7 +1189,7 @@ def _L_CCRTh_interpolants(ctx):
 # Ordered list of named correction terms and main driver
 # ---------------------------------------------------------------------------
 
-def _correction_terms(ctx, T_arr, sgnq, dFDneu_func):
+def _correction_terms(ctx, T_arr, sgnq, dFDneu_func, dFDneu_moments=None):
     """Ordered list of (name, value) additive corrections to Gamma_{n<->p}.
 
     Mirrors PRIMAT-Main.m §IV.B and Table 1 of the Phys. Rep.  These are the
@@ -1501,6 +1201,11 @@ def _correction_terms(ctx, T_arr, sgnq, dFDneu_func):
       finite_mass_corrections=True + radiative_corrections=True  → FMCCR
       finite_mass_corrections=True + radiative_corrections=False → FMNoCCR
       spectral_distortions=True   → SD_CCR (if radiative_corrections) or SD
+      dFDneu_moments is not None (i.e. spectral_distortions=True,
+      analytic_distortions=True) + finite_mass_corrections=True →
+      additionally SD_FMCCR (if radiative_corrections) or SD_FM
+      (generate_rates/PRIMAT-Main-gray.m's δχFM; analytic-distortion mode
+      only -- see _L_SD_FMCCR/_L_SD_FMNoCCR's docstrings)
 
     The finite-temperature radiative correction (CCRTh) is deliberately NOT in
     this list: it is computed and cached separately (``nTOp_thermal_<hash>.txt``
@@ -1526,6 +1231,10 @@ def _correction_terms(ctx, T_arr, sgnq, dFDneu_func):
         +1 for n->p, -1 for p->n.
     dFDneu_func : callable or None
         Spectral-distortion function, see ComputeWeakRates.
+    dFDneu_moments : dict or None
+        Energy-moment functions of dFDneu_func, only available in
+        analytic-distortion mode (see ComputeWeakRates); enables the SD-FM
+        term when finite_mass_corrections is also True.
 
     Returns
     -------
@@ -1546,6 +1255,11 @@ def _correction_terms(ctx, T_arr, sgnq, dFDneu_func):
             terms.append(("SD", _L_SD_CCR(ctx, T_arr, sgnq, dFDneu_func)))
         else:
             terms.append(("SD", _L_SD(ctx, T_arr, sgnq, dFDneu_func)))
+        if dFDneu_moments is not None and cfg.finite_mass_corrections:
+            if cfg.radiative_corrections:
+                terms.append(("SD_FM", _L_SD_FMCCR(ctx, T_arr, sgnq, dFDneu_moments)))
+            else:
+                terms.append(("SD_FM", _L_SD_FMNoCCR(ctx, T_arr, sgnq, dFDneu_moments)))
     return terms
 
 
@@ -1575,7 +1289,7 @@ def _build_rate_context(Tvec, cfg):
     T_nuOverT = interp1d(Tg_vec * cfg.MeV_to_Kelvin, Tnu_vec / Tg_vec,
                          bounds_error=False, fill_value="extrapolate", kind='linear')
 
-    _setup_fd_impls(cfg.numba_installed)
+    integrands._setup_fd_impls(cfg.numba_installed)
 
     return _RateContext(cfg=cfg, me=me, mn=mn, mp=mp, Q=Q, xi_nu=cfg.munuOverTnu,
                         T_nuOverT=T_nuOverT, gA=cfg.gA, deltakappa=cfg.deltakappa,
@@ -1615,220 +1329,3 @@ def _thermal_correction_interpolants(Tvec, cfg):
     Fn = ComputeFn(cfg)
     return (lambda T: L_nTOpCCRTh(T) / Fn), (lambda T: L_pTOnCCRTh(T) / Fn)
 
-
-def ComputeWeakRates(Tvec, cfg, dFDneu_func=None):
-    """Compute the non-thermal n↔p weak rate tables over the BBN T range.
-
-    Evaluates the forward rate Γ_{n→p}(T) and backward rate Γ_{p→n}(T) on the
-    photon-temperature grid Tg_vec, by summing the additive correction terms
-    (controlled by the cfg flags) returned by :func:`_correction_terms`:
-
-    Γ_{n→p} = K × [ (CCR or Born) (+ FMCCR/FMNoCCR) (+ SD_CCR/SD) ]
-
-    The finite-temperature CCRTh correction is NOT included here — it is stored
-    separately (``nTOp_thermal_<hash>.txt``) and recombined at point of use in
-    :func:`RecomputeWeakRates` via :func:`_thermal_correction_interpolants`.
-
-    where:
-      _L_BORN    — Born rate ∫ p² [χ₊(E)+χ₊(−E)] dp  (Phys. Rep. Eqs. 77–78).
-                   Active when cfg.radiative_corrections=False.
-      _L_CCR     — Born integrand × FermiCoulomb × RadCorrResum (T=0 Coulomb
-                   + resummed radiative corrections; Phys. Rep. Eq. 101).
-                   Active when cfg.radiative_corrections=True (replaces Born).
-      _L_FMCCR   — Finite-nucleon-mass correction × Coulomb × radiative
-                   (Fokker-Planck expansion; Phys. Rep. §III.G).
-                   Active when cfg.finite_mass_corrections=True and
-                   cfg.radiative_corrections=True.
-      _L_FMNoCCR — Finite-nucleon-mass correction without Coulomb/radiative.
-                   Active when cfg.finite_mass_corrections=True and
-                   cfg.radiative_corrections=False.
-      (_L_CCRTh  — Finite-temperature radiative corrections (Brown & Sawyer 2001;
-                   Phys. Rep. §III.H, Eqs. 107–113) are NOT summed here; they are
-                   built separately by _thermal_correction_interpolants and added
-                   in RecomputeWeakRates.)
-      _L_SD      — Born-level spectral-distortion correction (deviation of f_ν
-                   from Fermi–Dirac, passed in via dFDneu_func).  Active when
-                   dFDneu_func is supplied and cfg.radiative_corrections=False.
-      _L_SD_CCR  — Same with Coulomb × radiative factor.  Active when
-                   dFDneu_func is supplied and cfg.radiative_corrections=True.
-
-    The overall rate constant K is normalised via the neutron lifetime:
-        K = 1 / (τ_n × Fn)     (Phys. Rep. Eq. 89–91)
-    where Fn = ComputeFn(cfg) is the free-decay phase-space integral.
-
-    Parameters
-    ----------
-    Tvec       : list [Tg_vec, Tnu_vec], both float arrays in Kelvin (as output
-                 by PyPR._setup_background_and_cosmo).
-    cfg        : PyPRConfig instance.
-    dFDneu_func: callable or None.
-        If provided, adds the spectral-distortion correction _L_SD.  Signature:
-            dFDneu_func(en, x, znu, sgnq) → float
-        where en = E/mₑ, x = mₑ/(kB Tγ), znu = mₑ/(kB Tν), sgnq = ±1.
-        Must encode the sign convention for blocking factors (en < 0), as
-        described in PyPR._setup_background_and_cosmo.
-
-    Returns
-    -------
-    [T_all, frwrd, bkwrd] : list
-        T_all  — 1-D float array, photon temperatures in Kelvin.
-        frwrd  — 1-D float array, non-thermal Γ_{n→p}(T) in units of 1/τ_n.
-        bkwrd  — 1-D float array, non-thermal Γ_{p→n}(T) in units of 1/τ_n.
-
-    Example:
-        >>> rates = ComputeWeakRates([Tg_vec, Tnu_vec], cfg)
-        >>> T_K, lam_nTOp, lam_pTOn = rates
-    """
-    ctx = _build_rate_context(Tvec, cfg)
-
-    # Single grid spanning the whole BBN temperature range (T_end -> T_start).
-    # cfg.sampling_nTOp_per_decade is points per decade of T (formerly
-    # sampling_nTOp was the *total* point count, and before that the
-    # per-era count when the network used three separate HT/MT/LT grids).
-    n_pts = n_points_per_decade(cfg.sampling_nTOp_per_decade, cfg.T_end, cfg.T_start)
-    T_all = np.logspace(np.log10(cfg.T_end), np.log10(cfg.T_start), n_pts)
-
-    # Each correction term is already vectorised over T_all, so
-    # the forward / backward rates are just the element-wise sum of the term
-    # arrays -- no Python loop over the grid.  The finite-temperature CCRTh
-    # term is intentionally absent here (see _correction_terms): it is stored
-    # separately and recombined in RecomputeWeakRates.
-    def nTOp_rate_(sgnq):
-        return sum(value for _, value in
-                   _correction_terms(ctx, T_all, sgnq, dFDneu_func))
-
-    frwrd = nTOp_rate_(+1)
-    bkwrd = nTOp_rate_(-1)
-
-    # Normalise by the neutron-decay phase-space integral Fn so that the
-    # returned values are in units of 1/tau_n (multiply by 1/tau_n to get
-    # the actual rate in s^-1).  Values below 1e-28 are purely numerical
-    # noise (the p->n rate at very low T is exp(-Q/T)-suppressed to
-    # ~1e-40 and cancellation makes it alternate sign); clamp them to 0.
-    Fn    = ComputeFn(cfg)
-    frwrd = np.where(frwrd < 1e-28, 0.0, frwrd / Fn)
-    bkwrd = np.where(bkwrd < 1e-28, 0.0, bkwrd / Fn)
-
-    return [T_all, frwrd, bkwrd]
-
-
-# ---------------------------------------------------------------------------
-# Load / dispatch interface
-# ---------------------------------------------------------------------------
-
-def InterpolateWeakRates(cfg):
-    """Load n↔p weak rates from the hash-named cache file and return interpolants.
-
-    Reads ``rates/weak/nTOp_<hash>.txt`` (three columns: T in Kelvin,
-    Gamma_{n→p} in units of 1/tau_n, Gamma_{p→n} in units of 1/tau_n) where
-    ``<hash>`` is the 16-hex fingerprint of the current configuration.
-    Raises FileNotFoundError if the file does not exist (it has not been
-    computed yet for this configuration).
-
-    Args:
-        cfg : PyPRConfig instance (provides data_dir).
-
-    Returns:
-        [frwrd, bkwrd] : two scipy interp1d objects (extrapolating), each mapping
-                         T in Kelvin → rate in units of 1/tau_n.
-    """
-    nd      = os.path.join(cfg.data_dir, "rates", "weak", "")
-    fp_hash = fingerprint_hash(_weak_rate_fingerprint(cfg))
-    path    = nd + "nTOp_" + fp_hash + ".txt"
-    tab     = np.loadtxt(path)
-    frwrd   = interp1d(tab[:, 0], tab[:, 1], bounds_error=False,
-                       fill_value="extrapolate", kind='quadratic')
-    bkwrd   = interp1d(tab[:, 0], tab[:, 2], bounds_error=False,
-                       fill_value="extrapolate", kind='quadratic')
-    return [frwrd, bkwrd]
-
-
-def RecomputeWeakRates(Tvec, cfg, dFDneu_func=None):
-    """Load the n<->p weak-rate tables from the fingerprinted cache, or recompute.
-
-    Implements the cache-loading logic for the *non-thermal* rate (the
-    thermal CCRTh correction is always handled separately, see step 5):
-
-    1. Compute the fingerprint hash of the current configuration
-       (:func:`_weak_rate_fingerprint`).
-    2. If `cfg.weak_rate_cache` is True and `rates/weak/nTOp_<hash>.txt`
-       exists with a matching `fingerprint_hash` header, load and interpolate
-       it directly (cheap: no integration at all).
-    3. Otherwise call :func:`ComputeWeakRates` to recompute from scratch
-       (~2 s).  If `cfg.save_nTOp` is True, save the new data and the current
-       fingerprint header to that file.
-    5. Build the finite-temperature CCRTh correction with
-       :func:`_thermal_correction_interpolants` (its own
-       ``nTOp_thermal_<hash>.txt`` cache) and add it to the non-thermal
-       interpolant from step 2/3.  The returned rate is the sum of the two.
-    4. **Forced recompute**: if `cfg.spectral_distortions and
-       cfg.analytic_distortions`, the cache is bypassed entirely (never
-       loaded, never written).  Analytic distortions are continuous knobs
-       (`delta_xi_nu`, `y_SZ`) typically scanned point-by-point in an MCMC;
-       caching them would write one file per parameter point and pollute
-       rates/weak/.  The same rule applies to any future user-supplied
-       `dFDneu_func` that cannot be fingerprinted.
-
-    ``cfg.tau_n_normalization``/``cfg.tau_n`` do not enter the fingerprint:
-    the stored rates are in units of 1/τ_n (Fn already applied inside
-    ComputeWeakRates), so they need only multiplying by 1/tau_n after loading
-    — the cached values themselves are tau_n-independent.
-
-    The hash is embedded in the filename (``nTOp_<hash>.txt``), so different
-    configurations coexist in ``rates/weak/`` without overwriting each other.
-    ``cfg.save_nTOp`` defaults to True: every newly computed configuration is
-    saved automatically so subsequent runs reuse it without recomputing.
-
-    Parameters
-    ----------
-    Tvec        : [Tg_vec, Tnu_vec]  (arrays in MeV)
-    cfg         : PyPRConfig
-    dFDneu_func : callable or None — spectral-distortion correction function;
-                  forwarded to ComputeWeakRates on a cache miss.
-
-    Returns
-    -------
-    [frwrd, bkwrd] : two callables (n->p and p->n) T[K] -> rate in units of
-    1/τ_n, covering the whole BBN temperature range.  Each is the sum of the
-    stored non-thermal interpolant (Born+FM+CCR+SD) and the separately-cached
-    finite-temperature correction (CCRTh), so multiplying by 1/τ_n gives the
-    full physical rate in s⁻¹.
-    """
-    forced_recompute = cfg.spectral_distortions and cfg.analytic_distortions
-
-    nd       = os.path.join(cfg.data_dir, "rates", "weak", "")
-    fp       = _weak_rate_fingerprint(cfg)
-    fp_hash  = fingerprint_hash(fp)
-    path     = nd + "nTOp_" + fp_hash + ".txt"
-
-    # ---- Non-thermal rate (Born+FM+CCR+SD): load from cache or recompute. ----
-    nonthermal = None
-    if not forced_recompute and cfg.weak_rate_cache and os.path.exists(path):
-        nonthermal = InterpolateWeakRates(cfg)
-
-    if nonthermal is None:
-        if cfg.verbose and not forced_recompute and cfg.weak_rate_cache:
-            print("[weak]     Recomputing n<->p weak rates (no cache for this configuration).")
-        T_all, frwrd, bkwrd = ComputeWeakRates(Tvec, cfg, dFDneu_func=dFDneu_func)
-
-        if not forced_recompute and cfg.save_nTOp:
-            os.makedirs(nd, exist_ok=True)
-            write_cache_with_fingerprint(
-                path, fp, [T_all, frwrd, bkwrd],
-                col_header="T[K] Gamma_nTOp[1/tau_n] Gamma_pTOn[1/tau_n]")
-
-        def _interp(v):
-            return interp1d(T_all, v, bounds_error=False,
-                            fill_value="extrapolate", kind='quadratic')
-
-        nonthermal = [_interp(frwrd), _interp(bkwrd)]
-
-    # ---- Thermal correction (CCRTh): cached separately, recombined here. ----
-    # Both halves are in units of 1/τ_n, so the physical rate the solver uses
-    # is simply their sum.  Returning thin closures (rather than re-tabulating)
-    # keeps the two caches independent: a config that differs only in a
-    # non-thermal flag reuses the same thermal table, and vice versa.
-    nTOp_thermal, pTOn_thermal = _thermal_correction_interpolants(Tvec, cfg)
-    frwrd_nt, bkwrd_nt = nonthermal
-    return [lambda T: frwrd_nt(T) + nTOp_thermal(T),
-            lambda T: bkwrd_nt(T) + pTOn_thermal(T)]
