@@ -29,6 +29,7 @@ from pyprimat.gui import panels
 from pyprimat.gui.params_form import render_sidebar_form
 from pyprimat.main import mc_uncertainty
 from pyprimat.gui.panels import _RATIO_FORMAT
+from pyprimat.gui.session_keys import SessionKeys
 
 
 st.set_page_config(
@@ -248,7 +249,7 @@ def main():
     # changing anything (including just re-picking the same custom network)
     # makes this False again until "Run BBN" is clicked anew.
     current_items = tuple(sorted(params.items()))
-    stored_params = st.session_state.get("params")
+    stored_params = st.session_state.get(SessionKeys.params)
     up_to_date = (stored_params is not None
                  and tuple(sorted(stored_params.items())) == current_items)
 
@@ -271,24 +272,24 @@ def main():
         # ticking a nuclide checkbox) reuse this snapshot via
         # st.session_state rather than re-triggering a solve with whatever
         # the sidebar currently shows.
-        st.session_state["params"] = dict(params)
-        st.session_state["quick_mc"] = quick_mc
-        st.session_state["mc_samples"] = mc_samples
+        st.session_state[SessionKeys.params] = dict(params)
+        st.session_state[SessionKeys.quick_mc] = quick_mc
+        st.session_state[SessionKeys.mc_samples] = mc_samples
         # Snapshot the active custom network's dict (if any -- set by the
         # "Create custom network"/"Import custom network" popups, see
         # params_form._render_dialog_footer/_import_dialog), so the Reactions
         # tab's export button reflects what was actually run rather than
         # whatever the sidebar shows now.
-        active = st.session_state.get("_active_custom_network")
-        st.session_state["run_custom_network_dict"] = (
+        active = st.session_state.get(SessionKeys.active_custom_network)
+        st.session_state[SessionKeys.run_custom_network_dict] = (
             active["custom_network"] if active else None)
-        stored_params = st.session_state["params"]
+        stored_params = st.session_state[SessionKeys.params]
         up_to_date = True
 
     # The active tab is forced via a "_tabs_gen"-keyed remount (st.tabs's
     # `default=` is otherwise only honoured the very first time a given key
     # is used, same quirk as every other key-tracked widget -- see
-    # params_form._bump_dialog_gen's docstring for the general pattern):
+    # params_form's session_keys.SessionKeys docstring for the general pattern):
     # whenever "up to date" flips, bump the generation so the new `default`
     # actually takes effect instead of being ignored in favour of whichever
     # tab the user last had open.
@@ -329,11 +330,11 @@ def main():
             st.info(not_run_msg)
         with tab_downloads:
             st.info(not_run_msg)
-        if st.session_state.get("params") is None:
+        if st.session_state.get(SessionKeys.params) is None:
             st.info("Set parameters in the sidebar, then click **Run BBN**.")
         return
 
-    stored_params = st.session_state["params"]
+    stored_params = st.session_state[SessionKeys.params]
     # st.cache_resource requires hashable arguments; a sorted tuple of items
     # is both hashable and order-independent (so key ordering in the params
     # dict never causes a spurious cache miss).
@@ -367,8 +368,8 @@ def main():
         st.rerun()
 
     mc = None
-    if st.session_state.get("quick_mc", False):
-        num_mc = st.session_state.get("mc_samples", 30)
+    if st.session_state.get(SessionKeys.quick_mc, False):
+        num_mc = st.session_state.get(SessionKeys.mc_samples, 30)
         with st.spinner(f"Running {num_mc}-sample quick MC uncertainty…"):
             mc = _quick_mc(params_items, num_mc, run)
 

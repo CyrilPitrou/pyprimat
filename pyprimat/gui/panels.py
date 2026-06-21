@@ -29,6 +29,7 @@ from pyprimat.constants import CONST
 from pyprimat.network_data import nuclide_latex
 from pyprimat.plotting import nuclide_styles
 from pyprimat.gui import custom_rates
+from pyprimat.gui.session_keys import SessionKeys
 
 
 # ---------------------------------------------------------------------------
@@ -271,10 +272,10 @@ def _render_reaction_downloads(run):
     run : pyprimat.PyPR
         An already-solved ``PyPR`` instance.
     """
-    custom_network = st.session_state.get("run_custom_network_dict") or {
+    custom_network = st.session_state.get(SessionKeys.run_custom_network_dict) or {
         "removed": [], "replaced": {}, "added": {},
     }
-    active = st.session_state.get("_active_custom_network")
+    active = st.session_state.get(SessionKeys.active_custom_network)
     title = active["title"] if active else (run.cfg.network if run.cfg.network != "large"
                                             else "large")
     st.markdown("**Export this network**")

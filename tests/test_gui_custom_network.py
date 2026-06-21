@@ -421,3 +421,158 @@ def test_download_zip_contains_a_table_for_every_kept_reaction():
             assert "," in line, f"{line!r} has no paired table file"
             bare, fname = (p.strip() for p in line.split(",", 1))
             assert f"tables/{bare}/{fname}" in table_files
+
+
+# ---------------------------------------------------------------------------
+# Import -> edit -> export round trip (FUTURE.md P2 coverage)
+# ---------------------------------------------------------------------------
+
+@_needs_ac2024
+def test_import_zip_edit_export_roundtrip():
+    """A network built with ``custom_rates.kept_to_custom_network`` +
+    ``export_zip`` (exactly what the dialog's "Download network details"
+    button does, see ``test_download_zip_contains_a_table_for_every_kept_reaction``)
+    must import back to an equivalent custom network through the actual
+    "Import custom network" dialog, and a *further* edit of that imported
+    network must still export correctly -- the full
+    build -> export -> import -> edit -> export round trip CUSTOMPOPUP.md
+    promises.
+
+    The "edit" step is driven directly through ``kept_to_custom_network`` /
+    ``export_zip`` too, rather than by reopening the "Create/modify network"
+    dialog a second time in the same ``AppTest`` session: this Streamlit
+    version's ``AppTest`` cannot re-render a second ``@st.dialog`` after an
+    earlier one closed itself via ``st.rerun()`` (a harness limitation, not a
+    real app bug -- reopening the dialog after applying/importing works fine
+    in an actual browser session), so this test exercises the dialog's own
+    apply path only once (the import) and the underlying data functions for
+    the edit, which is exactly what the dialog calls under the hood
+    (see ``_DialogState.to_custom_network``/``_render_dialog_footer``).
+    """
+    import io
+    import zipfile
+
+    from pyprimat.gui import custom_rates, params_form
+
+    cfg = params_form._cfg()
+    small_kept = ["n_p__d_g", "d_p__He3_g", "d_d__He3_n", "d_d__t_p", "t_p__a_g",
+                  "t_d__a_n", "t_a__Li7_g", "He3_n__t_p", "He3_d__a_p",
+                  "He3_a__Be7_g", "Be7_n__Li7_p", "Li7_p__a_a"]
+    kept_names = [n for n in small_kept if n != "d_d__t_p"]
+    custom_network = custom_rates.kept_to_custom_network(cfg, kept_names, {})
+    zip_bytes = custom_rates.export_zip(
+        cfg, custom_network, kept_names, network_filename="roundtrip")
+
+    at = AppTest.from_file(APP_PATH)
+    at.run(timeout=60)
+    _open_import_dialog(at)
+    [uploader] = [u for u in at.file_uploader if u.key == "_import_dialog_upload"]
+    uploader.set_value(("roundtrip.zip", zip_bytes, "application/zip"))
+    at.run(timeout=60)
+    assert not at.exception
+
+    imported = at.session_state["_known_custom_networks"]["roundtrip"]
+    assert sorted(imported["kept"]) == sorted(kept_names)
+    assert "d_d__t_p" not in imported["kept"]
+    assert at.session_state["_active_custom_network"]["title"] == "roundtrip"
+
+    # Edit the just-imported network (drop one more reaction) and export
+    # again -- the second export must reflect the edit, not just replay the
+    # first one.
+    edited_kept = [n for n in kept_names if n != "He3_a__Be7_g"]
+    edited_network = custom_rates.kept_to_custom_network(cfg, edited_kept, {})
+    zip_bytes2 = custom_rates.export_zip(
+        cfg, edited_network, edited_kept, network_filename="roundtrip2")
+    with zipfile.ZipFile(io.BytesIO(zip_bytes2)) as zf:
+        [net_file] = [n for n in zf.namelist() if n.startswith("networks/")]
+        kept_lines = [ln for ln in zf.read(net_file).decode().splitlines() if ln.strip()]
+        bare_names = {ln.split(",")[0].strip() for ln in kept_lines}
+    assert "He3_a__Be7_g" not in bare_names
+    assert "d_d__t_p" not in bare_names
+    assert bare_names == set(edited_kept)
+
+
+# ---------------------------------------------------------------------------
+# "Limit A" shrinks a *custom* base network's kept set too (FUTURE.md P2)
+# ---------------------------------------------------------------------------
+
+@_needs_ac2024
+def test_amax_filter_applied_to_custom_base_network():
+    """Regression guard: enabling/tightening "Limit A" while a previously
+    built/imported *custom* network is the dialog's own base must shrink its
+    kept set (the `base_network in known` branch of `_DialogState.reset`),
+    not just leave every one of its reactions "kept" regardless of amax.
+
+    The custom network is seeded directly into ``_known_custom_networks``
+    (rather than built live through "Create/modify network" -> Apply) so the
+    dialog is opened only once in this ``AppTest`` session -- see
+    ``test_import_zip_edit_export_roundtrip``'s docstring for why a *second*
+    dialog open after an earlier ``st.rerun()`` is unreliable under this
+    Streamlit version's ``AppTest`` harness.
+    """
+    from pyprimat.gui import custom_rates, params_form
+
+    small_kept = ["n_p__d_g", "d_p__He3_g", "d_d__He3_n", "d_d__t_p", "t_p__a_g",
+                  "t_d__a_n", "t_a__Li7_g", "He3_n__t_p", "He3_d__a_p",
+                  "He3_a__Be7_g", "Be7_n__Li7_p", "Li7_p__a_a"]
+    custom_network = custom_rates.kept_to_custom_network(
+        params_form._cfg(), small_kept, {})
+    at = AppTest.from_file(APP_PATH)
+    at.run(timeout=60)
+    at.session_state["_known_custom_networks"] = {
+        "mynet": {"kept": list(small_kept), "tables": {}, "custom_network": custom_network},
+    }
+    at.session_state["_pending_network_label"] = "mynet"
+    at.run(timeout=60)
+    assert not at.exception
+
+    _open_create_dialog(at)
+    assert not at.exception
+    assert at.session_state["_dialog_base_network"] == "mynet"
+    assert sum(1 for v in at.session_state["_dialog_keep"].values() if v) == 12
+
+    [amax_value] = [n for n in at.number_input if n.key == "_dialog_amax_value"]
+    amax_value.set_value(2)
+    at.run(timeout=60)
+    assert not at.exception
+
+    kept = sorted(n for n, v in at.session_state["_dialog_keep"].items() if v)
+    # Of the small network's 12 reactions, only n_p__d_g has A <= 2.
+    assert kept == ["n_p__d_g"]
+
+
+# ---------------------------------------------------------------------------
+# Invalid uploaded rate table -> clean st.error, no crash (FUTURE.md P2)
+# ---------------------------------------------------------------------------
+
+@_needs_ac2024
+def test_invalid_uploaded_rate_table_shows_clean_error():
+    at = AppTest.from_file(APP_PATH)
+    at.run(timeout=60)
+    _open_create_dialog(at)
+
+    [open_btn] = [b for b in at.button if b.key == "_dialog_add_rate_open_btn"]
+    open_btn.click()
+    at.run(timeout=60)
+
+    [name_in] = [t for t in at.text_input if t.key == "_dialog_add_name"]
+    name_in.set_value("Li6_d__a_a")
+    at.run(timeout=60)
+    assert not at.exception
+
+    [uploader] = [u for u in at.file_uploader if u.key == "_dialog_add_table"]
+    uploader.set_value(("bad.txt", b"this is not a rate table\njust some text\n", "text/plain"))
+    at.run(timeout=60)
+    assert not at.exception
+
+    [add_btn] = [b for b in at.button if b.key == "_dialog_add_submit"]
+    assert not add_btn.disabled
+    add_btn.click()
+    at.run(timeout=60)
+    assert not at.exception
+
+    errors = [e.value for e in at.error]
+    assert any("Rate table" in e for e in errors), errors
+    # The malformed upload must not have been accepted.
+    assert "Li6_d__a_a" not in at.session_state["_dialog_added"]
+    assert at.session_state["_dialog_add_rate_open"] is True
