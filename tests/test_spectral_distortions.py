@@ -74,7 +74,7 @@ def test_analytic_distortion_shifts_Neff():
                                  / ((7/8)(4/11)^(4/3))
 
     -- this pins that consistency to the ~1e-8 precision required by
-    CLAUDE.md (FINAL.md Item 6, step 3).
+    CLAUDE.md.
 
     delta_xi_nu=0.05 gives Inty3_mu = (dxi/4)*dxi*(dxi^2 + 2*pi^2) > 0 (with
     munuOverTnu=0, the default), so rho_nu_SD > 0 and Neff increases.
@@ -103,3 +103,75 @@ def test_analytic_distortion_shifts_Neff():
     diff_expected = rho_SD / rho_g / ((7. / 8.) * (4. / 11.) ** (4. / 3.))
 
     assert diff == pytest.approx(diff_expected, rel=1e-8)
+
+
+def test_gray_distortion_shifts_Neff():
+    """The new gray-type analytic distortion (``cfg.y_gray``, from
+    generate_rates/PRIMAT-Main-gray.m) must shift Neff the same way the
+    existing mu-type distortion does (test_analytic_distortion_shifts_Neff
+    above), via ``background.rho_nu_SD``'s exact
+    ``Inty3Gray(y_gray) = y_gray * 7*pi^4/120`` contribution (see
+    neutrino_history.AnalyticDistortion._build_analytic_distortion's
+    ``_rho_nu_SD``).  y_gray=0.05 with mu/SZ off isolates the gray term so
+    the diff_expected formula below pins it exactly, like the mu-only test.
+    """
+    params_base = {
+        "network": "small",
+        "numerical_precision": 1e-6,
+        "incomplete_decoupling": False,
+        "spectral_distortions": False,
+        "verbose": False,
+    }
+    res_base = PyPR(params_base).solve()
+
+    params_spec = dict(params_base, spectral_distortions=True,
+                        analytic_distortions=True, y_gray=0.05)
+    pr_spec = PyPR(params_spec)
+    res_spec = pr_spec.solve()
+
+    diff = res_spec['Neff'] - res_base['Neff']
+    assert diff > 0
+
+    Tg_last  = pr_spec.background.Tg_vec[-1]
+    Tnu_last = pr_spec.background.Tnu_vec[-1]
+    rho_g    = pr_spec.plasma.rho_g(Tg_last)
+    rho_SD   = pr_spec.background.rho_nu_SD(Tnu_last)
+    diff_expected = rho_SD / rho_g / ((7. / 8.) * (4. / 11.) ** (4. / 3.))
+
+    assert diff == pytest.approx(diff_expected, rel=1e-8)
+
+
+def test_finite_mass_corrections_change_SD_FM_contribution():
+    """Regression/sanity check that SD-FM (the finite-mass correction to
+    the spectral-distortion n<->p rate channel, only active in
+    analytic-distortion mode -- see weak_rates._L_SD_FMCCR/_L_SD_FMNoCCR) is
+    actually wired into a full BBN solve: toggling
+    ``finite_mass_corrections`` while analytic distortions are on must move
+    D/H by a small but non-zero amount, mirroring how the existing
+    plain-FD finite-mass correction (FMCCR) is known to be a small
+    correction on top of CCR.
+    """
+    params_fm_on = {
+        "network": "small",
+        "numerical_precision": 1e-6,
+        "incomplete_decoupling": False,
+        "spectral_distortions": True,
+        "analytic_distortions": True,
+        "y_SZ": 0.05,
+        "delta_xi_nu": 0.02,
+        "y_gray": 0.03,
+        "finite_mass_corrections": True,
+        "verbose": False,
+    }
+    res_fm_on = PyPR(params_fm_on).solve()
+
+    params_fm_off = dict(params_fm_on, finite_mass_corrections=False)
+    res_fm_off = PyPR(params_fm_off).solve()
+
+    diff = abs(res_fm_on['DoH'] - res_fm_off['DoH']) / res_fm_off['DoH']
+    # Toggling finite_mass_corrections here also flips the plain-FD FMCCR
+    # term (always on alongside SD-FM, both gated by the same flag); the
+    # combined effect on D/H is ~2.7e-3 with this distortion amplitude. A
+    # generous bound catches both "not wired up at all" (diff == 0) and
+    # "wildly wrong magnitude" regressions.
+    assert 0. < diff < 1e-2

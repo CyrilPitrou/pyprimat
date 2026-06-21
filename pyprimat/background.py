@@ -3,7 +3,7 @@
 background.py
 ==============
 Cosmological-background component for PyPRIMAT ("Class 1" of the
-``PyPR`` split, see MODULAR.md).
+``PyPR`` split).
 
 A *background* encapsulates everything the nuclear-network integration
 (:class:`pyprimat.nuclear_network.NuclearNetwork`, "Class 2") needs about the
@@ -388,11 +388,11 @@ class StandardBackground(Background):
         """
         cfg = self.cfg
 
-        # Validate: Omegach2 and h must be set; if absent (old configs) skip
-        # gracefully.  During standard BBN these contributions are negligible
-        # so skipping is equivalent to keeping them zero.
-        Omegach2 = getattr(cfg, "Omegach2", None)
-        h        = getattr(cfg, "h", None)
+        # Omegach2/h always exist (DEFAULT_PARAMS); an explicit None disables
+        # this CDM/Lambda contribution (negligible during standard BBN, so
+        # skipping is equivalent to keeping it zero).
+        Omegach2 = cfg.Omegach2
+        h        = cfg.h
         if Omegach2 is None or h is None:
             return
 
@@ -501,10 +501,9 @@ class StandardBackground(Background):
         # ρ_γ,0 = (π²/15) T0CMB^4 (in the plasma module); rho_g uses MeV units.
         T0CMB_MeV = cfg.T0CMB / cfg.MeV_to_Kelvin   # [MeV]
         rho_gamma0 = self.plasma.rho_g(T0CMB_MeV)   # [MeV^4]
-        # Include standard neutrinos at their decoupled temperature T_ν = (4/11)^{1/3} T_γ.
-        # With Neff = 3.044 (standard model value, not recomputed here):
-        Neff_std   = 3.044
-        rho_nu0    = Neff_std * (7./8.) * (4./11.)**(4./3.) * rho_gamma0  # [MeV^4]
+        # Include standard neutrinos at their decoupled temperature T_ν = (4/11)^{1/3} T_γ,
+        # at the standard-model value of Neff (cfg.Neff_SM, not recomputed here).
+        rho_nu0    = cfg.Neff_SM * (7./8.) * (4./11.)**(4./3.) * rho_gamma0  # [MeV^4]
         rho_rad0   = rho_gamma0 + rho_nu0                                  # [MeV^4]
         rhocrit100 = cfg.rhocOverh2
         Omegarh2   = rho_rad0 / rhocrit100   # Ω_r h² (dimensionless)
@@ -542,10 +541,10 @@ class StandardBackground(Background):
         TmaxEDE = cfg.T0CMB / amaxEDE / cfg.MeV_to_Kelvin   # [MeV]
         TcEDE   = cfg.T0CMB / acEDE   / cfg.MeV_to_Kelvin   # [MeV]
 
-        #The final Neff value in the standard case (3.044) is hard coded here.
+        # The final Neff value in the standard case (cfg.Neff_SM) enters here.
         rhocEDEac = (cfg.fEDE / (1. - cfg.fEDE)
                      * thermo.rho_g(TmaxEDE)
-                     * (1. + 3.044 * 7./8. * (4./11.)**(4./3.))
+                     * (1. + cfg.Neff_SM * 7./8. * (4./11.)**(4./3.))
                      / 2.
                      * (1. + 4. / (3. * cfg.wnEDE - 1.)))
 
@@ -634,8 +633,7 @@ class StandardBackground(Background):
             extrapolation (``a ∝ 1/T_γ``) outside the table. No ODE is
             solved for ``a(T)``. ``t(a)`` is obtained the same way in both
             modes (Hubble integration below), since no NEVO file carries a
-            cosmic-time column. See NEUTRINOS.md for the derivation and the
-            empirical check that the two modes agree to ~1e-6.
+            cosmic-time column. The two modes agree to ~1e-6.
         """
         cfg    = self.cfg
         thermo = self.plasma
@@ -666,6 +664,7 @@ class StandardBackground(Background):
         # self.rho_nu_SD) and _setup_weak_rates (self.dFDneu_func).  Both are
         # None when there are no distortions.
         self.dFDneu_func = nh.dFDneu_func   # None means "no spectral distortions"
+        self.dFDneu_moments = nh.dFDneu_moments  # None unless analytic-distortion mode
         self.rho_nu_SD   = nh.rho_nu_SD     # None means "no extra energy density"
 
         # ------------------------------------------------------------------
@@ -677,8 +676,8 @@ class StandardBackground(Background):
         z0   = cfg.T0CMB / cfg.MeV_to_Kelvin   # [MeV]
         # Algebraic entropy-conservation boundary value a(Tend) = zend/Tend,
         # used as the ODE initial condition (minimal mode) and as the
-        # table-normalisation anchor (external_scale_factor mode) -- see
-        # NEUTRINOS.md.  Requires no ODE: _sbar is the analytic
+        # table-normalisation anchor (external_scale_factor mode).
+        # Requires no ODE: _sbar is the analytic
         # electron-thermo spline.
         zend = z0 / (_sbar(Tend) / cfg.s0bar) ** (1. / 3.)
         a_end = zend / Tend
@@ -698,8 +697,8 @@ class StandardBackground(Background):
         if cfg.external_scale_factor:
             # --------------------------------------------------------------
             # external_scale_factor=True: a(T) read directly from the NEVO
-            # table's x column (a ∝ x by the NEVO convention; see
-            # NEUTRINOS.md), normalised so a(Tend) matches the algebraic
+            # table's x column (a ∝ x by the NEVO convention),
+            # normalised so a(Tend) matches the algebraic
             # a_end above -- the same boundary value the minimal-mode ODE
             # converges to.  No ODE solve.
             # --------------------------------------------------------------
@@ -982,7 +981,8 @@ class StandardBackground(Background):
         # temperature range (the rate is continuous, so one grid suffices).
         self.weak_nTOp_frwrd_raw, self.weak_nTOp_bkwrd_raw = \
             PyPRnTOp.RecomputeWeakRates([self.Tg_vec, self.Tnue_vec], cfg,
-                                        dFDneu_func=self.dFDneu_func)
+                                        dFDneu_func=self.dFDneu_func,
+                                        dFDneu_moments=self.dFDneu_moments)
         if cfg.debug:
             # Wording is generic on purpose: RecomputeWeakRates may have either
             # recomputed the rates (~2 s) or loaded them from a fingerprinted

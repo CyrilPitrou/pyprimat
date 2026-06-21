@@ -199,7 +199,7 @@ class _DBConfig:
     (built here for the *whole* large network) and the fundamental constants
     (copied verbatim from ``pyprimat.constants.CONST``, the frozen single
     source of truth -- avoids instantiating a full, throwaway ``PyPRConfig``
-    just to read seven numbers; see IDEAS.md/IMPROVEMENTS.md #5).  This lets the
+    just to read seven numbers).  This lets the
     offline generator compute detailed balance over an arbitrary nuclide set
     without needing a full PyPRConfig."""
 

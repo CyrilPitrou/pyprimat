@@ -88,13 +88,17 @@ class NeutrinoHistory:
       T_gamma [MeV] to the flavour neutrino temperature [MeV] (array-safe),
     * ``N_NEVO_of_Tg`` : callable T_gamma [MeV] -> dimensionless heating N,
     * ``dFDneu_func`` : callable ``(en, x, znu, sgnq) -> float`` or ``None``,
+    * ``dFDneu_moments`` : dict of energy-moment callables of ``dFDneu_func``
+      (keys "e2p0".."e4p2") or ``None`` -- only set by
+      :class:`AnalyticDistortion`, consumed by the SD-FM weak-rate term
+      (``weak_rates._L_SD_FMCCR``/``_L_SD_FMNoCCR``),
     * ``rho_nu_SD`` : callable ``T_nu -> MeV^4`` or ``None``,
     * ``x_of_Tg`` : callable T_gamma [MeV] -> dimensionless ``x`` (the NEVO
       table's ``x = m_e/(kB T_com)`` column, proportional to the scale
       factor ``a``), array-safe, with radiation-domination extrapolation
       (``x*T_gamma = const``) outside the table; or ``None`` when no NEVO
-      table is loaded. Used by ``external_scale_factor`` mode (see
-      NEUTRINOS.md) -- only :class:`NEVOTable` sets this.
+      table is loaded. Used by ``external_scale_factor`` mode --
+      only :class:`NEVOTable` sets this.
 
     ``cfg`` and ``plasma`` are stored for the subclasses' use.
     """
@@ -106,6 +110,7 @@ class NeutrinoHistory:
         # table-based scale factor.  Set here so every implementation has
         # them even if it never overrides them.
         self.dFDneu_func = None
+        self.dFDneu_moments = None
         self.rho_nu_SD = None
         self.x_of_Tg = None
         self._build_temperatures()
@@ -211,14 +216,14 @@ class NEVOTable(NeutrinoHistory):
 
         # ------------------------------------------------------------------
         # x_of_Tg: table-based scale factor a(T_γ) ∝ x(T_γ), for
-        # external_scale_factor mode (see NEUTRINOS.md). By the NEVO
+        # external_scale_factor mode. By the NEVO
         # Mathematica convention x = m_e/(kB T_com) with T_com ∝ 1/a, so
         # x ∝ a exactly.
         #
         # Outside the table, extrapolate assuming radiation domination,
         # a ∝ 1/T_γ, i.e. x(T)·T = const, equal to its value at the nearest
         # table edge (this matches the existing N_NEVO -> 0 extrapolation of
-        # the minimal-mode ODE in this regime, see NEUTRINOS.md).
+        # the minimal-mode ODE in this regime).
         # ------------------------------------------------------------------
         _Tg_asc = Tg_tab[::-1]   # ascending T_γ (Tg_tab is stored high→low)
         _x_asc  = x[::-1]
@@ -416,7 +421,7 @@ class InstantaneousDecoupling(NeutrinoHistory):
 
 
 class AnalyticDistortion(NeutrinoHistory):
-    """Analytic mu-type + y-type (SZ) spectral distortion, decorating a base.
+    """Analytic mu-type + y-type (SZ/Compton) + gray-type spectral distortion.
 
     Wraps an existing :class:`NeutrinoHistory` (``base``) and adds the analytic
     distortion: it inherits ``base``'s temperatures and heating unchanged and
@@ -427,8 +432,11 @@ class AnalyticDistortion(NeutrinoHistory):
     instantaneous decoupling, so ``base`` is an :class:`InstantaneousDecoupling`.
 
     The distortion amplitudes are continuous knobs: ``cfg.delta_xi_nu``
-    (mu-type, a shift of the reduced chemical potential) and ``cfg.y_SZ``
-    (y-type / SZ).
+    (mu-type, a shift of the reduced chemical potential), ``cfg.y_SZ``
+    (y-type / SZ/Compton), and ``cfg.y_gray`` (gray-type, a number-density-
+    preserving temperature-like rescaling -- see ``cfg.y_gray``'s docstring
+    in config.py for why this is a *different* shape from ``y_SZ`` despite
+    generate_rates/PRIMAT-Main-gray.m's misleading "YSZ" name for it).
     """
 
     # Composition rather than calling the base __init__ machinery: we already
@@ -450,17 +458,32 @@ class AnalyticDistortion(NeutrinoHistory):
         cfg = self.cfg
         xi_nu = cfg.munuOverTnu   # reduced chemical potential ξ = μ/T_ν
 
-        # ---- μ-type and y-type (SZ) analytic distortions ----
+        # ---- μ-type, y-type (SZ/Compton) and gray-type analytic distortions ----
         # μ-type: shift of the reduced chemical potential by delta_xi_nu.
         #   δf_μ^ν(y)   = 1/(e^{y-(ξ+δξ)}+1) − 1/(e^{y−ξ}+1)
         #   δf_μ^{ν̄}(y) = 1/(e^{y+(ξ+δξ)}+1) − 1/(e^{y+ξ}+1)
-        # y-type: the SZ spectral shape is the energy derivative of
+        # y-type: the SZ/Compton spectral shape is the energy derivative of
         # the Fermi-Dirac weighted by y²:
         #   δf_y^ν(y)   = (1/y²) d/dy(y⁴ df_FD/dy)
         #               = f_FD(1−f_FD)[4 − y(1−2f_FD)]  (analytic)
         # Ref: PRIMAT-Main.m, MuDistortionNeutrinos / YDistortionNeutrinos.
-        dxi  = cfg.delta_xi_nu
-        y_sz = cfg.y_SZ
+        #
+        # gray-type: a third, independent distortion -- not the Compton/SZ
+        # shape above despite generate_rates/PRIMAT-Main-gray.m naming its
+        # equivalent parameter "YSZ" (a misnomer kept only in that file's
+        # comments; see cfg.y_gray's docstring in config.py). It rescales the
+        # spectrum as if the neutrino temperature shifted by a factor
+        # (1+y_gray), with the (1+y_gray)^-3 prefactor chosen so the rescaled
+        # piece's number density exactly cancels against the unperturbed
+        # Fermi-Dirac it is subtracted from (the y^2-moment integral of
+        # δf_gray vanishes exactly, for any y_gray -- verified in
+        # scratch/derive_sd_fm_distortions.py):
+        #   δf_gray(y) = -1/(e^y+1) + 1/(e^{y/(1+γ)}+1) / (1+γ)³,  γ=y_gray
+        # Same shape for neutrinos and antineutrinos (no ξ dependence), per
+        # PRIMAT-Main-gray.m's dFDneuRawy/dFDantineuRawy.
+        dxi    = cfg.delta_xi_nu
+        y_sz   = cfg.y_SZ
+        y_gray = cfg.y_gray
 
         def _fd(arg):
             # Safe Fermi-Dirac: returns 0 for large positive arguments.
@@ -488,16 +511,20 @@ class AnalyticDistortion(NeutrinoHistory):
             xi = sgnq * xi_nu
 
             # μ-type distortion (shift chemical potential by dxi)
-            mu_dist = _fd(y - (xi + dxi)) - _fd(y - xi)
+            dist = _fd(y - (xi + dxi)) - _fd(y - xi)
 
-            if y_sz == 0.:
-                return mu_dist
+            if y_sz != 0.:
+                # y-type (SZ/Compton) distortion: (1/y²) d/dy(y⁴ d f_FD/dy)
+                # Analytic form: f(1-f)[4 - y(1-2f)]
+                f = _fd(y - xi)
+                dist += y_sz * f * (1. - f) * (4. - y * (1. - 2. * f))
 
-            # y-type (SZ) distortion: (1/y²) d/dy(y⁴ d f_FD/dy)
-            # Analytic form: f(1-f)[4 - y(1-2f)]
-            f = _fd(y - xi)
-            y_dist = f * (1. - f) * (4. - y * (1. - 2. * f))
-            return mu_dist + y_sz * y_dist
+            if y_gray != 0.:
+                # gray-type distortion (no ξ dependence -- same shape for
+                # neutrinos and antineutrinos, see the module docstring above).
+                dist += -_fd(y) + _fd(y / (1. + y_gray)) / (1. + y_gray) ** 3
+
+            return dist
 
         def dFDneu_func(en, x, znu, sgnq):
             """Dispatch δf for all sign combinations of en and sgnq.
@@ -518,13 +545,276 @@ class AnalyticDistortion(NeutrinoHistory):
 
         self.dFDneu_func = dFDneu_func
 
+        # ---- en-moment derivatives of δf, for the SD-FM (finite-nucleon- ----
+        # ---- mass) weak-rate correction (weak_rates._L_SD_FMCCR/_NoCCR) ----
+        # Mirrors PRIMAT-Main-gray.m's delta_chi_FM (lines ~1712-1725), which
+        # needs eight energy-moment functions of δf: e2p0/e3p0 (value,
+        # weighted by en^2/en^3 -- no new derivation needed, just
+        # en^n*dFDneu_func, which already implements the en<0 dispatch above)
+        # and e2p1/e3p1/e4p1/e2p2/e3p2/e4p2 (1st/2nd en-derivatives of
+        # en^n*δf), exactly mirroring the eight plain-Fermi-Dirac moments
+        # already hand-coded in weak_rates.py (_FD_nu_e{2,3,4}p{1,2}_v).
+        #
+        # The six derivative moments are derived in
+        # scratch/derive_sd_fm_distortions.py (closed forms in terms of the
+        # logistic function fd and its standard derivative recursion
+        # fd'=-fd(1-fd), so no bare exp() ever appears and nothing can
+        # overflow; numerically self-checked there against finite
+        # differences for all 18 piece x (n,order) combinations) and reused
+        # here via the SAME antisymmetric-dispatch identity as dFDneu_func:
+        #   en >= 0:  M[n,k](en) = d^k/den^k[en^n*H(en,sgnq)]  ("_raw_M{n}p{k}"
+        #             below, sgnq unflipped)
+        #   en <  0:  u = -en; M[n,k](en) = sign(n,k) * _raw_M{n}p{k}(u, -sgnq)
+        #             with sign(n,1) = (-1)^n, sign(n,2) = -(-1)^n -- derived
+        #             from F(en,sgnq) = -H(-en,-sgnq) the same way
+        #             dFDneu_func's en<0 branch is (see neutrino_history.py
+        #             module-level commit message / PR description for the
+        #             chain-rule derivation; the (-1)^n alternation is the
+        #             parity of d/d(-en) = -d/du applied k times).
+        # The functions below are transcribed VERBATIM (no hand algebra) from
+        # the auto-generated combiner output of
+        # scratch/derive_sd_fm_distortions.py (each mu/y/gray piece written
+        # to its own helper by sympy's cse()+str() printer, then summed by a
+        # plain f-string template -- see that script's `to_pycode`/combiner
+        # block), after re-running it and confirming "0 mismatch(es) out of
+        # 54 self-checks" against finite differences (h=1e-6, threshold
+        # 1e-7). This avoids the earlier hand-merge transcription bug (a
+        # `x1**3` mistyped as `x1**4` in the y-piece) by construction.
+        def _M_2_p1_mu(en, znu, xi):
+            x0 = en * znu
+            x1 = _fd(x0 - xi)
+            x2 = _fd(-dxi + en * znu - xi)
+            return -en * (x0 * (x1 * (x1 - 1) - x2 * (x2 - 1)) + 2 * x1 - 2 * x2)
+
+        def _M_2_p1_y(en, znu, xi):
+            x0 = en * znu
+            x1 = _fd(x0 - xi)
+            x2 = en**2 * znu**2
+            x3 = x1**2
+            return -en * x1 * (-21 * x0 * x1 + 14 * x0 * x3 + 7 * x0 + 6 * x1**3 * x2
+                                + 7 * x1 * x2 + 8 * x1 - 12 * x2 * x3 - x2 - 8)
+
+        def _M_2_p1_gray(en, znu):
+            x0 = y_gray + 1
+            x1 = x0**4
+            x2 = en * znu
+            x3 = _fd(x2)
+            x4 = _fd(x2 / x0)
+            return -en * (2 * x0 * (x0**3 * x3 - x4) + x2 * (x1 * x3 * (x3 - 1) - x4 * (x4 - 1))) / x1
+
+        def _raw_M2p1(en, znu, xi):
+            return (_M_2_p1_mu(en, znu, xi)
+                    + y_sz * _M_2_p1_y(en, znu, xi)
+                    + _M_2_p1_gray(en, znu))
+
+        def _M_3_p1_mu(en, znu, xi):
+            x0 = en * znu
+            x1 = _fd(x0 - xi)
+            x2 = _fd(-dxi + en * znu - xi)
+            return -en**2 * (x0 * (x1 * (x1 - 1) - x2 * (x2 - 1)) + 3 * x1 - 3 * x2)
+
+        def _M_3_p1_y(en, znu, xi):
+            x0 = en**2
+            x1 = en * znu
+            x2 = _fd(x1 - xi)
+            x3 = x0 * znu**2
+            x4 = x2**2
+            return -x0 * x2 * (-24 * x1 * x2 + 16 * x1 * x4 + 8 * x1 + 6 * x2**3 * x3
+                                + 7 * x2 * x3 + 12 * x2 - 12 * x3 * x4 - x3 - 12)
+
+        def _M_3_p1_gray(en, znu):
+            x0 = y_gray + 1
+            x1 = x0**4
+            x2 = en * znu
+            x3 = _fd(x2)
+            x4 = _fd(x2 / x0)
+            return -en**2 * (3 * x0 * (x0**3 * x3 - x4) + x2 * (x1 * x3 * (x3 - 1) - x4 * (x4 - 1))) / x1
+
+        def _raw_M3p1(en, znu, xi):
+            return (_M_3_p1_mu(en, znu, xi)
+                    + y_sz * _M_3_p1_y(en, znu, xi)
+                    + _M_3_p1_gray(en, znu))
+
+        def _M_4_p1_mu(en, znu, xi):
+            x0 = en * znu
+            x1 = _fd(x0 - xi)
+            x2 = _fd(-dxi + en * znu - xi)
+            return -en**3 * (x0 * (x1 * (x1 - 1) - x2 * (x2 - 1)) + 4 * x1 - 4 * x2)
+
+        def _M_4_p1_y(en, znu, xi):
+            x0 = en * znu
+            x1 = _fd(x0 - xi)
+            x2 = en**2 * znu**2
+            x3 = x1**2
+            return -en**3 * x1 * (-27 * x0 * x1 + 18 * x0 * x3 + 9 * x0 + 6 * x1**3 * x2
+                                   + 7 * x1 * x2 + 16 * x1 - 12 * x2 * x3 - x2 - 16)
+
+        def _M_4_p1_gray(en, znu):
+            x0 = y_gray + 1
+            x1 = x0**4
+            x2 = en * znu
+            x3 = _fd(x2)
+            x4 = _fd(x2 / x0)
+            return -en**3 * (4 * x0 * (x0**3 * x3 - x4) + x2 * (x1 * x3 * (x3 - 1) - x4 * (x4 - 1))) / x1
+
+        def _raw_M4p1(en, znu, xi):
+            return (_M_4_p1_mu(en, znu, xi)
+                    + y_sz * _M_4_p1_y(en, znu, xi)
+                    + _M_4_p1_gray(en, znu))
+
+        def _M_2_p2_mu(en, znu, xi):
+            x0 = en * znu
+            x1 = _fd(x0 - xi)
+            x2 = _fd(-dxi + en * znu - xi)
+            x3 = x1 - 1
+            x4 = x2 - 1
+            return (-en**2 * znu**2 * (x1**2 * x3 + x1 * x3**2 - x2**2 * x4 - x2 * x4**2)
+                    - 4 * x0 * (x1 * x3 - x2 * x4) - 2 * x1 + 2 * x2)
+
+        def _M_2_p2_y(en, znu, xi):
+            x0 = en * znu
+            x1 = _fd(x0 - xi)
+            x2 = en**3 * znu**3
+            x3 = en**2 * znu**2
+            x4 = x1**2
+            x5 = 60 * x1**3
+            return -x1 * (-66 * x0 * x1 + 44 * x0 * x4 + 22 * x0 + 24 * x1**4 * x2
+                           - 15 * x1 * x2 + 70 * x1 * x3 + 8 * x1 + 50 * x2 * x4 - x2 * x5
+                           + x2 - 120 * x3 * x4 + x3 * x5 - 10 * x3 - 8)
+
+        def _M_2_p2_gray(en, znu):
+            x0 = y_gray + 1
+            x1 = x0**5
+            x2 = en * znu
+            x3 = _fd(x2)
+            x4 = 2 * x3
+            x5 = _fd(x2 / x0)
+            x6 = x3 * (x3 - 1)
+            x7 = x5 - 1
+            return (en**2 * znu**2 * (-x1 * x6 * (x4 - 1) + x5**2 * x7 + x5 * x7**2)
+                    + 2 * x0**2 * x5 - 4 * x0 * x2 * (x0**4 * x6 - x5 * x7) - x1 * x4) / x1
+
+        def _raw_M2p2(en, znu, xi):
+            return (_M_2_p2_mu(en, znu, xi)
+                    + y_sz * _M_2_p2_y(en, znu, xi)
+                    + _M_2_p2_gray(en, znu))
+
+        def _M_3_p2_mu(en, znu, xi):
+            x0 = en * znu
+            x1 = _fd(x0 - xi)
+            x2 = _fd(-dxi + en * znu - xi)
+            x3 = x1 - 1
+            x4 = x2 - 1
+            return -en * (en**2 * znu**2 * (x1**2 * x3 + x1 * x3**2 - x2**2 * x4 - x2 * x4**2)
+                           + 6 * x0 * (x1 * x3 - x2 * x4) + 6 * x1 - 6 * x2)
+
+        def _M_3_p2_y(en, znu, xi):
+            x0 = en * znu
+            x1 = _fd(x0 - xi)
+            x2 = en**3 * znu**3
+            x3 = en**2 * znu**2
+            x4 = x1**2
+            x5 = x1**3
+            return -en * x1 * (-108 * x0 * x1 + 72 * x0 * x4 + 36 * x0 + 24 * x1**4 * x2
+                                - 15 * x1 * x2 + 84 * x1 * x3 + 24 * x1 + 50 * x2 * x4
+                                - 60 * x2 * x5 + x2 - 144 * x3 * x4 + 72 * x3 * x5 - 12 * x3 - 24)
+
+        def _M_3_p2_gray(en, znu):
+            x0 = y_gray + 1
+            x1 = x0**5
+            x2 = en * znu
+            x3 = _fd(x2)
+            x4 = _fd(x2 / x0)
+            x5 = x3 * (x3 - 1)
+            x6 = x4 - 1
+            return -en * (-en**2 * znu**2 * (-x1 * x5 * (2 * x3 - 1) + x4**2 * x6 + x4 * x6**2)
+                           + 6 * x0**2 * (x0**3 * x3 - x4) + 6 * x0 * x2 * (x0**4 * x5 - x4 * x6)) / x1
+
+        def _raw_M3p2(en, znu, xi):
+            return (_M_3_p2_mu(en, znu, xi)
+                    + y_sz * _M_3_p2_y(en, znu, xi)
+                    + _M_3_p2_gray(en, znu))
+
+        def _M_4_p2_mu(en, znu, xi):
+            x0 = en**2
+            x1 = en * znu
+            x2 = _fd(x1 - xi)
+            x3 = _fd(-dxi + en * znu - xi)
+            x4 = x2 - 1
+            x5 = x3 - 1
+            return -x0 * (x0 * znu**2 * (x2**2 * x4 + x2 * x4**2 - x3**2 * x5 - x3 * x5**2)
+                           + 8 * x1 * (x2 * x4 - x3 * x5) + 12 * x2 - 12 * x3)
+
+        def _M_4_p2_y(en, znu, xi):
+            x0 = en**2
+            x1 = en * znu
+            x2 = _fd(x1 - xi)
+            x3 = en**3 * znu**3
+            x4 = x0 * znu**2
+            x5 = x2**2
+            x6 = x2**3
+            return -x0 * x2 * (-156 * x1 * x2 + 104 * x1 * x5 + 52 * x1 + 24 * x2**4 * x3
+                                - 15 * x2 * x3 + 98 * x2 * x4 + 48 * x2 + 50 * x3 * x5
+                                - 60 * x3 * x6 + x3 - 168 * x4 * x5 + 84 * x4 * x6 - 14 * x4 - 48)
+
+        def _M_4_p2_gray(en, znu):
+            x0 = en**2
+            x1 = y_gray + 1
+            x2 = x1**5
+            x3 = en * znu
+            x4 = _fd(x3)
+            x5 = _fd(x3 / x1)
+            x6 = x4 * (x4 - 1)
+            x7 = x5 - 1
+            return -x0 * (-x0 * znu**2 * (-x2 * x6 * (2 * x4 - 1) + x5**2 * x7 + x5 * x7**2)
+                           + 12 * x1**2 * (x1**3 * x4 - x5) + 8 * x1 * x3 * (x1**4 * x6 - x5 * x7)) / x2
+
+        def _raw_M4p2(en, znu, xi):
+            return (_M_4_p2_mu(en, znu, xi)
+                    + y_sz * _M_4_p2_y(en, znu, xi)
+                    + _M_4_p2_gray(en, znu))
+
+        # Antisymmetric dispatch (see derivation above), one closure per
+        # (n, order) pair, with the sign(n,order) factor baked in.
+        def _make_moment(n, order, raw):
+            sign_p1 = (-1.) ** n
+            sign_p2 = -(-1.) ** n
+            sign = sign_p1 if order == 1 else sign_p2
+
+            def moment(en, x, znu, sgnq):
+                if en >= 0.:
+                    xi_here = sgnq * xi_nu
+                    return raw(en, znu, xi_here)
+                else:
+                    xi_here = -sgnq * xi_nu
+                    return sign * raw(-en, znu, xi_here)
+
+            return moment
+
+        self.dFDneu_moments = {
+            "e2p0": lambda en, x, znu, sgnq: en**2 * dFDneu_func(en, x, znu, sgnq),
+            "e3p0": lambda en, x, znu, sgnq: en**3 * dFDneu_func(en, x, znu, sgnq),
+            "e2p1": _make_moment(2, 1, _raw_M2p1),
+            "e3p1": _make_moment(3, 1, _raw_M3p1),
+            "e4p1": _make_moment(4, 1, _raw_M4p1),
+            "e2p2": _make_moment(2, 2, _raw_M2p2),
+            "e3p2": _make_moment(3, 2, _raw_M3p2),
+            "e4p2": _make_moment(4, 2, _raw_M4p2),
+        }
+
         # Extra neutrino energy density from the distortion (Friedmann eq.)
         # Analytic integrals ∫₀^∞ y³ δf dy for each distortion type.
         # Ref: PRIMAT-Main.m, Inty3MuDistortion and Inty3SZdistortion.
         #
-        # Inty3Mu(ξ, δξ) = (δξ/4)(δξ+2ξ)(δξ²+2δξξ+2(π²+ξ²))
-        # Inty3SZ(ξ)     = 7π⁴/15 + 2π²ξ² + ξ⁴
-        # ρ_νSD = N_ν (kT_ν)⁴/(2π²ℏ³c⁵) × [Inty3Mu + YSZ × Inty3SZ]
+        # Inty3Mu(ξ, δξ)  = (δξ/4)(δξ+2ξ)(δξ²+2δξξ+2(π²+ξ²))
+        # Inty3SZ(ξ)      = 7π⁴/15 + 2π²ξ² + ξ⁴
+        # Inty3Gray(γ)    = γ × 7π⁴/120   (exact; see scratch/derive_sd_fm_distortions.py:
+        #   substituting w=y/(1+γ) in ∫y³[fd(y/(1+γ))/(1+γ)³ - fd(y)]dy gives
+        #   (1+γ)∫w³fd(w)dw - ∫y³fd(y)dy = γ × Inty3_FD exactly, no expansion)
+        # ρ_νSD = N_ν (kT_ν)⁴/(2π²ℏ³c⁵) × [Inty3Mu + y_SZ×Inty3SZ + 2×Inty3Gray]
+        # (the factor 2 on Inty3Gray sums the neutrino+antineutrino
+        # contributions, identical shapes since δf_gray has no ξ dependence;
+        # Inty3Mu/Inty3SZ already are the summed neutrino+antineutrino forms.)
         #
         # In PyPRIMAT units (MeV throughout) the prefactor is
         #   N_ν × (kT_ν)⁴/(2π²) × (MeV_to_secm1/c)³/(c²)
@@ -542,7 +832,7 @@ class AnalyticDistortion(NeutrinoHistory):
             Inty3_mu = (dxi / 4.) * (dxi + 2.*xi_nu) * (
                 dxi**2 + 2.*dxi*xi_nu + 2.*(np.pi**2 + xi_nu**2))
             Inty3_sz = 7.*np.pi**4/15. + 2.*np.pi**2*xi_nu**2 + xi_nu**4
-            extra_int = Inty3_mu + y_sz * Inty3_sz
+            extra_int = Inty3_mu + y_sz * Inty3_sz + 2. * y_gray * Inty3_FD
             # rho_nu(Tnu) = Nnu * 7π⁴/120 × (kTnu)⁴/(2π²) × prefactor,
             # so ρ_νSD/rho_nu = Nnu × extra_int / (Nnu × Inty3_FD).
             return self.plasma.rho_nu(Tnu) * extra_int / Inty3_FD

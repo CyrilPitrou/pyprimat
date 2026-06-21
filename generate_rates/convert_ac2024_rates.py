@@ -86,7 +86,7 @@ for _p in (_HERE, os.path.dirname(_HERE)):     # generate_rates/ and repo root
 # Standard target grid: single-sourced from PyPRIMAT's own master-grid
 # defaults (pyprimat.config.DEFAULT_PARAMS["rate_grid_*"]) so the generator
 # and the runtime grid-resampling in pypr.nuclear.UpdateNuclearRates can never
-# silently drift apart (IMPROVEMENTS.md #8).  DEFAULT_PARAMS is a plain dict,
+# silently drift apart.  DEFAULT_PARAMS is a plain dict,
 # so importing it has no side effects (no PyPRConfig instantiation).
 from pyprimat.config import DEFAULT_PARAMS
 from pyprimat.network_data import _RATE_SYNTAX_, _format_name
@@ -209,7 +209,7 @@ def expand_ref(ref):
 
 
 # ---------------------------------------------------------------------------
-# Naming conventions (IMPROVEMENTS.md #9)
+# Naming conventions
 #
 # Two different naming systems are used by design, for two different audiences:
 #   * Rate FILENAMES (<reactants>TO<products>.txt, built by reaction_name below)
@@ -623,7 +623,7 @@ def build_analytic_blocks(entries):
 def write_analytic_file(block, grid, outdir, suffix=""):
     # block["rate"](grid) may be a T9-independent scalar (constants, decays) or
     # an array already shaped like `grid`; broadcast_to states that intent
-    # explicitly (replaces the `* np.ones_like(grid)` idiom, IMPROVEMENTS.md #10).
+    # explicitly (replaces the `* np.ones_like(grid)` idiom).
     rate = np.array(np.broadcast_to(block["rate"](grid), grid.shape), dtype=float)
     # Analytic rates carry a single constant multiplicative uncertainty factor
     # f (the AddReaction argument): the 1-sigma band is [rate/f, rate*f]. We
@@ -937,8 +937,7 @@ def _canon_side(tokens):
 
 
 def check_name_collisions(tab_blocks, ana_blocks):
-    """Check <reactants>TO<products> name collisions across both block lists
-    (IMPROVEMENTS.md #9).
+    """Check <reactants>TO<products> name collisions across both block lists.
 
     Two blocks can legitimately share a name: PRIMAT moves some reactions from
     an analytic formula to a tabulated rate as data improve, so the *same*

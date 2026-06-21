@@ -114,9 +114,8 @@ def test_ede_is_appended_to_extra_rho():
 def test_tabulated_electron_thermo_matches_exact(T):
     """The cubic-interpolant table (always used) reproduces the exact quad
     integrals (``_*_exact``) to within the interpolation tolerance."""
-    import pyprimat.plasma as thermo
-    thermo.initialise(PyPRConfig())
-    p = thermo._default
+    from pyprimat.plasma import Plasma
+    p = Plasma(PyPRConfig())
     tab   = (p.rho_e(T), p.p_e(T), p.drho_e_dT(T), p.dp_e_dT(T))
     exact = (p._rho_e_exact(T), p._p_e_exact(T),
              p._drho_e_dT_exact(T), p._dp_e_dT_exact(T))

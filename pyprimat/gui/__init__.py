@@ -12,6 +12,4 @@ Launch the GUI with::
     pyprimat-gui                              # console script (after `pip install ".[gui]"`)
     streamlit run pyprimat/gui/app.py         # from a source checkout
     python -m pyprimat.gui.launcher           # equivalent to the console script
-
-See ``GUI.md`` at the repository root for the design of this app.
 """

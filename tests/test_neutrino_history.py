@@ -29,8 +29,8 @@ def _Tg_MeV(cfg):
 def test_default_is_nevo_table_no_distortion():
     """Default config (incomplete decoupling, no distortions) -> NEVOTable.
 
-    ``spectral_distortions=True`` is the ``PyPRConfig`` default (IDEAS2.md
-    item 2), so it is explicitly disabled here to isolate the "no distortion"
+    ``spectral_distortions=True`` is the ``PyPRConfig`` default, so it is
+    explicitly disabled here to isolate the "no distortion"
     case checked by this test (the distorted case is covered by
     ``test_nevo_spectral_distortion_builds_callable`` below).
     """
@@ -118,7 +118,7 @@ def test_nevo_spectral_distortion_builds_callable():
 
 
 # ---------------------------------------------------------------------------
-# external_scale_factor / x_of_Tg (NEUTRINOS.md Part 2)
+# external_scale_factor / x_of_Tg
 # ---------------------------------------------------------------------------
 
 def test_x_of_Tg_present_for_nevo_table_only():
@@ -142,7 +142,7 @@ def test_x_of_Tg_present_for_nevo_table_only():
 def test_external_scale_factor_a_of_T_matches_minimal_on_table_grid():
     """a(T_gamma) and t(T_gamma) built from external_scale_factor=True (direct
     NEVO-table x(T) lookup) must agree with the default entropy-conservation
-    ODE solve to within the precision quoted in NEUTRINOS.md (~1e-5),
+    ODE solve to within ~1e-5,
     confirming a ~ x is a valid alternative background construction."""
     from pyprimat.main import PyPR
 
@@ -166,7 +166,7 @@ def test_external_scale_factor_a_of_T_matches_minimal_on_table_grid():
 def test_external_scale_factor_matches_minimal():
     """A full BBN solve with external_scale_factor=True reproduces the default
     (minimal-mode) Neff, YPBBN and D/H to the precision expected from the
-    a(T)/t(T) agreement above (NEUTRINOS.md)."""
+    a(T)/t(T) agreement above."""
     from pyprimat.main import PyPR
 
     r_min = PyPR({"network": "small"}).PyPRresults()

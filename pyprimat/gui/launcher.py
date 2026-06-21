@@ -3,8 +3,7 @@
 pyprimat.gui.launcher
 ======================
 
-Console-script entry point for the ``pyprimat-gui`` command (GUI.md §"Launch
-& docs").
+Console-script entry point for the ``pyprimat-gui`` command.
 
 Streamlit's runner (``streamlit run ...``) needs a *path* to a script file,
 not an importable module, so this launcher resolves the on-disk location of

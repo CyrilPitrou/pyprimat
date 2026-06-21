@@ -162,8 +162,7 @@ The app mirrors a single CLI/script run:
 
 The GUI builds the same `params` dict and calls
 `PyPR(params=params).PyPRresults()` as the Python API and the `pyprimat` CLI,
-so all three agree on results for the same configuration. See `GUI.md` for
-the full design.
+so all three agree on results for the same configuration.
 
 ## Key parameters
 
@@ -319,7 +318,7 @@ The `pyprimat-gui` sidebar's "Nuclear reactions" group offers **"Create
 custom network"** (a popup to start from any named network, toggle reactions
 in/out by mass-number category, and substitute or upload alternate rate
 tables) and **"Import custom network"** (re-load a previously saved
-`.zip`). See `GUI.md` for the full design.
+`.zip`).
 
 ## Cobaya / MCMC interface
 

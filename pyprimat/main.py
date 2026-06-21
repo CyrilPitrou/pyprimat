@@ -18,6 +18,7 @@ Design
 
 import re
 import time
+import warnings
 import numpy as np
 
 __all__ = ['PyPR', 'mc_uncertainty']
@@ -69,6 +70,41 @@ class PyPR:
 
         Example: a constant extra radiation density of dRho [MeV^4],
             >>> PyPR({"network": "small"}, extra_rho=[lambda Tg: dRho])
+
+        Ignored (with a warning) if ``background`` is supplied: a caller
+        providing a full :class:`~pyprimat.background.Background` instance
+        is expected to fold any extra energy density into it directly.
+    background : pyprimat.background.Background, optional
+        A pre-built background instance to drive the nuclear network with,
+        in place of the standard ``cfg.custom_background``-driven dispatch
+        below. This is the seam for a fully custom expansion history (e.g. a
+        non-standard cosmology that needs more than ``extra_rho`` can
+        express): subclass :class:`pyprimat.background.Background` -- whose
+        docstring lists the compulsory (``T_of_t``, ``t_of_T``, ``rhoB_BBN``,
+        ``weak_nTOp_frwrd``/``weak_nTOp_bkwrd``) and optional methods -- and
+        pass an instance here. Since ``Background.__init__`` already takes
+        ``(cfg, plasma, extra_rho)``, ``PyPR`` takes ``self.cfg``/``self.plasma``
+        *from the supplied instance* (``background.cfg``/``background.plasma``)
+        rather than building its own, so the nuclear network and the
+        background always agree on which config/plasma drove them -- build
+        the instance with your own ``PyPRConfig``/``Plasma`` first, then hand
+        it to ``PyPR``. ``None`` (default) preserves today's
+        ``cfg.custom_background``-based dispatch (:class:`StandardBackground`
+        or :class:`CustomBackground`) using ``params``/``extra_rho`` as usual.
+        Mutually exclusive with ``params``/``extra_rho``/``cfg.custom_background``,
+        which only make sense for the default dispatch; supplying
+        ``background`` together with ``params`` or ``extra_rho`` emits a
+        warning, and the supplied ``background`` instance wins.
+
+        Example: drive the network with a hand-built background,
+            >>> from pyprimat import Background
+            >>> from pyprimat.config import PyPRConfig
+            >>> from pyprimat.plasma import Plasma
+            >>> cfg = PyPRConfig({"network": "small"})
+            >>> plasma = Plasma(cfg)
+            >>> class MyBackground(Background):
+            ...     ...  # implement T_of_t, t_of_T, rhoB_BBN, weak_nTOp_*
+            >>> PyPR(background=MyBackground(cfg, plasma))
     custom_network : dict, optional
         GUI/scripting "Customise Reactions" override, forwarded verbatim to
         :class:`pyprimat.network_data.UpdateNuclearRates` (see its docstring
@@ -87,13 +123,40 @@ class PyPR:
             ... })
     """
 
-    def __init__(self, params=None, extra_rho=None, custom_network=None):
+    def __init__(self, params=None, extra_rho=None, custom_network=None, background=None):
 
         # ------------------------------------------------------------------
-        # 1. Build configuration
+        # 1. Build configuration (+ thermodynamics, step 2) -- unless a
+        #    pre-built `background` was supplied, in which case its own
+        #    `.cfg`/`.plasma` are reused verbatim so the nuclear network
+        #    and the background never disagree on which config/plasma drove
+        #    them (see the `background` parameter docstring above).
         # ------------------------------------------------------------------
-        self.cfg = PyPRConfig(params or {})
-        cfg = self.cfg
+        if background is not None:
+            if params:
+                warnings.warn(
+                    "PyPR: params is ignored when background= is supplied "
+                    "(self.cfg is taken from background.cfg instead)."
+                )
+            if extra_rho is not None:
+                warnings.warn(
+                    "PyPR: extra_rho is ignored when background= is supplied "
+                    "(fold any extra energy density into the background "
+                    "instance directly before passing it in)."
+                )
+            self.cfg = background.cfg
+            cfg = self.cfg
+            # A per-instance Plasma object (rather than the module-level
+            # default) so that several PyPR instances coexisting in the same
+            # process (e.g. QED_corrections=True/False comparisons, MC
+            # workers) each carry their own QED/electron-thermo tables
+            # without overwriting one another's state.
+            self.plasma = background.plasma
+        else:
+            self.cfg = PyPRConfig(params or {})
+            cfg = self.cfg
+            self.plasma = PyPRthermo.Plasma(cfg)
+
         self.N = {name: NZ[0]           for name, NZ in cfg.Nuclides.items()}
         self.Z = {name: NZ[1]           for name, NZ in cfg.Nuclides.items()}
         self.A = {name: NZ[0] + NZ[1]   for name, NZ in cfg.Nuclides.items()}
@@ -103,16 +166,6 @@ class PyPR:
             for msg in cfg._init_messages:
                 print(msg)
             self._t0 = time.time()
-
-        # ------------------------------------------------------------------
-        # 2. Initialise thermodynamics (loads QED/neutrino tables)
-        # ------------------------------------------------------------------
-        # A per-instance Plasma object (rather than the module-level default)
-        # so that several PyPR instances coexisting in the same process
-        # (e.g. QED_corrections=True/False comparisons, MC workers) each
-        # carry their own QED/electron-thermo tables without overwriting
-        # one another's state.
-        self.plasma = PyPRthermo.Plasma(cfg)
 
         # ------------------------------------------------------------------
         # 3. Initialize nuclear network (MT/LT eras)
@@ -125,7 +178,10 @@ class PyPR:
         #    rho_B(t), n<->p weak rates, Neff/Omega_nu -- everything the
         #    nuclear network needs about the expanding Universe.
         #
-        #    Two modes:
+        #    Three modes:
+        #    * Injected (background is not None): use the caller's instance
+        #      as-is -- the seam for a fully custom expansion history (see
+        #      the `background` parameter docstring above).
         #    * Standard (cfg.custom_background is None): StandardBackground
         #      solves the Friedmann / entropy-conservation ODEs, loading the
         #      NEVO non-instantaneous-decoupling table when available.
@@ -138,7 +194,9 @@ class PyPR:
         #    Early Dark Energy (cfg.fEDE > 0) is only supported in the
         #    standard mode (appended to extra_rho by StandardBackground).
         # ------------------------------------------------------------------
-        if cfg.custom_background is not None:
+        if background is not None:
+            self.background = background
+        elif cfg.custom_background is not None:
             self.background = CustomBackground(cfg, self.plasma, cfg.custom_background)
         else:
             self.background = StandardBackground(cfg, self.plasma, extra_rho)

@@ -31,6 +31,8 @@ import sys
 import time
 
 from . import PyPR, __version__
+from .cache_utils import clear_weak_cache, list_weak_cache_files
+from .config import PyPRConfig
 
 
 def _parse_set_value(raw: str):
@@ -117,6 +119,17 @@ def _build_parser():
         "--verbose", action="store_true",
         help="Enable PyPRIMAT's internal progress messages (timings, cache hits, ...).",
     )
+    parser.add_argument(
+        "--cache-info", action="store_true",
+        help="Print the number of cached n<->p weak-rate files "
+             "(pyprimat/rates/weak/nTOp_*.txt) and exit, without running a solve.",
+    )
+    parser.add_argument(
+        "--cache-clear", action="store_true",
+        help="Delete every cached n<->p weak-rate file and exit, without "
+             "running a solve. The cache is always safely regenerable: a "
+             "later run just pays the one-time recompute cost again.",
+    )
     # Generic escape hatch: lets any PyPRConfig key (including p_<reaction>/
     # NP_delta_<reaction>) be set from the CLI without a dedicated flag.
     # help=SUPPRESS keeps it out of --help, per the handful of named flags
@@ -159,6 +172,16 @@ def main(argv=None):
     """
     parser = _build_parser()
     args = parser.parse_args(argv)
+
+    if args.cache_info or args.cache_clear:
+        cfg = PyPRConfig({})
+        if args.cache_clear:
+            n = clear_weak_cache(cfg)
+            print(f"Removed {n} cached weak-rate file(s) from {cfg.data_dir}/rates/weak/.")
+        else:
+            n = len(list_weak_cache_files(cfg))
+            print(f"{n} cached weak-rate file(s) in {cfg.data_dir}/rates/weak/.")
+        return 0
 
     # Only forward options the user actually set, so unset flags fall back
     # to PyPRConfig's own defaults rather than a value duplicated here.

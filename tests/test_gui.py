@@ -1,5 +1,5 @@
 """
-Tests for the optional Streamlit GUI (``pyprimat.gui``, see ``GUI.md``).
+Tests for the optional Streamlit GUI (``pyprimat.gui``).
 
 The GUI is the third way (alongside a Python script and the ``pyprimat``
 console-script CLI, ``tests/test_cli.py``) of driving the same
@@ -14,8 +14,7 @@ console-script CLI, ``tests/test_cli.py``) of driving the same
   reproduces the exact values pinned in ``test_cli.py`` -- i.e. the GUI
   calls ``PyPR`` identically to the CLI;
 * check that an invalid flag combination (caught by ``PyPRConfig``) is
-  surfaced as a clean ``st.error`` rather than a traceback (GUI.md
-  verification step 5).
+  surfaced as a clean ``st.error`` rather than a traceback.
 
 Each ``AppTest`` run that clicks "Run BBN" performs one full small-network
 solve (~1.2 s, like ``test_cli.py``), so this module is marked
@@ -72,7 +71,7 @@ def _download_button(at, label):
 def test_pyprimat_import_does_not_pull_in_gui():
     """``import pyprimat`` must not import ``pyprimat.gui`` (or streamlit).
 
-    ``pyprimat.gui`` is shipped inside the package (GUI.md "Packaging") so
+    ``pyprimat.gui`` is shipped inside the package so
     that ``pip install ".[gui]"`` provides the ``pyprimat-gui`` console
     script, but ``streamlit``/``plotly`` are optional: a plain
     ``pip install pyprimat`` (no extra) must still let
@@ -164,16 +163,18 @@ def _markdown_table_rows(md_value):
 
 
 def test_default_run_matches_cli_reference():
-    """Default (small-network) GUI run reproduces test_cli.py's pinned values.
+    """Default (small-network) GUI run reproduces the CLI's in-process result.
 
     Both the GUI (`pyprimat.gui.app._solve`) and the `pyprimat` console
     script (`pyprimat.cli.main`) call `PyPR(params=params).PyPRresults()`
     with the same defaults, so they must agree to full precision -- this is
-    the GUI.md verification step 3 ("reference run parity"), pinned to the
-    same values as `test_cli.py::test_cli_default_summary` /
-    `test_cli_json_matches_default_summary` (spectral_distortions=True,
-    IDEAS2.md item 2).
+    the verification step 3 ("reference run parity"). Rather than pinning a
+    second copy of the literal numbers (which then drifts independently of
+    test_cli.py's pins, see FUTURE.md P0.1), this computes the CLI result
+    in-process and compares GUI == CLI directly: it tests parity (its
+    stated purpose) and can never go stale from a routine default tweak.
     """
+    from pyprimat.main import PyPR
     from pyprimat.network_data import nuclide_latex
 
     at = AppTest.from_file(APP_PATH)
@@ -181,33 +182,31 @@ def test_default_run_matches_cli_reference():
     _run_bbn(at)
     assert not at.exception
 
+    cli_run = PyPR(params={})
+    cli_results = cli_run.PyPRresults()
+
     # "Standard ratios" Markdown table (render_results_panel).
     [ratios_md] = [
         md for md in at.markdown if "| Quantity | Value |" in md.value
     ]
     ratios = _markdown_table_rows(ratios_md.value)
-    # These pins were last refreshed after the weak-rates update (commits
-    # 4c5b8e0/d8bd969/78c9572/521cf4d); the shifts are within the CLAUDE.md
-    # tolerance (mirrors test_cli.py::test_cli_default_summary). Refreshed
-    # again after raising the rate_grid_npts/sampling_temperature_per_decade
-    # defaults (see test_cli.py::test_cli_default_summary).
-    assert ratios[r"$N_{\text{eff}}$"] == ["3.04397730"]
-    assert ratios[r"$Y_P\ (\text{BBN})$"] == ["0.24699914"]
-    assert ratios[r"$\text{D}/\text{H}$"] == ["2.4349992e-05"]
+    assert ratios[r"$N_{\text{eff}}$"] == [f"{cli_results['Neff']:.8f}"]
+    assert ratios[r"$Y_P\ (\text{BBN})$"] == [f"{cli_results['YPBBN']:.8f}"]
+    assert ratios[r"$\text{D}/\text{H}$"] == [f"{cli_results['DoH']:.7e}"]
 
     # Per-nuclide final-abundance Markdown table (render_results_panel).
     [abundances_md] = [
         md for md in at.markdown if "| Nuclide | A | Z | Y |" in md.value
     ]
     by_nuclide = _markdown_table_rows(abundances_md.value)
-    assert float(by_nuclide[nuclide_latex("p")][-1]) == pytest.approx(7.529422e-01, rel=1e-5)
-    assert float(by_nuclide[nuclide_latex("He4")][-1]) == pytest.approx(0.06174942, rel=1e-5)
+    assert float(by_nuclide[nuclide_latex("p")][-1]) == pytest.approx(cli_run.get_quantity("p"), rel=1e-6)
+    assert float(by_nuclide[nuclide_latex("He4")][-1]) == pytest.approx(cli_run.get_quantity("He4"), rel=1e-6)
 
 
 def test_evolution_panel_renders_with_default_selection():
     """The abundance-evolution panel's nuclide multiselect defaults to the
     'light elements' preset and renders without error alongside the results
-    panel (both tabs' bodies execute on every run, see GUI.md §4)."""
+    panel (both tabs' bodies execute on every run)."""
     at = AppTest.from_file(APP_PATH)
     at.run(timeout=120)
     _run_bbn(at)
@@ -228,7 +227,7 @@ def test_evolution_panel_renders_with_default_selection():
 # ---------------------------------------------------------------------------
 
 def test_amax_widget_shown_for_every_network():
-    """`amax` (GUI.md §2 "Network") is offered regardless of `network`'s
+    """`amax` is offered regardless of `network`'s
     value (CUSTOMPOPUP.md §3.3 dropped the old "large only" restriction)."""
     at = AppTest.from_file(APP_PATH)
     at.run(timeout=60)
@@ -340,8 +339,7 @@ def test_quick_mc_uncertainty_with_customised_network():
 def test_invalid_flag_combination_surfaces_as_error_not_traceback():
     """spectral_distortions=True + incomplete_decoupling=False (with the
     default analytic_distortions=False) is rejected by `PyPRConfig.__init__`
-    (config.py); the GUI must show `st.error`, not crash (GUI.md
-    verification step 5)."""
+    (config.py); the GUI must show `st.error`, not crash."""
     at = AppTest.from_file(APP_PATH)
     at.run(timeout=60)
 

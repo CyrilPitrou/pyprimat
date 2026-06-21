@@ -36,7 +36,7 @@ All solve-based tests carry the ``slow`` marker.
 import pytest
 import numpy as np
 from pyprimat.config import PyPRConfig
-import pyprimat.plasma as thermo
+from pyprimat.plasma import Plasma
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +48,7 @@ def _solve(incomplete_decoupling, QED_corrections):
     return PyPR({
         "incomplete_decoupling": incomplete_decoupling,
         "QED_corrections":       QED_corrections,
-        # spectral_distortions=True (the PyPRConfig default, IDEAS2.md item 2)
+        # spectral_distortions=True (the PyPRConfig default)
         # requires incomplete_decoupling=True (NEVO spectrum); this module's
         # 2x2 matrix exercises incomplete_decoupling=False too, and spectral
         # distortions are an independent axis covered by
@@ -67,33 +67,30 @@ class TestPlasmaNoQED:
     identically zero and spl/T³ must equal 11π²/45 in the high-T limit."""
 
     @pytest.fixture(autouse=True)
-    def init_no_qed(self):
-        thermo.initialise(PyPRConfig({"QED_corrections": False}))
-        yield
-        # Restore default state for other test modules
-        thermo.initialise(PyPRConfig())
+    def thermo(self):
+        return Plasma(PyPRConfig({"QED_corrections": False}))
 
-    def test_PQEDofT_is_zero(self):
+    def test_PQEDofT_is_zero(self, thermo):
         """QED interaction pressure P must vanish when QED_corrections=False."""
         for T in [0.1, 1.0, 10.0, 100.0]:
             assert thermo.PQEDofT(T) == 0.0
 
-    def test_dPQEDdT_is_zero(self):
+    def test_dPQEDdT_is_zero(self, thermo):
         for T in [0.1, 1.0, 10.0, 100.0]:
             assert thermo.dPQEDdT(T) == 0.0
 
-    def test_d2PQEDdT2_is_zero(self):
+    def test_d2PQEDdT2_is_zero(self, thermo):
         for T in [0.1, 1.0, 10.0, 100.0]:
             assert thermo.d2PQEDdT2(T) == 0.0
 
-    def test_spl_highT_equals_sigma_inf(self):
+    def test_spl_highT_equals_sigma_inf(self, thermo):
         """Without QED corrections, spl(T)/T³ must converge to 11π²/45 at high T
         (photons + e+e- in the massless limit)."""
         sigma_inf = 11.0 * np.pi**2 / 45.0
         T = 100.0   # T >> me = 0.511 MeV
         assert thermo.spl(T) / T**3 == pytest.approx(sigma_inf, rel=1e-3)
 
-    def test_spl_lowT_equals_photon_entropy(self):
+    def test_spl_lowT_equals_photon_entropy(self, thermo):
         """Without QED corrections, spl(T)/T³ → 4π²/45 at low T (photons only)."""
         s_photon = 4.0 * np.pi**2 / 45.0
         T = 0.001   # T << me
@@ -105,15 +102,14 @@ class TestPlasmaWithQED:
     and spl/T³ must differ from 11π²/45 at high T."""
 
     @pytest.fixture(autouse=True)
-    def init_with_qed(self):
-        thermo.initialise(PyPRConfig({"QED_corrections": True}))
-        yield
+    def thermo(self):
+        return Plasma(PyPRConfig({"QED_corrections": True}))
 
-    def test_PQEDofT_nonzero_at_MeV(self):
+    def test_PQEDofT_nonzero_at_MeV(self, thermo):
         """QED pressure correction is nonzero at T ~ m_e."""
         assert thermo.PQEDofT(1.0) != 0.0
 
-    def test_spl_highT_differs_from_sigma_inf(self):
+    def test_spl_highT_differs_from_sigma_inf(self, thermo):
         """With QED corrections, spl(T)/T³ ≠ 11π²/45 at high T."""
         sigma_inf = 11.0 * np.pi**2 / 45.0
         T = 100.0

@@ -4,6 +4,8 @@ import os
 import pytest
 import numpy as np
 from pyprimat.config import PyPRConfig
+from pyprimat.plasma import Plasma
+from pyprimat.neutrino_history import InstantaneousDecoupling, AnalyticDistortion
 import pyprimat.weak_rates as wr
 
 
@@ -81,8 +83,6 @@ def test_ComputeFn_order_of_magnitude(cfg):
 @pytest.fixture(scope="module")
 def rate_interpolants(cfg):
     """Pre-tabulated weak rate interpolants loaded from disk (correct T_ν history)."""
-    import pyprimat.plasma as thermo
-    thermo.initialise(cfg)
     return wr.InterpolateWeakRates(cfg)
 
 
@@ -170,10 +170,8 @@ def test_gauss_legendre_converged():
     quadrature and needs no on-disk thermal table.
     """
     import numpy as np
-    import pyprimat.plasma as plasma
 
     cfg = PyPRConfig({"thermal_corrections": False})
-    plasma.initialise(cfg)
 
     # Representative photon-temperature grid [MeV] over the BBN range, with a
     # post-decoupling neutrino ratio (the exact ratio is irrelevant to a
@@ -312,7 +310,7 @@ def test_nevo_file_with_custom_copy_reproduces_default(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# nevo_file_prefix (NEUTRINOS.md Part 1)
+# nevo_file_prefix
 # ---------------------------------------------------------------------------
 
 def test_nevo_file_prefix_missing_raises_value_error():
@@ -370,7 +368,7 @@ def test_nevo_file_prefix_reproduces_default(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# external_scale_factor (NEUTRINOS.md Part 2)
+# external_scale_factor
 # ---------------------------------------------------------------------------
 
 def test_fingerprint_unaffected_by_external_scale_factor():
@@ -467,3 +465,105 @@ def test_setup_fd_impls_rewraps_on_numba_installed_change():
     # Restore numba=True so later tests in this session (most fixtures use
     # the real numba_installed autodetection) see the JIT-compiled versions.
     wr._setup_fd_impls(True)
+
+
+# ---------------------------------------------------------------------------
+# SD-FM: finite-nucleon-mass correction to the spectral-distortion channel
+# (generate_rates/PRIMAT-Main-gray.m's deltaChiFM; analytic-distortion mode
+# only -- see _chi_func_sd_fm_v / _L_SD_FMCCR / _L_SD_FMNoCCR docstrings).
+# ---------------------------------------------------------------------------
+
+def _analytic_history(params):
+    """Build an AnalyticDistortion neutrino history for the SD-FM tests."""
+    cfg = PyPRConfig(dict(params, incomplete_decoupling=False,
+                           spectral_distortions=True, analytic_distortions=True))
+    base = InstantaneousDecoupling(cfg, Plasma(cfg))
+    return cfg, AnalyticDistortion(base)
+
+
+def test_dFDneu_moments_keys_present_only_in_analytic_mode():
+    """dFDneu_moments is the dict consumed by the SD-FM term; only
+    AnalyticDistortion sets it (NEVO-table mode has no closed-form
+    en-derivative of the tabulated distortion)."""
+    _, hist = _analytic_history({"network": "small", "y_SZ": 0.05,
+                                  "delta_xi_nu": 0.02, "y_gray": 0.03})
+    expected_keys = {"e2p0", "e3p0", "e2p1", "e3p1", "e4p1",
+                      "e2p2", "e3p2", "e4p2"}
+    assert set(hist.dFDneu_moments) == expected_keys
+    for fn in hist.dFDneu_moments.values():
+        assert np.isfinite(fn(1.5, 1.0, 1.3, +1))
+
+
+def test_dFDneu_moments_match_finite_difference():
+    """Each moment M[n,k](en) = d^k/den^k[en^n*dFDneu_func(en)] must agree
+    with a finite difference of en^n*dFDneu_func, both for en >= 0 (the
+    "raw" formula) and en < 0 (the antisymmetric-dispatch branch) -- this is
+    the live-code analogue of scratch/derive_sd_fm_distortions.py's
+    self-check (which only validates the symbolic derivation, not its
+    transcription into neutrino_history.py).  h is tuned per-order to
+    balance truncation error against floating-point round-off in the second
+    derivative (h=1e-3 keeps roundoff/h^2 << truncation ~ h^2, unlike the
+    naive h=1e-6 that works for first derivatives only).
+    """
+    _, hist = _analytic_history({"network": "small", "y_SZ": 0.11,
+                                  "delta_xi_nu": 0.07, "y_gray": 0.17})
+    znu = 1.3
+    for en in (-3.5, -0.4, 0.4, 3.5):
+        for sgnq in (+1.0, -1.0):
+            for n, order in ((2, 1), (3, 1), (4, 1), (2, 2), (3, 2), (4, 2)):
+                h = 1e-5 if order == 1 else 1e-3
+                f = lambda e: e**n * hist.dFDneu_func(e, None, znu, sgnq)
+                if order == 1:
+                    fd_est = (f(en + h) - f(en - h)) / (2 * h)
+                else:
+                    fd_est = (f(en + h) - 2 * f(en) + f(en - h)) / h**2
+                closed = hist.dFDneu_moments[f"e{n}p{order}"](en, None, znu, sgnq)
+                assert closed == pytest.approx(fd_est, abs=2e-4)
+
+
+def test_sd_fm_vanishes_at_zero_distortion_amplitude():
+    """With y_SZ=delta_xi_nu=y_gray=0, dFDneu_func (hence its moments) is
+    identically zero, so the SD-FM correction (built entirely from those
+    moments) must vanish too."""
+    cfg, hist = _analytic_history({"network": "small", "y_SZ": 0.,
+                                    "delta_xi_nu": 0., "y_gray": 0.,
+                                    "munuOverTnu": 0.})
+    ctx = wr._build_rate_context([np.array([1e9, 2e9]), np.array([0.7e9, 1.4e9])], cfg)
+    T_arr = np.array([1e9, 5e9])
+    for sgnq in (+1, -1):
+        for L_func in (wr._L_SD_FMCCR, wr._L_SD_FMNoCCR):
+            val = L_func(ctx, T_arr, sgnq, hist.dFDneu_moments)
+            assert np.allclose(val, 0., atol=1e-15)
+
+
+def test_sd_fm_nonzero_for_nonzero_distortion():
+    """A nonzero distortion amplitude must make the SD-FM correction nonzero
+    (sanity check that the term is actually wired up, not a silent no-op)."""
+    cfg, hist = _analytic_history({"network": "small", "y_SZ": 0.05,
+                                    "delta_xi_nu": 0.02, "y_gray": 0.03})
+    ctx = wr._build_rate_context([np.array([1e9, 2e9]), np.array([0.7e9, 1.4e9])], cfg)
+    T_arr = np.array([1e9, 5e9])
+    val = wr._L_SD_FMCCR(ctx, T_arr, +1, hist.dFDneu_moments)
+    assert np.all(np.abs(val) > 0.)
+
+
+def test_correction_terms_includes_sd_fm_only_with_finite_mass_corrections():
+    """_correction_terms must add an "SD_FM" term iff dFDneu_moments is
+    supplied AND cfg.finite_mass_corrections is True -- mirroring
+    generate_rates/PRIMAT-Main-gray.m's IPENdpSDFM/IPENdpSDFMCCR, which are
+    gated by $SpectralDistortions && $AnalyticDistortions only (finite-mass
+    corrections being on is implicit there since deltaChiFM is the only
+    place that function is used)."""
+    cfg, hist = _analytic_history({"network": "small", "y_SZ": 0.05,
+                                    "delta_xi_nu": 0.02, "y_gray": 0.03,
+                                    "finite_mass_corrections": True})
+    ctx = wr._build_rate_context([np.array([1e9, 2e9]), np.array([0.7e9, 1.4e9])], cfg)
+    T_arr = np.array([1e9, 5e9])
+
+    names_with_fm = [name for name, _ in
+                      wr._correction_terms(ctx, T_arr, +1, hist.dFDneu_func, hist.dFDneu_moments)]
+    assert "SD_FM" in names_with_fm
+
+    names_without_moments = [name for name, _ in
+                      wr._correction_terms(ctx, T_arr, +1, hist.dFDneu_func, None)]
+    assert "SD_FM" not in names_without_moments

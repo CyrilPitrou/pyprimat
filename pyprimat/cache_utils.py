@@ -115,3 +115,42 @@ def write_cache_with_fingerprint(path: str, fingerprint: dict, columns, col_head
     tmp_path = f"{path}.tmp.{os.getpid()}"
     np.savetxt(tmp_path, np.column_stack(columns), header="\n".join(header_lines))
     os.replace(tmp_path, path)
+
+
+# ---------------------------------------------------------------------------
+# Writable weak-rate cache directory: inspection / cleanup (`pyprimat
+# --cache-info` / `--cache-clear`). See FUTURE.md P0.2: every new
+# PyPRConfig fingerprint run with spectral_distortions/incomplete_decoupling
+# etc. drops another nTOp_<hash>.txt / nTOp_thermal_<hash>.txt file under
+# pyprimat/rates/weak/; these are regenerable on demand (a fresh run just
+# recomputes and re-caches them), so it is always safe to delete them.
+# ---------------------------------------------------------------------------
+
+def weak_cache_dir(cfg) -> str:
+    """Return the ``pyprimat/rates/weak/`` directory for ``cfg.data_dir``."""
+    return os.path.join(cfg.data_dir, "rates", "weak")
+
+
+def list_weak_cache_files(cfg):
+    """Return the sorted list of ``nTOp_*.txt`` cache file paths on disk."""
+    d = weak_cache_dir(cfg)
+    if not os.path.isdir(d):
+        return []
+    return sorted(
+        os.path.join(d, name) for name in os.listdir(d)
+        if name.startswith("nTOp_") and name.endswith(".txt")
+    )
+
+
+def clear_weak_cache(cfg) -> int:
+    """Delete every cached ``nTOp_*.txt`` file. Returns the count removed.
+
+    The cache is purely an optimisation (every entry is reproducible from
+    ``cfg`` by recomputing), so removing all of it is always safe -- the
+    next run simply pays the one-time recompute cost again per
+    configuration touched.
+    """
+    paths = list_weak_cache_files(cfg)
+    for path in paths:
+        os.remove(path)
+    return len(paths)

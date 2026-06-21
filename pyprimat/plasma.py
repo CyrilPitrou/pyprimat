@@ -34,11 +34,15 @@ tables) as instance attributes bound to one ``PyPRConfig``.  Each
 the per-worker instances used by the Monte-Carlo machinery — can coexist
 in the same process without overwriting each other's tables.
 
-For quick interactive use of this module on its own (e.g. in the test
-suite), :func:`initialise` builds a single module-level default
-``Plasma`` instance and the free functions below (``rho_e``, ``spl``,
-``PQEDofT``, …) delegate to it.  ``PyPR`` itself does **not** use this
-default instance.
+Aside from a handful of genuinely cfg-independent pure functions
+(``rho_g``, ``drho_g_dT``, ``rho_nu``, ``drho_nu_dT``), every quantity here
+is config-dependent and lives on a :class:`Plasma` instance — there is no
+module-level mutable default. Build one explicitly:
+
+    >>> from pyprimat.config import PyPRConfig
+    >>> from pyprimat.plasma import Plasma
+    >>> plasma = Plasma(PyPRConfig())
+    >>> plasma.rho_e(Tg)
 """
 
 import os
@@ -55,14 +59,8 @@ ELECTRON_THERMO_FORMAT_VERSION = 1
 
 __all__ = [
     'Plasma',
-    'initialise',
     'rho_g', 'drho_g_dT',
-    'rho_e', 'drho_e_dT', 'p_e', 'dp_e_dT',
-    'rho_nu', 'drho_nu_dT', 'rho_nu_extra',
-    'rho_SM', 'p_SM',
-    'spl', 'dspl_dT', 'spl_and_dspl_dT',
-    'T_nu_decoupling',
-    'PQEDofT', 'dPQEDdT', 'd2PQEDdT2',
+    'rho_nu', 'drho_nu_dT',
 ]
 
 # Below T = me / _ELEC_THERMO_LOWT_RATIO the e± number density is
@@ -318,7 +316,7 @@ class Plasma:
 
         files_present = (os.path.exists(p_file) and os.path.exists(dp_file)
                          and os.path.exists(d2p_file))
-        recompute = getattr(cfg, "recompute_qed_corrections", False)
+        recompute = cfg.recompute_qed_corrections
 
         if recompute or not files_present:
             # Compute analytically (~0.3 s).  In recompute mode, also save files.
@@ -881,106 +879,3 @@ class Plasma:
 
     def drho_nu_dT(self, Tnu):
         return drho_nu_dT(Tnu)
-
-
-# ---------------------------------------------------------------------------
-# Module-level default instance: convenience API for standalone/test use.
-# ``PyPR`` does not use this — it builds its own ``Plasma(cfg)`` per instance
-# (see main.PyPR.__init__) so that several PyPR objects never share state.
-# ---------------------------------------------------------------------------
-
-_default = None
-
-
-def initialise(cfg):
-    """Build the module-level default :class:`Plasma` instance.
-
-    The free functions in this module (``rho_e``, ``spl``, ``PQEDofT``, …)
-    delegate to this default instance.  This is convenient for the test
-    suite and interactive use; ``PyPR`` instead creates its own
-    :class:`Plasma` (``self.plasma``) so that multiple ``PyPR`` objects
-    never share or overwrite each other's tables.
-
-    Parameters
-    ----------
-    cfg : PyPRConfig
-        Fully initialised configuration object.
-
-    Example
-    -------
-    >>> from pyprimat import config, plasma
-    >>> cfg = config.PyPRConfig()
-    >>> plasma.initialise(cfg)
-    """
-    global _default
-    _default = Plasma(cfg)
-
-
-def rho_e(Tg):
-    """See :meth:`Plasma.rho_e`; uses the default instance set by :func:`initialise`."""
-    return _default.rho_e(Tg)
-
-
-def drho_e_dT(Tg):
-    """See :meth:`Plasma.drho_e_dT`; uses the default instance set by :func:`initialise`."""
-    return _default.drho_e_dT(Tg)
-
-
-def p_e(Tg):
-    """See :meth:`Plasma.p_e`; uses the default instance set by :func:`initialise`."""
-    return _default.p_e(Tg)
-
-
-def dp_e_dT(Tg):
-    """See :meth:`Plasma.dp_e_dT`; uses the default instance set by :func:`initialise`."""
-    return _default.dp_e_dT(Tg)
-
-
-def rho_nu_extra(Tg):
-    """See :meth:`Plasma.rho_nu_extra`; uses the default instance set by :func:`initialise`."""
-    return _default.rho_nu_extra(Tg)
-
-
-def rho_SM(Tg, Tnue, Tnumu):
-    """See :meth:`Plasma.rho_SM`; uses the default instance set by :func:`initialise`."""
-    return _default.rho_SM(Tg, Tnue, Tnumu)
-
-
-def p_SM(Tg, Tnue, Tnumu):
-    """See :meth:`Plasma.p_SM`; uses the default instance set by :func:`initialise`."""
-    return _default.p_SM(Tg, Tnue, Tnumu)
-
-
-def spl(Tg):
-    """See :meth:`Plasma.spl`; uses the default instance set by :func:`initialise`."""
-    return _default.spl(Tg)
-
-
-def spl_and_dspl_dT(Tg):
-    """See :meth:`Plasma.spl_and_dspl_dT`; uses the default instance set by :func:`initialise`."""
-    return _default.spl_and_dspl_dT(Tg)
-
-
-def dspl_dT(Tg):
-    """See :meth:`Plasma.dspl_dT`; uses the default instance set by :func:`initialise`."""
-    return _default.dspl_dT(Tg)
-
-
-def T_nu_decoupling(Tg):
-    """See :meth:`Plasma.T_nu_decoupling`; uses the default instance set by :func:`initialise`."""
-    return _default.T_nu_decoupling(Tg)
-
-
-def PQEDofT(Tg):
-    """δP(Tγ) [MeV⁴] of the default instance set by :func:`initialise`."""
-    return _default.PQEDofT(Tg)
-
-
-def dPQEDdT(Tg):
-    """d(δP)/dTγ [MeV³] of the default instance set by :func:`initialise`."""
-    return _default.dPQEDdT(Tg)
-
-
-def d2PQEDdT2(Tg):
-    """d²(δP)/dTγ² [MeV²] of the default instance set by :func:`initialise`."""
-    return _default.d2PQEDdT2(Tg)

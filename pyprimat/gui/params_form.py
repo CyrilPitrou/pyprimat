@@ -3,7 +3,7 @@
 pyprimat.gui.params_form
 =========================
 
-Builds the sidebar parameter form (GUI.md §2) from
+Builds the sidebar parameter form from
 ``pyprimat.config.DEFAULT_PARAMS``, the single authoritative dict of every
 ``PyPRConfig`` key.
 

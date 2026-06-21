@@ -3,7 +3,7 @@
 pyprimat.gui.app
 =================
 
-Streamlit entry point for the PyPRIMAT GUI (GUI.md §3, §6).
+Streamlit entry point for the PyPRIMAT GUI.
 
 Run with::
 

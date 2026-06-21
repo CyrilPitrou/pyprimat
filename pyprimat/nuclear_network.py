@@ -362,11 +362,11 @@ class NuclearNetwork:
         #   Y(t) = exp(D × Δt) × Y(t_end)
         # where D is the (constant) decay-rate matrix assembled from the decay
         # reactions in the LT network (see _build_decay_matrix).
-        if getattr(cfg, "decay_era", False) and cfg.is_large:
+        if cfg.decay_era and cfg.is_large:
             Y0_DT = np.array([self.Y_final.get(s, 0.0) for s in self.abundance_names])
             D = self._build_decay_matrix(nucl._lt_net)
-            t_decay_end = getattr(cfg, "t_decay_end", 3.156e16)   # [s]; default 1 Gyr
-            decay_n     = getattr(cfg, "decay_n_points", 200)
+            t_decay_end = cfg.t_decay_end
+            decay_n     = cfg.decay_n_points
             # Time grid log-spaced in the *elapsed* time Δt = t − t_end (not in
             # absolute t).  This is essential: the residual free neutron decays
             # with τ_n ≈ 880 s, a transient ~10 decades shorter than t_end
@@ -401,7 +401,7 @@ class NuclearNetwork:
             self.Y_of_t = interp1d(_t_nuc, _Y_nuc, axis=0, bounds_error=False,
                                     fill_value=(0, _Y_nuc[-1]))
 
-            if getattr(cfg, "output_decay_evolution", False):
+            if cfg.output_decay_evolution:
                 self._write_decay_evolution(t_DT, Y_DT)
 
         return self.Y_final

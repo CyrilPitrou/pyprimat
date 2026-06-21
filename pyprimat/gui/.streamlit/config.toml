@@ -1,4 +1,4 @@
-# Streamlit theme for the PyPRIMAT GUI (GUI.md §6 "Look & feel").
+# Streamlit theme for the PyPRIMAT GUI.
 #
 # Streamlit auto-discovers a `.streamlit/config.toml` next to the app script
 # (pyprimat/gui/app.py), so this file applies whether the app is launched via

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Tests for radioactive-decay treatment in the `large` network (DECAY.md §3 and §4).
+Tests for radioactive-decay treatment in the `large` network.
 
 Section 3.3 — decay_reverse_rates flag:
     By default decay reactions are treated as irreversible (abg = (0,0,0)).

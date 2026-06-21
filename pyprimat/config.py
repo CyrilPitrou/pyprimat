@@ -49,11 +49,22 @@ DEFAULT_PARAMS: dict = {
     # Two sub-modes, selected by analytic_distortions (see neutrino_history.py):
     #   False (default): read the distortion from the full NEVO spectrum file
     #     (86-column, not _col_1_7); requires incomplete_decoupling=True.
-    #   True: analytic mu-type + y-type (SZ) distortion controlled by
-    #     delta_xi_nu/y_SZ, also contributing rho_nuSD to the Friedmann equation.
+    #   True: analytic mu-type + y-type (SZ) + gray-type distortion controlled
+    #     by delta_xi_nu/y_SZ/y_gray, also contributing rho_nuSD to the
+    #     Friedmann equation.
     "analytic_distortions":       False,
     "delta_xi_nu":                0., # Amplitude of the mu-type (chemical-potential shift) distortion, same for all three flavours; see neutrino_history.AnalyticDistortion.
-    "y_SZ":                       0., # Amplitude of the y-type (Sunyaev-Zel'dovich-like) distortion; see neutrino_history.AnalyticDistortion.
+    "y_SZ":                       0., # Amplitude of the y-type (Sunyaev-Zel'dovich-like, Compton) distortion; see neutrino_history.AnalyticDistortion.
+    "y_gray":                     0., # Amplitude of the gray-type (gray-body temperature-rescaling) distortion: delta_f(y) = -fd(y) + fd(y/(1+y_gray))/(1+y_gray)**3.
+    # Despite the shared "y_*" naming and despite generate_rates/PRIMAT-Main-gray.m
+    # calling its equivalent parameter "YSZ", this is NOT the Compton/SZ shape
+    # above: it rescales the neutrino spectrum as if its temperature shifted by
+    # a factor (1+y_gray), with the (1+y_gray)**-3 prefactor chosen so the
+    # rescaled piece's NUMBER density exactly matches the unperturbed
+    # Fermi-Dirac (integral{y^2 delta_f dy} = 0 exactly for any y_gray) while
+    # its ENERGY density shifts linearly, integral{y^3 delta_f dy} = y_gray *
+    # 7*pi**4/120 exactly -- a distinct, independent third distortion shape.
+    # See neutrino_history.AnalyticDistortion.
 
     # ---- custom NEVO tables ------------------------------------------------
     # Override the shipped rates/NEVO/ tables with custom ones (e.g. a
@@ -72,8 +83,8 @@ DEFAULT_PARAMS: dict = {
 
     # ---- background mode ---------------------------------------------------
     "external_scale_factor":      False, # If True, read the scale factor a(T_gamma) directly
-    # from the NEVO table's x column (a is proportional to x by the NEVO convention; see
-    # NEUTRINOS.md) instead of solving the entropy-conservation ODE from the heating
+    # from the NEVO table's x column (a is proportional to x by the NEVO convention)
+    # instead of solving the entropy-conservation ODE from the heating
     # function N_NEVO. t(a) is still obtained by Hubble integration (unchanged). Outside
     # the table's T range, both modes extrapolate assuming radiation domination
     # (a ~ 1/T, t ~ 1/T^2). Requires incomplete_decoupling=True.
@@ -328,6 +339,7 @@ class PyPRConfig:
     ma             = CONST.ma
     He4Overma      = CONST.He4Overma
     HOverma        = CONST.HOverma
+    Neff_SM        = CONST.Neff_SM
     mB             = CONST.mB
     maOvermB       = CONST.maOvermB
     HubbleOverh    = CONST.HubbleOverh

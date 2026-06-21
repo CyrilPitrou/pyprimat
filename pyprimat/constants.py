@@ -100,6 +100,19 @@ class Constants:
     He4Overma: float = 4.0026032541        # M(He4) / u
     HOverma:   float = 1.00782503223       # M(H) / u
 
+    # ---- Standard-model effective neutrino number ----
+    # The Standard Model prediction for N_eff including non-instantaneous
+    # decoupling, finite-temperature QED, and flavour-oscillation effects
+    # (Bennett et al. 2021, arXiv:2012.02726; de Salas & Pastor numerical
+    # value to 3.044 quoted from the more recent re-evaluations of the
+    # Mangano/Miele 3.046 result). Used wherever the *standard*-physics value
+    # of N_eff is needed as an input (rather than the value PyPRIMAT itself
+    # solves for via the NEVO non-instantaneous-decoupling table), e.g. the
+    # radiation-density sanity check in
+    # ``StandardBackground._replace_LCDM_with_exact`` and the EDE-era
+    # radiation normalisation in ``StandardBackground._setup_EDE``.
+    Neff_SM:   float = 3.044
+
     # ------------------------------------------------------------------
     # Derived quantities (pure functions of the constants above)
     # ------------------------------------------------------------------
