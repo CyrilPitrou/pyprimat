@@ -774,6 +774,16 @@ class NetworkDefinition:
         self.index = {s: i for i, s in enumerate(self.species)}
         self.n_reac = len(self.network)
         self._buf = np.empty(2 * self.n_reac)
+        # One-slot memo for fill_buffer: BDF's implicit solver evaluates the
+        # RHS and the (separately supplied, analytic) Jacobian at the same
+        # fixed T_t across one or more Newton corrector iterations before
+        # advancing t (see rhsLT/JacobianLT, rhsMT/JacobianMT below), so
+        # consecutive fill_buffer calls very often share T_t exactly. Caching
+        # the last (T_t, clamp) pair skips the n<->p weak-rate interpolant
+        # evaluation and the rate-table relookup, which profiling
+        # (studies/profile_solve.py) showed dominates LT-era solve time.
+        self._cache_T_t = None
+        self._cache_clamp = None
 
     def reaction_equation(self, i):
         """Human-readable equation for reaction ``i`` as ``a + b <-> c + d``.
@@ -859,7 +869,16 @@ class NetworkDefinition:
         active rate tables.  Backward rates are obtained from detailed balance.
         Clamping is applied if ``clamp=True`` to prevent low-temperature
         reverse-rate blow-up (standard for the large network's LT era).
+
+        Returns the same internal buffer object on a cache hit (``T_t`` and
+        ``clamp`` bit-identical to the previous call -- see ``__post_init__``),
+        so this is exact, not approximate: callers must treat the returned
+        array as read-only and consume it before the next call, exactly as
+        they already do (``rhsLT``/``JacobianLT`` etc. use it immediately).
         """
+        if T_t == self._cache_T_t and clamp == self._cache_clamp:
+            return self._buf
+
         r = self._buf
         r[0] = nTOp_frwrd(T_t)
         r[1] = nTOp_bkwrd(T_t)
@@ -890,6 +909,8 @@ class NetworkDefinition:
 
         r[2::2] = fwd
         r[3::2] = bwd
+        self._cache_T_t = T_t
+        self._cache_clamp = clamp
         return r
 
 
