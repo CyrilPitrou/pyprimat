@@ -576,3 +576,47 @@ def test_invalid_uploaded_rate_table_shows_clean_error():
     # The malformed upload must not have been accepted.
     assert "Li6_d__a_a" not in at.session_state["_dialog_added"]
     assert at.session_state["_dialog_add_rate_open"] is True
+
+
+# ---------------------------------------------------------------------------
+# Export/import round trip of an *unmodified* network must look unmodified:
+# Source labels keep their original ref= provenance, never "custom upload",
+# since no rate table was actually uploaded by the user (CPLAN.md request).
+# ---------------------------------------------------------------------------
+
+@_needs_ac2024
+def test_unmodified_network_roundtrip_keeps_original_source_labels():
+    """Selecting an existing network (e.g. ``large`` with ``amax=8``),
+    exporting it as a zip and re-importing it as a custom network (with no
+    edits in between) must reproduce the same per-reaction "Source" labels
+    as the original network -- i.e. each reaction's ``ref=`` provenance, not
+    the generic "custom upload" placeholder, which must only ever appear for
+    a reaction whose table really was uploaded/edited by the user.
+    """
+    import io
+
+    from pyprimat.config import PyPRConfig
+    from pyprimat.network_data import UpdateNuclearRates
+    from pyprimat.gui import custom_rates
+
+    cfg = PyPRConfig({"network": "large", "amax": 8})
+    original = UpdateNuclearRates(cfg).describe_reactions()
+    names = [name for name, _eq, _src, _file in original]
+    source_by_name = {name: src for name, _eq, src, _file in original}
+
+    zip_bytes = custom_rates.export_zip(
+        cfg, {"removed": [], "replaced": {}, "added": {}}, names,
+        network_filename="roundtrip")
+    imported = custom_rates.import_zip(io.BytesIO(zip_bytes))
+    custom_network = custom_rates.kept_to_custom_network(
+        cfg, imported["kept"], imported["replaced"],
+        decay_overrides=imported["decay_overrides"],
+        filenames=imported.get("filenames"))
+
+    roundtripped = UpdateNuclearRates(cfg, custom_network=custom_network).describe_reactions()
+    for name, _eq, src, _file in roundtripped:
+        assert src == source_by_name[name], (
+            f"{name}: source changed from {source_by_name[name]!r} to {src!r} "
+            "after an unmodified export/import round trip"
+        )
+        assert src != "custom upload"

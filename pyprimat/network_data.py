@@ -1091,14 +1091,51 @@ def _qed_nuclear_rescale(name, T9_grid):
     return f
 
 
-def _read_reaction_source(table_path):
+def _reaction_source_from_lines(lines):
     """Extract the data source label from a rate table's first ``#`` line.
 
     Every rate table under ``rates/nuclear/tables/`` starts with a header such
     as ``# n + p > d + g   [n_p__d_g]   ref=And06``.  The ``ref=`` field names the
     experimental/theoretical compilation the rate was taken from (here the
-    ``And06`` = Ando et al. 2006 evaluation).  This helper returns that label so
-    the verbose log and the GUI can show each reaction's provenance.
+    ``And06`` = Ando et al. 2006 evaluation).  Shared by :func:`_read_reaction_source`
+    (an on-disk shipped table) and the GUI's "replaced"/"added" custom tables
+    (raw uploaded text, see ``UpdateNuclearRates.__init__``), so a customised
+    reaction's provenance is read the same way whenever its raw text actually
+    carries one -- e.g. picking an existing alternate shipped table from the
+    dropdown, which copies that table's own ``ref=`` header verbatim.
+
+    Parameters
+    ----------
+    lines : iterable of str
+        Lines of the table text, in order.
+
+    Returns
+    -------
+    str or None
+        The text after ``ref=`` on the first ``#`` line (e.g. ``"And06"``).  If
+        the header has no ``ref=`` field, the whole comment line (minus the
+        leading ``#``) is returned; ``None`` if there is no leading ``#`` line
+        at all (e.g. a bare upload with no header).
+    """
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("#"):
+            if "ref=" in line:
+                return line.split("ref=", 1)[1].strip()
+            # No explicit ref= field: fall back to the bare comment.
+            return line.lstrip("#").strip()
+        break  # first non-comment line reached without a header
+    return None
+
+
+def _read_reaction_source(table_path):
+    """Extract the data source label from an on-disk rate table's header.
+
+    Thin wrapper around :func:`_reaction_source_from_lines` for a shipped
+    ``rates/nuclear/tables/<name>/<file>.txt`` file. See that function for the
+    header format.
 
     Parameters
     ----------
@@ -1108,25 +1145,15 @@ def _read_reaction_source(table_path):
     Returns
     -------
     str
-        The text after ``ref=`` on the first ``#`` line (e.g. ``"And06"``).  If
-        the header has no ``ref=`` field, the whole comment line (minus the
-        leading ``#``) is returned; if the file cannot be read, ``"?"``.
+        The provenance label, or ``"?"`` if the file cannot be read or has no
+        header at all.
     """
     try:
         with open(table_path) as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                if line.startswith("#"):
-                    if "ref=" in line:
-                        return line.split("ref=", 1)[1].strip()
-                    # No explicit ref= field: fall back to the bare comment.
-                    return line.lstrip("#").strip()
-                break  # first non-comment line reached without a header
+            source = _reaction_source_from_lines(fh)
     except OSError:
-        pass
-    return "?"
+        return "?"
+    return source if source is not None else "?"
 
 
 def _load_decay_table(tables_dir):
@@ -1523,22 +1550,32 @@ def _build_rate_tables(parsed, idx, custom_tables, tables_dir, grid, cfg, db):
             # to the solver.  Checked *before* the decay branch so that an
             # uploaded table wins even for a weak reaction (a brand-new added
             # weak reaction, or a user-replaced decay table).
-            # 4-tuple when built from a GUI custom_network with a "filenames"
-            # entry (see UpdateNuclearRates.__init__); a direct (non-GUI)
-            # caller's raw 3-tuple has no filename to show, hence the default.
+            # 5-tuple when built from a GUI custom_network (see
+            # UpdateNuclearRates.__init__): filename (or None) and the
+            # ref= label read from the raw text's own header (or None if it
+            # has none); a direct (non-GUI) caller's raw 3-tuple has neither.
             entry = custom_tables[name]
             T9_src, rate_src, err_src = entry[:3]
             custom_filename = entry[3] if len(entry) > 3 else None
+            custom_source = entry[4] if len(entry) > 4 else None
             if is_weak:
                 # A decay's override is the synthetic constant-rate table
                 # from custom_rates.decay_override_table_text -- every row
-                # repeats the same overridden rate, so showing "custom
-                # upload" (meaningless for a single T-independent number)
+                # repeats the same overridden rate, so showing the source
+                # label (meaningless for a single T-independent number)
                 # would be less informative than just naming it and quoting
                 # the value, mirroring the unmodified-decay branch below.
                 rate_val = float(np.asarray(rate_src).reshape(-1)[0])
                 sources.append(f"Custom decay rate: {rate_val:.6e} s⁻¹")
+            elif custom_source is not None:
+                # The raw text actually carries its own provenance (e.g. an
+                # existing alternate shipped table picked from the dropdown,
+                # which copies that table's header verbatim) -- show it
+                # rather than the generic fallback below.
+                sources.append(custom_source)
             else:
+                # Genuinely new/edited content with no header at all: this
+                # really is the only case "custom upload" describes.
                 sources.append("custom upload")
             files.append(custom_filename)
             fwd_median.append(_resample_rate_table(T9_src, rate_src, grid))
@@ -1883,7 +1920,15 @@ class UpdateNuclearRates:
                 data = np.loadtxt(io.StringIO(raw_text), unpack=True)
                 T9_src, rate_src = data[0], data[1]
                 err_src = data[2] if data.shape[0] > 2 else np.zeros_like(rate_src)
-                custom_tables[name] = (T9_src, rate_src, err_src, filenames.get(name))
+                # Read the raw text's own "ref=" header if it has one (e.g. the
+                # user picked an existing alternate shipped table from the
+                # dropdown, which copies that table's header verbatim -- see
+                # custom_rates.export_zip/_match_shipped_file). Only a
+                # genuinely uploaded/edited table with no such header falls
+                # back to a generic "custom upload" label in
+                # _build_rate_tables.
+                source = _reaction_source_from_lines(raw_text.splitlines())
+                custom_tables[name] = (T9_src, rate_src, err_src, filenames.get(name), source)
 
         self._selected_names = [n for n in load_reaction_names(cfg, cfg.network)
                                  if re.split(r'[, ]+', n, maxsplit=1)[0].strip() not in removed]

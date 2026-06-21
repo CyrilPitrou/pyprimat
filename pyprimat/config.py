@@ -99,7 +99,7 @@ DEFAULT_PARAMS: dict = {
     # Friedmann equation from the supplied a(t). Incompatible with external_scale_factor.
 
     # ---- fundamental constants (overridable for sensitivity studies) --------
-    "GN":                         6.70883e-45,   # Newton's constant [MeV^-2]
+    "GN":                         6.674299257609439e-11,   # Newton's constant, SI units [m^3 kg^-1 s^-2]
 
     # ---- background thermodynamics ----------------------------------------
     "T_start_cosmo_MeV":          40.0,
@@ -373,15 +373,27 @@ class PyPRConfig:
         """
         return self.T_end_MeV * self.MeV_to_Kelvin
 
-    # Gravity: GN [MeV^-2] is overridable, so it lives in DEFAULT_PARAMS only.
+    # Gravity: GN is overridable, so it lives in DEFAULT_PARAMS only.
     # tau_n [s] is similarly overridable (DEFAULT_PARAMS), used by weak_rates.
+    #
+    # cfg.GN is stored in SI units [m^3 kg^-1 s^-2] (so it reads/edits like any
+    # textbook value of Newton's constant), but the Friedmann equation below is
+    # written in the natural-units (hbar=c=1) convention used throughout the
+    # rest of the code, where G has dimension [energy]^-2. Convert once here via
+    # CONST.GN_SI_to_MeV2 (see that property's docstring for the derivation).
+    @property
+    def _GN_MeV2(self) -> float:
+        """Newton's constant in natural units [MeV^-2], converted from the
+        SI-valued ``self.GN``."""
+        return self.GN * CONST.GN_SI_to_MeV2
+
     @property
     def Mpl(self) -> float:
-        return 1. / np.sqrt(self.GN)
+        return 1. / np.sqrt(self._GN_MeV2)
 
     @property
     def rhocOverh2(self) -> float:
-        return 3. / (8. * np.pi * self.GN) * self.HubbleOverh**2  # [MeV^4/h^2]
+        return 3. / (8. * np.pi * self._GN_MeV2) * self.HubbleOverh**2  # [MeV^4/h^2]
 
     # ------------------------------------------------------------------
     # Constructor: merge user params over defaults

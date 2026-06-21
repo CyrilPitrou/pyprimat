@@ -50,11 +50,19 @@ def test_eta0b_tracks_omegabh2_setitem():
 
 
 def test_gn_and_taun_come_from_defaults():
-    """GN and tau_n must be present and overridable (single source of truth)."""
-    cfg = PyPRConfig({"GN": 1.234e-44, "tau_n": 880.0})
-    assert cfg.GN == 1.234e-44
+    """GN and tau_n must be present and overridable (single source of truth).
+
+    ``cfg.GN`` is stored in SI units [m^3 kg^-1 s^-2]; ``cfg.Mpl`` (the
+    natural-units Planck mass used by the Friedmann equation) is derived
+    from it via ``CONST.GN_SI_to_MeV2``.
+    """
+    from pyprimat.constants import CONST
+    gn_si = 1.234e-10
+    cfg = PyPRConfig({"GN": gn_si, "tau_n": 880.0})
+    assert cfg.GN == gn_si
     assert cfg.tau_n == 880.0
-    assert cfg.Mpl == pytest.approx(1.0 / np.sqrt(1.234e-44), rel=1e-12)
+    gn_natural = gn_si * CONST.GN_SI_to_MeV2
+    assert cfg.Mpl == pytest.approx(1.0 / np.sqrt(gn_natural), rel=1e-12)
 
 
 # ---------------------------------------------------------------------------

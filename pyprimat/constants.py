@@ -147,6 +147,42 @@ class Constants:
         """Conversion factor for an energy density [MeV^4] to a mass density [g/cm^3]."""
         return self.MeV_to_g * self.MeV_to_cmm1**3
 
+    @property
+    def GN_MeV2_to_SI(self) -> float:
+        """Conversion factor: Newton's constant in natural units [MeV^-2] to
+        SI units [m^3 kg^-1 s^-2].
+
+        Particle physics conventionally expresses ``G`` in the natural-units
+        convention (hbar = c = 1), where it has the dimension of
+        [energy]^-2 (``G = 1/m_Pl^2``, with ``m_Pl`` the Planck mass in MeV).
+        Restoring hbar and c, ``G`` in CGS units [cm^3 g^-1 s^-2] is
+        ``G_natural[MeV^-2] * hbar[erg s] * clight[cm/s]^5 / MeV[erg]^2``
+        (the erg/cm/s factors cancel exactly into CGS's
+        gravitational-constant units); one more factor of ``1e-3`` converts
+        cm^3 g^-1 s^-2 to m^3 kg^-1 s^-2.
+
+        ``cfg.GN`` itself is stored and exposed in SI units throughout
+        PyPRIMAT (``DEFAULT_PARAMS["GN"]`` in ``config.py``, the GUI's
+        "Constants" panel); this factor (and its inverse,
+        :attr:`GN_SI_to_MeV2`) is used internally to convert to/from the
+        natural units that the Friedmann equation
+        (``PyPRConfig.Mpl``/``PyPRConfig.rhocOverh2``) is written in.
+
+        Example
+        -------
+        >>> CONST.GN_MeV2_to_SI * 6.70883e-45   # doctest: +SKIP
+        6.674...e-11
+        """
+        return self.hbar * self.clight**5 / self.MeV**2 * 1e-3
+
+    @property
+    def GN_SI_to_MeV2(self) -> float:
+        """Conversion factor: Newton's constant in SI units
+        [m^3 kg^-1 s^-2] to natural units [MeV^-2]. Inverse of
+        :attr:`GN_MeV2_to_SI` -- see that property for the derivation.
+        """
+        return 1. / self.GN_MeV2_to_SI
+
     # ---- Fixed temperature eras [MeV, converted to Kelvin] ----
     @property
     def T_start(self) -> float:

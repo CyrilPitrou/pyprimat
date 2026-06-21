@@ -183,8 +183,9 @@ _SUBHEADING = {
 # ---------------------------------------------------------------------------
 _CONSTANTS_METADATA = {
     "GN": (
-        r"$G_N$  (Newton's constant) [MeV⁻²]",
-        "Gravitational constant entering the Friedmann equation.",
+        r"$G_N$  (Newton's constant) [m³ kg⁻¹ s⁻²]",
+        "Gravitational constant entering the Friedmann equation, in SI "
+        "units.",
     ),
     "tau_n": (
         r"$\tau_n$  (neutron lifetime) [s]",
@@ -365,7 +366,7 @@ def _widget_for(key, label, help_text):
 
     if isinstance(default, float):
         # "%.6g" keeps both O(1) values (Omegabh2) and very small/large ones
-        # (GN=6.7e-45) readable.
+        # (GN=6.67e-11) readable.
         return st.number_input(
             label, value=default, format="%.6g", help=help_text, key=key,
         )
@@ -900,6 +901,7 @@ def _render_reaction_row(name):
                 st.error(f"`{name}`: {exc}")
             else:
                 basename = up.name
+                raw = custom_rates.stamp_upload(name, raw)
                 _DialogState().uploaded_tables.setdefault(name, {})[basename] = raw
                 _DialogState().table_choice[name] = basename
                 st.session_state[show_uploader_key] = False
@@ -1007,7 +1009,7 @@ def _render_add_rate_section(dialog_amax, all_entries):
             except Exception as exc:
                 st.error(f"Rate table: {exc}")
                 return
-            _DialogState().added[bare] = raw
+            _DialogState().added[bare] = custom_rates.stamp_upload(bare, raw)
             _DialogState().keep[bare] = True
             _DialogState().table_choice[bare] = upload.name
             st.session_state[SessionKeys.dialog_add_rate_open] = False
@@ -1063,13 +1065,23 @@ def _render_dialog_footer(params, title, base_network, dialog_amax):
             "tables": {**custom_network.get("replaced", {}), **custom_network.get("added", {})},
             "custom_network": custom_network,
         }
-        # Mirror app.py's "Run BBN" click handler (the bottom of app.main()
-        # re-solves unconditionally from these session_state keys on every
-        # rerun) -- there is no separate trigger mechanism needed.
-        st.session_state[SessionKeys.params] = new_params
-        st.session_state["quick_mc"] = st.session_state.get(SessionKeys.quick_mc_uncertainty, False)
-        st.session_state["mc_samples"] = st.session_state.get(SessionKeys.quick_mc_samples, 30)
-        st.session_state[SessionKeys.run_custom_network_dict] = custom_network
+        # Stash (rather than write directly to SessionKeys.params/quick_mc/
+        # mc_samples/run_custom_network_dict) so app.main() applies it -- and
+        # so the solve actually starts -- only on the *next* rerun, after
+        # this one has already closed the dialog. Writing those keys
+        # directly here would make app.main()'s "up_to_date" check True
+        # already in *this* rerun (the sidebar's "network" selectbox already
+        # shows the new custom network, via pending_network_label below),
+        # so the potentially long solve would run in the very same script
+        # pass responsible for closing this dialog -- which a Streamlit
+        # dialog only does once its pass fully completes, so the dialog
+        # would appear stuck open for the whole solve.
+        st.session_state[SessionKeys.pending_run] = {
+            "params": new_params,
+            "quick_mc": st.session_state.get(SessionKeys.quick_mc_uncertainty, False),
+            "mc_samples": st.session_state.get(SessionKeys.quick_mc_samples, 30),
+            "run_custom_network_dict": custom_network,
+        }
         # The sidebar's "network" selectbox widget was already instantiated
         # earlier in this same script run, so its session_state value cannot
         # be set directly here (Streamlit forbids mutating an
@@ -1205,7 +1217,8 @@ def _import_dialog():
         kept = result["kept"]
         decay_overrides = result.get("decay_overrides", {})
         custom_network = custom_rates.kept_to_custom_network(
-            _cfg(), kept, result["replaced"], decay_overrides=decay_overrides)
+            _cfg(), kept, result["replaced"], decay_overrides=decay_overrides,
+            filenames=result.get("filenames"))
         st.session_state.setdefault(SessionKeys.known_custom_networks, {})
         st.session_state[SessionKeys.known_custom_networks][title] = {
             "kept": kept, "tables": dict(result["replaced"]), "custom_network": custom_network,

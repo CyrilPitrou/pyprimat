@@ -44,6 +44,13 @@ class SessionKeys:
     active_custom_network = "_active_custom_network"
     run_custom_network_dict = "run_custom_network_dict"
     network = "network"
+    # Staged "params"/"quick_mc"/"mc_samples"/"run_custom_network_dict" bundle
+    # from the custom-network dialog's "Apply and run BBN" button, applied by
+    # app.main() one rerun *after* the dialog closes -- see that button's
+    # handler in params_form._render_dialog_footer for why writing the real
+    # keys directly (making this rerun's solve start before the dialog has
+    # actually closed on screen) is the bug this works around.
+    pending_run = "_pending_run"
 
     # ---- Sidebar form (params_form.render_sidebar_form) --------------------
     amax_enabled = "amax_enabled"

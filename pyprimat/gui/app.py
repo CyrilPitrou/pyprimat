@@ -59,14 +59,21 @@ def _solve(params_items):
 
     Returns
     -------
-    (pyprimat.PyPR, str, str)
+    (pyprimat.PyPR, str, str, float)
         The solved instance -- ``run.PyPRresults()``, ``run.abundance_names``,
         and ``run[name](t)`` are all ready to use without triggering further
         computation -- together with the contents of the nuclear time-evolution
         TSV (``output_time_evolution`` format, see
         ``nuclear_network.py:NuclearNetwork._write_time_evolution``) and of the
         background time-evolution TSV (``output_background_evolution`` format,
-        see ``background.py:Background.write_time_evolution``), both as strings.
+        see ``background.py:Background.write_time_evolution``), both as strings,
+        and the wall-clock time (seconds) the actual solve took. The elapsed
+        time is measured *inside* this cached function (rather than by the
+        caller timing the call) specifically so that a cache *hit* -- a rerun
+        with unchanged parameters, which never re-executes this function body
+        at all -- still reports the original solve's real duration instead of
+        the ~0 s a caller-side timer would measure around an instant cache
+        lookup.
         ``_write_time_evolution`` derives its ``Y<species>`` columns from
         ``self.abundance_names``, so this works the same way for all three
         networks (8 / 12 / ~59 nuclide columns).
@@ -88,6 +95,7 @@ def _solve(params_items):
     so the cached result carries the data itself rather than a path that a
     later, differently-parametrised solve could overwrite.
     """
+    t0 = time.time()
     params = dict(params_items)
     custom_network_json = params.pop("custom_network", None)
     custom_network = json.loads(custom_network_json) if custom_network_json else None
@@ -131,7 +139,7 @@ def _solve(params_items):
     finally:
         os.remove(tmp_evo)
         os.remove(tmp_bg)
-    return run, time_evolution_tsv, background_tsv
+    return run, time_evolution_tsv, background_tsv, time.time() - t0
 
 
 def _quick_mc(params_items, num_mc, run):
@@ -241,6 +249,26 @@ def main():
     params, quick_mc, mc_samples = render_sidebar_form()
     _render_footer()
 
+    # Apply an "Apply and run BBN" custom-network dialog click staged by the
+    # *previous* rerun (params_form._render_dialog_footer) -- one rerun after
+    # that dialog has already closed (render_sidebar_form() above, called
+    # before this check, is what actually closes it: SessionKeys.show_custom_dialog
+    # was already cleared when pending_run was staged). Applying these keys
+    # any earlier -- e.g. before render_sidebar_form() -- would skip this
+    # pass's sidebar render entirely (and so the dialog's own closing render)
+    # via the st.rerun() below; applying them in *this* same pass (rather
+    # than staging) would instead make "up_to_date" True immediately, so the
+    # solve would start in the very same pass responsible for closing the
+    # dialog -- which a Streamlit dialog only closes once its pass fully
+    # completes, making it appear stuck open for the whole solve.
+    pending_run = st.session_state.pop(SessionKeys.pending_run, None)
+    if pending_run is not None:
+        st.session_state[SessionKeys.params] = pending_run["params"]
+        st.session_state[SessionKeys.quick_mc] = pending_run["quick_mc"]
+        st.session_state[SessionKeys.mc_samples] = pending_run["mc_samples"]
+        st.session_state[SessionKeys.run_custom_network_dict] = pending_run["run_custom_network_dict"]
+        st.rerun()
+
     # `params` already carries a JSON "custom_network" entry when one is
     # active (set by render_sidebar_form's "network" branch), so comparing
     # its sorted items against the last-run snapshot (`st.session_state
@@ -262,12 +290,6 @@ def main():
                             disabled=up_to_date)
 
     if run_clicked:
-        # Instant feedback the moment the click registers -- everything
-        # below this (rebuilding the network, then solving it) can take a
-        # visible moment, especially for the large network, and a plain
-        # button click gives no indication by itself that anything is
-        # happening until the spinner further down actually appears.
-        st.toast("Running BBN…", icon="⏳")
         # Snapshot the current form state; subsequent reruns (e.g. from
         # ticking a nuclide checkbox) reuse this snapshot via
         # st.session_state rather than re-triggering a solve with whatever
@@ -340,11 +362,22 @@ def main():
     # dict never causes a spurious cache miss).
     params_items = tuple(sorted(stored_params.items()))
 
+    # A plain st.spinner(...) renders its message at normal body-text size;
+    # ``st.spinner``'s own text can't be styled, so the large-font message is
+    # a separate placeholder above it instead, cleared again once the solve
+    # (success or failure) is done.
+    status_placeholder = st.empty()
+    status_placeholder.markdown("### Solving the BBN network…")
     try:
-        with st.spinner("Solving the BBN network…"):
-            t0 = time.time()
-            run, time_evolution_tsv, background_tsv = _solve(params_items)
-            elapsed = time.time() - t0
+        with st.spinner(""):
+            # `elapsed` comes back *from* _solve (timed inside the cached
+            # function itself) rather than being measured here around the
+            # call -- see _solve's docstring: on the very next rerun after a
+            # real solve (the `if run_clicked: st.rerun()` below, needed so
+            # the button/tab visuals catch up), this call is an instant cache
+            # *hit*, so timing it here would report ~0 s instead of how long
+            # the actual solve took.
+            run, time_evolution_tsv, background_tsv, elapsed = _solve(params_items)
     except (ValueError, RuntimeError) as exc:
         # PyPRConfig validates e.g. `amax`/`network` and the
         # spectral_distortions/incomplete_decoupling/analytic_distortions
@@ -352,8 +385,10 @@ def main():
         # raises RuntimeError for internal-state misuse. Surface those as a
         # clean message rather than a traceback. Other exception types are
         # genuine bugs and should propagate so they show up loudly.
+        status_placeholder.empty()
         st.error(f"PyPRIMAT run failed: {exc}")
         return
+    status_placeholder.empty()
 
     if run_clicked:
         # The "Run BBN" button's own disabled/shaded state (and the active

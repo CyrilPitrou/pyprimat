@@ -146,6 +146,41 @@ def parse_rate_upload(fh):
     return T9, rate, err, header
 
 
+def stamp_upload(name, raw_text):
+    """Prepend a provenance header to a freshly uploaded rate-table text.
+
+    Called right where a user's uploaded file is first accepted as a custom
+    rate table (the "New rate table for <name>" and "Add a new rate"
+    uploaders in ``params_form``), so that *every* later view of this text --
+    the "Show rate table" preview popup (:func:`pyprimat.gui.params_form
+    ._current_table_text`), the per-reaction "Source" column
+    (:func:`pyprimat.network_data._reaction_source_from_lines`, which reads
+    this very header back), and a re-exported zip -- carries an unambiguous
+    "this is a PyPRIMAT-loaded custom table for reaction X" label, even when
+    the uploaded file itself had no ``#`` header at all.
+
+    Parameters
+    ----------
+    name : str
+        Bare reaction name this table is for.
+    raw_text : str
+        The verbatim uploaded file contents (already validated by
+        :func:`parse_rate_upload`).
+
+    Returns
+    -------
+    str
+        ``raw_text`` with two new leading lines: a one-line provenance
+        comment naming the reaction, then a full line of ``#`` as a visual
+        separator from whatever header the upload itself carried.
+    """
+    lines = [
+        f"# {name}: rate table loaded into PyPRIMAT as a custom override",
+        "#" * 70,
+    ]
+    return "\n".join(lines) + "\n" + raw_text
+
+
 def effective_table_text(cfg, T9, rate, err, name="custom", source_header=()):
     """Return the on-grid table text actually fed to the solver.
 
@@ -386,7 +421,8 @@ def import_zip(fh):
     -------
     dict
         ``{"kept": [name, ...], "replaced": {name: raw_text, ...},
-        "decay_overrides": {name: rate_s, ...}, "title": str}``.
+        "filenames": {name: basename, ...}, "decay_overrides":
+        {name: rate_s, ...}, "title": str}``.
         Removal is implicit: the single file under ``networks/`` only lists
         the reactions that were *kept*, so any reaction of the selected
         network absent from ``kept`` is treated as removed by the caller.
@@ -398,11 +434,16 @@ def import_zip(fh):
         genuinely new -- see :func:`export_zip`); decay reactions have no
         such file and instead contribute to ``decay_overrides`` if their
         network-file line carries a bare number (the overridden rate)
-        instead of a filename. ``title`` is the network file's basename
-        (without ``.txt``), recovered without needing a separate metadata
-        file.
+        instead of a filename. ``filenames`` carries the zip's own basename
+        for each such reaction (e.g. ``"B8_d__Be7_He3_primat.txt"``), so the
+        Reactions tab's "File" column shows *something* meaningful after a
+        round trip rather than ``None`` -- this is purely the in-zip
+        filename, not a real on-disk path. ``title`` is the network file's
+        basename (without ``.txt``), recovered without needing a separate
+        metadata file.
     """
     replaced = {}
+    filenames = {}
     decay_overrides = {}
     try:
         zf = zipfile.ZipFile(fh)
@@ -442,13 +483,14 @@ def import_zip(fh):
             if info.filename.startswith("tables/") and info.filename.count("/") == 2:
                 # "tables/<name>/<filename>" -- any per-reaction table file,
                 # default-named, alternate-shipped, or genuinely new.
-                bare = info.filename.split("/")[1]
+                bare, fname = info.filename.split("/")[1:3]
                 replaced[bare] = zf.read(info.filename).decode()
-    return {"kept": kept_names, "replaced": replaced,
+                filenames[bare] = fname
+    return {"kept": kept_names, "replaced": replaced, "filenames": filenames,
             "decay_overrides": decay_overrides, "title": title}
 
 
-def kept_to_custom_network(cfg, kept, replaced, decay_overrides=None):
+def kept_to_custom_network(cfg, kept, replaced, decay_overrides=None, filenames=None):
     """Build the ``{"removed", "replaced", "added"}`` dict from an imported zip.
 
     Shared by both the sidebar's "Import custom network" dialog
@@ -483,12 +525,19 @@ def kept_to_custom_network(cfg, kept, replaced, decay_overrides=None):
         shipped ``decays.txt`` rate are turned into a synthetic
         ``replaced`` table entry (:func:`decay_override_table_text`) --
         an unmodified decay reaction needs no override at all.
+    filenames : dict[str, str], optional
+        ``{name: basename}`` from :func:`import_zip`, the in-zip filename
+        for each reaction in ``replaced`` -- threaded through into the
+        returned dict's own ``"filenames"`` key purely so the Reactions
+        tab's "File" column has *something* to show after a round trip
+        (``UpdateNuclearRates`` reads it via ``custom_network["filenames"]``;
+        see its docstring) instead of ``None``.
 
     Returns
     -------
     dict
-        ``{"removed": [...], "replaced": {...}, "added": {...}}``, the shape
-        ``UpdateNuclearRates`` expects.
+        ``{"removed": [...], "replaced": {...}, "added": {...},
+        "filenames": {...}}``, the shape ``UpdateNuclearRates`` expects.
     """
     entries = load_reaction_names(cfg, "large")
     bare_names = {re.split(r'[, ]+', e, maxsplit=1)[0].strip() for e in entries}
@@ -504,7 +553,9 @@ def kept_to_custom_network(cfg, kept, replaced, decay_overrides=None):
                 rate_s, shipped_entry[0], rel_tol=1e-9, abs_tol=0.0
             ):
                 true_replaced[name] = decay_override_table_text(name, rate_s)
-    return {"removed": removed, "replaced": true_replaced, "added": added}
+    true_filenames = {n: f for n, f in (filenames or {}).items() if n in true_replaced}
+    return {"removed": removed, "replaced": true_replaced, "added": added,
+            "filenames": true_filenames}
 
 
 def import_single(fh, reaction_name):
