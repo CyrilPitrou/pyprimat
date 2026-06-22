@@ -1299,9 +1299,12 @@ def _manage_networks_dialog(params):
     :func:`_render_dialog_footer`); finishing there reopens this dialog with
     the just-created network pre-selected (``SessionKeys.last_created_network``).
     "Close" stages the dialog's current selection for the sidebar via the
-    same ``pending_network_label``/``pending_amax_disable`` mechanism used
-    elsewhere in this module, then actually running BBN on it is left to the
-    main "Run BBN" button -- this dialog never solves anything itself.
+    same ``pending_network_label`` mechanism used elsewhere in this module
+    (the sidebar's "Limit max mass number" then auto-unchecks itself, on
+    detecting the network change, the next time ``render_sidebar_form``
+    runs -- see its own "amax" branch), then actually running BBN on it is
+    left to the main "Run BBN" button -- this dialog never solves anything
+    itself.
     """
     known = st.session_state.setdefault(SessionKeys.known_custom_networks, {})
     all_names = _manage_dialog_network_names()
@@ -1435,7 +1438,6 @@ def _manage_networks_dialog(params):
     st.divider()
     if st.button("Close", type="primary", key=SessionKeys.btn_manage_close):
         st.session_state[SessionKeys.pending_network_label] = selected
-        st.session_state[SessionKeys.pending_amax_disable] = True
         st.session_state[SessionKeys.show_manage_dialog] = False
         st.rerun()
 
@@ -1487,15 +1489,6 @@ def render_sidebar_form():
     if pending_network is not None:
         st.session_state[SessionKeys.network] = pending_network
 
-    # A freshly built/imported custom network is already a concrete,
-    # fully-resolved reaction list -- applying the sidebar's own "Limit max
-    # mass number" filter on top of it (left enabled from a previous,
-    # unrelated network) would silently drop reactions the user explicitly
-    # chose to keep. Set by `_render_dialog_footer`'s "Create this network"
-    # and `_import_dialog`'s import, both right before their own `st.rerun()`.
-    if st.session_state.pop(SessionKeys.pending_amax_disable, False):
-        st.session_state[SessionKeys.amax_enabled] = False
-
     params = {}
 
     st.sidebar.header("Parameters")
@@ -1517,32 +1510,36 @@ def render_sidebar_form():
                     # `amax` defaults to None, so it needs an explicit
                     # enable/disable checkbox rather than a bare number
                     # input (which could never represent "no filter"). Now
-                    # offered for every network, not just "large".
+                    # offered for every network, not just "large" -- and it
+                    # does genuinely filter a custom network's own kept-list
+                    # too (load_network's _apply_amax_filter runs on
+                    # whatever `reaction_names` it is given, custom or not),
+                    # so the control stays clickable rather than greyed out.
                     #
-                    # A custom network (selected via the "network" dropdown,
-                    # processed earlier in this same loop -- or about to be,
-                    # on the very first render after "Close"/an import, see
-                    # pending_amax_disable above) is already a concrete,
-                    # fully-resolved reaction list, so amax never applies to
-                    # it -- disable (grey out) the checkbox entirely rather
-                    # than silently ignoring a value it shows as settable.
-                    is_custom = st.session_state.get(SessionKeys.network) in (
+                    # What it must NOT do is silently carry an unrelated
+                    # *previous* network's choice over onto a freshly chosen
+                    # custom one (the "network" dropdown, processed earlier
+                    # in this same loop, or staged via pending_network_label
+                    # right above): on a real transition into a (possibly
+                    # different) custom network, start unchecked again --
+                    # the user can always re-check it deliberately.
+                    current_network = st.session_state.get(SessionKeys.network)
+                    is_custom = current_network in (
                         st.session_state.get(SessionKeys.known_custom_networks, {}))
+                    prev_network = st.session_state.get(SessionKeys.amax_prev_network)
+                    if is_custom and current_network != prev_network:
+                        st.session_state[SessionKeys.amax_enabled] = False
+                    st.session_state[SessionKeys.amax_prev_network] = current_network
                     enabled = st.checkbox(
                         "Limit max mass number", value=False,
-                        help=(help_text if not is_custom else
-                              help_text + " Disabled: the active network is a "
-                              "custom one, already a fixed reaction list."),
-                        key=SessionKeys.amax_enabled, disabled=is_custom,
+                        help=help_text, key=SessionKeys.amax_enabled,
                     )
                     if enabled:
                         value = int(st.number_input(
                             label, min_value=2, value=20, step=1,
                             help=help_text, key=SessionKeys.amax_value,
-                            disabled=is_custom,
                         ))
-                        if not is_custom:
-                            params["amax"] = value
+                        params["amax"] = value
                     continue
 
                 if key in _CONDITIONAL:

@@ -28,9 +28,11 @@ and fixed by hand-testing the popup:
   returning to "Manage networks" (the old "Apply and run BBN" behaviour);
 * re-editing a previously built/imported custom network mislabelling every
   one of its unmodified, shipped-default tables as "_custom" (``reset``);
-* the sidebar's "Limit max mass number" filter staying enabled and silently
-  corrupting an imported/just-created custom network's already-resolved
-  reaction list (``pending_amax_disable``);
+* the sidebar's "Limit max mass number" filter silently carrying an
+  unrelated previous network's choice over onto a freshly chosen custom
+  network (``amax_prev_network``); it stays clickable (amax does filter a
+  custom network's own kept-list too) but starts unchecked again on every
+  genuine transition into a (possibly different) custom network;
 * loading a network under a reserved built-in name ("small"/"large"/
   "small_parthenope") silently shadowing the real network of that name.
 
@@ -508,10 +510,14 @@ def test_pending_network_selection_runs_bbn_with_the_custom_network():
     assert subheaders[0] == "12 reactions"  # 11 + n__p
 
 
-def test_amax_auto_disabled_on_close():
+def test_amax_auto_unchecked_on_close_but_stays_clickable():
     """Regression guard (CPLAN.md request): "Limit max mass number" must be
-    turned off automatically once a custom network is applied via "Close",
-    rather than silently filtering an already-resolved reaction list."""
+    unchecked automatically once a custom network is applied via "Close",
+    rather than silently carrying an unrelated previous network's value
+    over onto the freshly chosen one -- but it must stay clickable (not
+    greyed out), since amax does genuinely filter a custom network's own
+    kept-list too (load_network applies it to whatever ``reaction_names``
+    it is given, custom or not)."""
     from pyprimat.gui import custom_rates, params_form
 
     kept_names = ["n_p__d_g", "d_p__He3_g"]
@@ -531,6 +537,35 @@ def test_amax_auto_disabled_on_close():
     _open_manage_dialog(at)
     [close_btn] = [b for b in at.button if b.key == "_btn_manage_close"]
     close_btn.click()
+    at.run(timeout=60)
+    assert not at.exception
+    assert at.session_state["amax_enabled"] is False
+    [amax_toggle] = [t for t in at.sidebar.checkbox if t.key == "amax_enabled"]
+    assert not amax_toggle.disabled
+
+
+def test_amax_auto_unchecked_on_direct_sidebar_switch_to_custom_network():
+    """Same guard as above, but for switching the sidebar's own "network"
+    dropdown straight to an already-known custom network (no "Manage
+    networks" dialog involved) -- the transition is detected purely from
+    the network value actually changing, not from a specific button."""
+    from pyprimat.gui import custom_rates, params_form
+
+    kept_names = ["n_p__d_g", "d_p__He3_g"]
+    custom_network = custom_rates.kept_to_custom_network(
+        params_form._cfg(), kept_names, {})
+
+    at = AppTest.from_file(APP_PATH)
+    at.run(timeout=60)
+    [amax_toggle] = [t for t in at.sidebar.checkbox if t.key == "amax_enabled"]
+    amax_toggle.set_value(True)
+    at.run(timeout=60)
+    assert at.session_state["amax_enabled"] is True
+
+    _seed_known_network(at, "mynet", kept_names, custom_network)
+    at.run(timeout=60)
+    [network_select] = [s for s in at.sidebar.selectbox if s.key == "network"]
+    network_select.set_value("mynet")
     at.run(timeout=60)
     assert not at.exception
     assert at.session_state["amax_enabled"] is False

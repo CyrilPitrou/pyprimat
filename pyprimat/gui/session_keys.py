@@ -51,7 +51,7 @@ class SessionKeys:
     quick_mc_uncertainty = "quick_mc_uncertainty"
     quick_mc_samples = "quick_mc_samples"
     pending_network_label = "_pending_network_label"
-    pending_amax_disable = "_pending_amax_disable"
+    amax_prev_network = "_amax_prev_network"
     known_custom_networks = "_known_custom_networks"
 
     # ---- "Create custom network" dialog: show/hide -------------------------
