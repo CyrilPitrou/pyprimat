@@ -129,8 +129,9 @@ def _run_bbn(at):
     """Click the main-area "Run BBN" button and let the app rerun.
 
     "Run BBN" lives above the result tabs (not the sidebar) so it stays
-    visible when the sidebar is folded; "Import custom network"/"Create
-    custom network" (CUSTOMPOPUP.md §5.2) are the sidebar's own buttons.
+    visible when the sidebar is folded; "Manage networks" (the sole gateway
+    to create/import/remove/rename a custom network, see
+    ``params_form._manage_networks_dialog``) is the sidebar's own button.
     """
     [run_button] = [b for b in at.button if b.label == "Run BBN"]
     run_button.click()
@@ -143,9 +144,7 @@ def test_app_loads_without_error():
     at = AppTest.from_file(APP_PATH)
     at.run(timeout=60)
     assert not at.exception
-    assert {"Import custom network", "Create/modify network"} <= {
-        b.label for b in at.sidebar.button
-    }
+    assert "Manage networks" in {b.label for b in at.sidebar.button}
     assert "Run BBN" in {b.label for b in at.button}
     # Before any run, the main area shows the "set parameters" placeholder.
     assert any("Run BBN" in info.value for info in at.info)
@@ -302,9 +301,27 @@ def test_quick_mc_uncertainty_adds_sigma_column():
 
 def test_quick_mc_uncertainty_with_customised_network():
     """Quick MC must keep working (no exception, sigma column still renders)
-    when a custom network (built via "Create custom network" -> "Apply and
-    run BBN") has a reaction removed -- guards app._quick_mc's decode/forward
-    of the JSON custom_network entry."""
+    when a custom network (with a reaction removed) is the active network --
+    guards app._quick_mc's decode/forward of the JSON custom_network entry.
+
+    The custom network is built directly via ``custom_rates``/seeded into
+    ``_known_custom_networks`` + ``_pending_network_label`` (exactly what
+    "Manage networks" -> "Create new network" -> "Create this network" ->
+    "Close" produces) rather than driven live through those dialogs, both
+    because "Create this network" no longer runs BBN itself (see
+    ``test_gui_custom_network.py``'s "Create this network saves without
+    running BBN" test) and to avoid that module's documented AppTest
+    stale-widget quirk when a dialog closes and a further ``.run()`` follows.
+    """
+    from pyprimat.gui import custom_rates, params_form
+
+    small_kept = ["n_p__d_g", "d_p__He3_g", "d_d__He3_n", "d_d__t_p", "t_p__a_g",
+                  "t_d__a_n", "t_a__Li7_g", "He3_n__t_p", "He3_d__a_p",
+                  "He3_a__Be7_g", "Be7_n__Li7_p", "Li7_p__a_a"]
+    kept_names = [n for n in small_kept if n != "d_d__t_p"]
+    custom_network = custom_rates.kept_to_custom_network(
+        params_form._cfg(), kept_names, {})
+
     at = AppTest.from_file(APP_PATH)
     at.run(timeout=60)
 
@@ -312,20 +329,15 @@ def test_quick_mc_uncertainty_with_customised_network():
     toggle.set_value(True)
     at.run(timeout=60)
 
-    [create_btn] = [b for b in at.sidebar.button if b.label == "Create/modify network"]
-    create_btn.click()
+    at.session_state["_known_custom_networks"] = {
+        "mynet": {"kept": list(kept_names), "tables": {}, "custom_network": custom_network},
+    }
+    at.session_state["_pending_network_label"] = "mynet"
     at.run(timeout=60)
+    assert not at.exception
 
-    # The toggle's key embeds a "_dialog_gen" counter
-    # (params_form._bump_dialog_gen), so match on the name suffix rather than
-    # the exact key.
-    [ddtp] = [t for t in at.toggle if t.key and t.key.endswith("_d_d__t_p")
-             and t.key.startswith("_dialog_keep_")]
-    ddtp.set_value(False)
-    at.run(timeout=60)
-
-    [apply_btn] = [b for b in at.button if b.key == "_dialog_apply"]
-    apply_btn.click()
+    [run_button] = [b for b in at.button if b.label == "Run BBN"]
+    run_button.click()
     at.run(timeout=120)
     assert not at.exception
 

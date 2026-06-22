@@ -65,6 +65,7 @@ __all__ = [
     "nuclide_latex",
     "phase_network",
     "reaction_stoichiometry",
+    "reaction_display_name",
     "to_filename",
     "reaction_species",
     "compute_detailed_balance_coefficients",
@@ -517,6 +518,38 @@ def _format_name(react_tokens, prod_tokens, syntax=None):
     if syntax == "compact":
         return "".join(react_tokens) + "TO" + "".join(prod_tokens)
     raise ValueError(f"_RATE_SYNTAX_ must be 'compact' or 'spaced', got {syntax!r}")
+
+
+def reaction_display_name(name):
+    """Human-readable ``"react1 + react2 > prod1 + prod2"`` form of ``name``.
+
+    Unlike :func:`reaction_stoichiometry` (which maps PRIMAT's single-letter
+    aliases ``d``/``t``/``a`` to their canonical species ``H2``/``H3``/``He4``
+    for the ODE machinery), this keeps the *literal* tokens from ``name``
+    itself -- matching the shipped tables' own header convention (see
+    :func:`_reaction_source_from_lines`'s docstring, e.g.
+    ``"# n + p > d + g   [n_p__d_g]   ref=And06"``) so a GUI-uploaded table's
+    provenance line reads the same way.
+
+    Parameters
+    ----------
+    name : str
+        Reaction name in either the ``"a_b__c_d"`` or compact ``"abTOcd"``
+        syntax (see :func:`_tokenise`).
+
+    Returns
+    -------
+    str
+
+    Example
+    -------
+    >>> reaction_display_name("He3_n__a_g")
+    'He3 + n > a + g'
+    """
+    tokens = _tokenise(name)
+    split = tokens.index("TO")
+    react, prod = tokens[:split], tokens[split + 1:]
+    return f"{' + '.join(react)} > {' + '.join(prod)}"
 
 
 def reaction_stoichiometry(name):

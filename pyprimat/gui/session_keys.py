@@ -44,13 +44,6 @@ class SessionKeys:
     active_custom_network = "_active_custom_network"
     run_custom_network_dict = "run_custom_network_dict"
     network = "network"
-    # Staged "params"/"quick_mc"/"mc_samples"/"run_custom_network_dict" bundle
-    # from the custom-network dialog's "Apply and run BBN" button, applied by
-    # app.main() one rerun *after* the dialog closes -- see that button's
-    # handler in params_form._render_dialog_footer for why writing the real
-    # keys directly (making this rerun's solve start before the dialog has
-    # actually closed on screen) is the bug this works around.
-    pending_run = "_pending_run"
 
     # ---- Sidebar form (params_form.render_sidebar_form) --------------------
     amax_enabled = "amax_enabled"
@@ -58,14 +51,35 @@ class SessionKeys:
     quick_mc_uncertainty = "quick_mc_uncertainty"
     quick_mc_samples = "quick_mc_samples"
     pending_network_label = "_pending_network_label"
+    pending_amax_disable = "_pending_amax_disable"
     known_custom_networks = "_known_custom_networks"
 
-    # ---- Create/Import custom-network dialogs: show/hide -------------------
+    # ---- "Create custom network" dialog: show/hide -------------------------
     show_custom_dialog = "_show_custom_dialog"
-    show_import_dialog = "_show_import_dialog"
-    btn_import_custom_network = "_btn_import_custom_network"
-    btn_create_custom_network = "_btn_create_custom_network"
-    import_dialog_upload = "_import_dialog_upload"
+
+    # ---- "Manage networks" dialog (lists/removes/loads/renames, and is the
+    # sole entry point into the "Create custom network" dialog) -------------
+    show_manage_dialog = "_show_manage_dialog"
+    btn_manage_networks = "_btn_manage_networks"
+    manage_selected_network = "_manage_selected_network"
+    manage_load_upload = "_manage_load_upload"
+    manage_load_title = "_manage_load_title"
+    manage_load_add = "_manage_load_add"
+    manage_rename_open = "_manage_rename_open"
+    manage_rename_input = "_manage_rename_input"
+    manage_rename_apply = "_manage_rename_apply"
+    manage_rename_confirm = "_manage_rename_confirm"
+    btn_create_new_network = "_btn_create_new_network"
+    btn_manage_close = "_btn_manage_close"
+    last_created_network = "_last_created_network"
+
+    @staticmethod
+    def manage_remove_btn(name):
+        return f"_manage_remove_{name}"
+
+    @staticmethod
+    def manage_modify_btn(name):
+        return f"_manage_modify_{name}"
 
     # ---- "Create custom network" dialog: per-session, not per-reaction -----
     dialog_title = "_dialog_title"
@@ -73,6 +87,7 @@ class SessionKeys:
     dialog_decay_override = "_dialog_decay_override"
     dialog_pending_open = "_dialog_pending_open"
     dialog_base_network = "_dialog_base_network"
+    dialog_prev_base_network = "_dialog_prev_base_network"
     dialog_amax_enabled = "_dialog_amax_enabled"
     dialog_amax_value = "_dialog_amax_value"
     dialog_signature = "_dialog_signature"

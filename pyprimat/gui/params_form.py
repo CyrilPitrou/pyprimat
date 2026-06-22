@@ -32,16 +32,20 @@ defaults.
 
 Custom networks
 ----------------
-"Nuclear reactions" carries two buttons, "Import custom network" and "Create
-custom network", opening the ``st.dialog`` popups in §5 onward of
-CUSTOMPOPUP.md instead of the old inline "Customise Reactions" checkbox list.
-See :func:`_custom_network_dialog`/:func:`_import_dialog`.
+"Nuclear reactions" carries one "Manage networks" button, opening
+:func:`_manage_networks_dialog`: list/remove/rename any network built or
+imported this session, load one from a ``.zip``, or hand off to
+:func:`_custom_network_dialog` ("Create new network") to build one from
+scratch -- which itself only *saves* the result and returns here, rather
+than running BBN directly (use the main "Run BBN" button for that, same as
+for an imported network).
 """
 import importlib.resources
 import json
 import os
 import re
 
+import numpy as np
 import streamlit as st
 
 from pyprimat.config import DEFAULT_PARAMS, PyPRConfig
@@ -514,8 +518,20 @@ class _DialogState:
         """
         known = st.session_state.get(SessionKeys.known_custom_networks, {})
         keep, table_choice, uploaded = {}, {}, {}
+        decay_override = {}
         if base_network in known:
             info = known[base_network]
+            # ``export_zip`` writes a table for *every* kept reaction, even
+            # ones still using the shipped default -- so a round-tripped
+            # (export -> import, or just reopening a previously-built)
+            # custom network's "tables" dict is not "only the genuinely
+            # customised reactions". Tell the two apart by content, not by
+            # presence in this dict: only a raw text that does *not*
+            # byte-match a shipped tables/<name>/*.txt file is a real
+            # override (gets the "_custom" filename treatment below);
+            # one that does match keeps the shipped file's own name, exactly
+            # as :func:`custom_rates.export_zip` itself distinguishes them.
+            stored_filenames = info.get("custom_network", {}).get("filenames", {})
             for name in info["kept"]:
                 # A custom network's own "kept" list was built against *its
                 # own* amax (or none at all); re-applying the dialog's
@@ -529,8 +545,29 @@ class _DialogState:
                     continue
                 keep[name] = True
                 raw = info.get("tables", {}).get(name)
-                if raw is not None:
-                    basename = f"{name}_custom.txt"
+                if raw is None:
+                    continue
+                if _is_decay(name):
+                    # Decay overrides are round-tripped as a synthetic
+                    # constant-rate table (see decay_override_table_text),
+                    # not a real per-T9 file -- recover the bare rate rather
+                    # than treating it as an uploaded table.
+                    try:
+                        _, rate, _err, _hdr = custom_rates.parse_rate_upload(raw)
+                        decay_override[name] = float(np.asarray(rate).reshape(-1)[0])
+                    except (ValueError, IndexError):
+                        pass
+                    continue
+                shipped_name = custom_rates._match_shipped_file(_cfg(), name, raw)
+                if shipped_name is not None:
+                    table_choice[name] = shipped_name
+                else:
+                    # Genuinely custom: reuse the basename recorded at
+                    # creation/import time (already in "<name>_custom_..."
+                    # form, see the upload handlers below) so it stays
+                    # stable across repeated edits; only fall back to a
+                    # generic name if none was recorded.
+                    basename = stored_filenames.get(name) or f"{name}_custom.txt"
                     uploaded.setdefault(name, {})[basename] = raw
                     table_choice[name] = basename
         else:
@@ -543,7 +580,7 @@ class _DialogState:
         st.session_state[SessionKeys.dialog_table_choice] = table_choice
         st.session_state[SessionKeys.dialog_uploaded_tables] = uploaded
         st.session_state[SessionKeys.dialog_added] = {}
-        st.session_state[SessionKeys.dialog_decay_override] = {}
+        st.session_state[SessionKeys.dialog_decay_override] = decay_override
         # Force every reaction-row widget to remount and read the dicts just
         # rebuilt above -- otherwise the previous base network's toggle/table
         # widget states (keyed by reaction name, which can repeat across
@@ -900,7 +937,11 @@ def _render_reaction_row(name):
             except Exception as exc:
                 st.error(f"`{name}`: {exc}")
             else:
-                basename = up.name
+                # "<name>_custom_<uploaded filename>" rather than the bare
+                # upload name, so the table-choice/"File" column unambiguously
+                # reads as "a custom override for this reaction", the same
+                # way a genuinely new file looks after export_zip/reset.
+                basename = f"{name}_custom_{_sanitize_filename(up.name)}"
                 raw = custom_rates.stamp_upload(name, raw)
                 _DialogState().uploaded_tables.setdefault(name, {})[basename] = raw
                 _DialogState().table_choice[name] = basename
@@ -1011,7 +1052,7 @@ def _render_add_rate_section(dialog_amax, all_entries):
                 return
             _DialogState().added[bare] = custom_rates.stamp_upload(bare, raw)
             _DialogState().keep[bare] = True
-            _DialogState().table_choice[bare] = upload.name
+            _DialogState().table_choice[bare] = f"{bare}_custom_{_sanitize_filename(upload.name)}"
             st.session_state[SessionKeys.dialog_add_rate_open] = False
             st.rerun()
         if cols[1].button("Cancel", key=SessionKeys.dialog_add_cancel, use_container_width=True):
@@ -1020,7 +1061,7 @@ def _render_add_rate_section(dialog_amax, all_entries):
 
 
 def _render_dialog_footer(params, title, base_network, dialog_amax):
-    """Direct "Download network details" zip + "Apply and run BBN", side by side.
+    """Direct "Download network details" zip + "Create this network", side by side.
 
     No intermediate "Save" click: the zip is built eagerly from the current
     toggle/table state on every render, so the download button is always
@@ -1049,46 +1090,24 @@ def _render_dialog_footer(params, title, base_network, dialog_amax):
                  "every kept reaction).",
         )
 
-    if cols[1].button("Apply and run BBN", type="primary", use_container_width=True,
+    if cols[1].button("Create this network", type="primary", use_container_width=True,
                       key=SessionKeys.dialog_apply, disabled=title_reserved):
-        new_params = dict(params)
-        new_params["network"] = "large"
-        new_params.pop("amax", None)
-        new_params["custom_network"] = json.dumps(custom_network, sort_keys=True)
-
-        st.session_state[SessionKeys.active_custom_network] = {
-            "title": title, "kept": kept_names, "custom_network": custom_network,
-        }
+        # Only *saves* the network (into known_custom_networks) and returns
+        # to "Manage networks" -- it no longer runs BBN itself. The user
+        # picks it from there (or from the sidebar's "network" dropdown
+        # afterwards) and clicks the main "Run BBN" button explicitly, same
+        # as for an imported network.
         st.session_state.setdefault(SessionKeys.known_custom_networks, {})
         st.session_state[SessionKeys.known_custom_networks][title] = {
             "kept": kept_names,
             "tables": {**custom_network.get("replaced", {}), **custom_network.get("added", {})},
             "custom_network": custom_network,
         }
-        # Stash (rather than write directly to SessionKeys.params/quick_mc/
-        # mc_samples/run_custom_network_dict) so app.main() applies it -- and
-        # so the solve actually starts -- only on the *next* rerun, after
-        # this one has already closed the dialog. Writing those keys
-        # directly here would make app.main()'s "up_to_date" check True
-        # already in *this* rerun (the sidebar's "network" selectbox already
-        # shows the new custom network, via pending_network_label below),
-        # so the potentially long solve would run in the very same script
-        # pass responsible for closing this dialog -- which a Streamlit
-        # dialog only does once its pass fully completes, so the dialog
-        # would appear stuck open for the whole solve.
-        st.session_state[SessionKeys.pending_run] = {
-            "params": new_params,
-            "quick_mc": st.session_state.get(SessionKeys.quick_mc_uncertainty, False),
-            "mc_samples": st.session_state.get(SessionKeys.quick_mc_samples, 30),
-            "run_custom_network_dict": custom_network,
-        }
-        # The sidebar's "network" selectbox widget was already instantiated
-        # earlier in this same script run, so its session_state value cannot
-        # be set directly here (Streamlit forbids mutating an
-        # already-instantiated widget's key) -- stash it and let
-        # render_sidebar_form apply it at the very top of the *next* run.
-        st.session_state[SessionKeys.pending_network_label] = title
+        # The newly created network is what "Manage networks" should show
+        # pre-selected once we return to it (see _manage_networks_dialog).
+        st.session_state[SessionKeys.last_created_network] = title
         st.session_state[SessionKeys.show_custom_dialog] = False
+        st.session_state[SessionKeys.show_manage_dialog] = True
         st.rerun()
 
 
@@ -1102,10 +1121,6 @@ def _on_custom_dialog_dismiss():
     see the flag still set and pop the dialog right back open.
     """
     st.session_state[SessionKeys.show_custom_dialog] = False
-
-
-def _on_import_dialog_dismiss():
-    st.session_state[SessionKeys.show_import_dialog] = False
 
 
 @st.dialog("Create custom network", width="large", on_dismiss=_on_custom_dialog_dismiss)
@@ -1160,6 +1175,22 @@ def _custom_network_dialog(params):
              "on (every reaction is still individually editable below, "
              "regardless of this choice).",
     )
+    # Whenever the base network just changed *to* a previously built/
+    # imported custom one (e.g. via "Manage networks" -> "Modify"), default
+    # "Limit A" to that network's own highest mass number rather than the
+    # leftover/initial value -- a stale, lower amax would otherwise silently
+    # hide some of its reactions the moment the dialog opens. Done here,
+    # right after the selectbox returns and *before* the amax checkbox/
+    # number_input widgets below are instantiated in this run, which is the
+    # one safe window to still set their session_state value directly.
+    known_for_amax_default = st.session_state.get(SessionKeys.known_custom_networks, {})
+    if base_network != st.session_state.get(SessionKeys.dialog_prev_base_network):
+        if base_network in known_for_amax_default:
+            kept = known_for_amax_default[base_network]["kept"]
+            categories = [reaction_category(n) for n in kept if not _is_decay(n)]
+            if categories:
+                st.session_state[SessionKeys.dialog_amax_value] = max(categories)
+        st.session_state[SessionKeys.dialog_prev_base_network] = base_network
     amax_col, value_col = col2.columns(2)
     amax_enabled = amax_col.checkbox(
         "Limit A", key=SessionKeys.dialog_amax_enabled,
@@ -1204,65 +1235,224 @@ def _custom_network_dialog(params):
     _render_dialog_footer(params, title, base_network, dialog_amax)
 
 
-@st.dialog("Import custom network", on_dismiss=_on_import_dialog_dismiss)
-def _import_dialog():
-    fh = st.file_uploader("Custom network zip", type=["zip"], key=SessionKeys.import_dialog_upload)
-    if fh is not None:
-        try:
-            result = custom_rates.import_zip(fh)
-        except Exception as exc:
-            st.error(f"Could not import zip: {exc}")
-            return
-        title = result["title"]
+def _on_manage_dialog_dismiss():
+    """Mirrors ``_on_custom_dialog_dismiss`` for the "Manage networks" dialog."""
+    st.session_state[SessionKeys.show_manage_dialog] = False
+
+
+def _manage_dialog_network_names():
+    """Built-in + on-disk + custom (this-session) network names, sorted, deduped.
+
+    Reuses :func:`_available_networks` rather than hard-coding
+    ``_RESERVED_NETWORK_NAMES`` so any extra network file dropped under
+    ``rates/nuclear/networks/`` also shows up here -- those are not
+    removable/renamable either (only entries in
+    ``known_custom_networks`` are, see :func:`_render_manage_networks_dialog`),
+    they just are not reachable any other way than this list.
+    """
+    return _available_networks()
+
+
+def _load_zip_into_known(fh):
+    """Parse an uploaded zip via :func:`custom_rates.import_zip` and return
+    ``(parsed_title, custom_network_builder)`` or ``(None, error_message)``.
+
+    ``custom_network_builder`` is a zero-arg callable building the
+    ``{"kept", "tables", "custom_network", "decay_overrides"}`` entry for
+    ``known_custom_networks`` -- deferred so the caller can let the user edit
+    the title (see the "Load a network from file" section below) before it
+    is actually written to session state.
+    """
+    try:
+        result = custom_rates.import_zip(fh)
+    except Exception as exc:
+        return None, str(exc)
+
+    def _build():
         kept = result["kept"]
         decay_overrides = result.get("decay_overrides", {})
         custom_network = custom_rates.kept_to_custom_network(
             _cfg(), kept, result["replaced"], decay_overrides=decay_overrides,
             filenames=result.get("filenames"))
-        st.session_state.setdefault(SessionKeys.known_custom_networks, {})
-        st.session_state[SessionKeys.known_custom_networks][title] = {
+        return {
             "kept": kept, "tables": dict(result["replaced"]), "custom_network": custom_network,
             "decay_overrides": dict(decay_overrides),
         }
-        st.session_state[SessionKeys.active_custom_network] = {
-            "title": title, "kept": kept, "custom_network": custom_network,
-        }
-        st.session_state[SessionKeys.pending_network_label] = title
-        st.session_state[SessionKeys.show_import_dialog] = False
+
+    return result["title"], _build
+
+
+@st.dialog("Manage networks", on_dismiss=_on_manage_dialog_dismiss)
+def _manage_networks_dialog(params):
+    """List/select/remove/rename/load networks, and the gateway to "Create
+    new network".
+
+    Replaces the old "Import custom network"/"Create/modify network" button
+    pair: both actions -- and a new "Remove"/"Rename" for whichever network
+    is currently selected in the list, if it was built or imported this
+    session -- now live in this one dialog. There is a single radio list
+    (no separate, duplicate listing): toggling an entry both previews it
+    (built-in networks show no Remove/Rename) and is what "Close" applies.
+
+    "Create new network" hands off to :func:`_custom_network_dialog` (whose
+    footer button now reads "Create this network" and only *saves*, see
+    :func:`_render_dialog_footer`); finishing there reopens this dialog with
+    the just-created network pre-selected (``SessionKeys.last_created_network``).
+    "Close" stages the dialog's current selection for the sidebar via the
+    same ``pending_network_label``/``pending_amax_disable`` mechanism used
+    elsewhere in this module, then actually running BBN on it is left to the
+    main "Run BBN" button -- this dialog never solves anything itself.
+    """
+    known = st.session_state.setdefault(SessionKeys.known_custom_networks, {})
+    all_names = _manage_dialog_network_names()
+
+    # Preselect (in priority order): a just-created/loaded/renamed network,
+    # the dialog's own previous selection (if still valid), the sidebar's
+    # current network, else "small" -- mirrors the "default before first
+    # widget use" pattern documented throughout this module (e.g.
+    # dialog_base_network).
+    last_created = st.session_state.pop(SessionKeys.last_created_network, None)
+    default = (last_created
+               or st.session_state.get(SessionKeys.manage_selected_network)
+               or st.session_state.get(SessionKeys.network, "small"))
+    if default not in all_names:
+        default = "small" if "small" in all_names else all_names[0]
+    st.session_state[SessionKeys.manage_selected_network] = default
+
+    st.markdown("**Loaded networks**")
+    selected = st.radio(
+        "Select a network", all_names, key=SessionKeys.manage_selected_network,
+        format_func=_network_label, label_visibility="collapsed",
+        help="The network \"Close\" applies to the sidebar -- you can still "
+             "change it later from the sidebar's own \"network\" dropdown.",
+    )
+
+    if selected in known:
+        cols = st.columns([1, 1, 1, 2])
+        if cols[0].button("Modify", key=SessionKeys.manage_modify_btn(selected)):
+            # Same hand-off as "Create new network" below, except the title
+            # is preset to the network's own name -- so "Create this
+            # network" there overwrites this entry in place instead of
+            # creating a separate, default-titled "custom" one.
+            st.session_state[SessionKeys.dialog_base_network] = selected
+            st.session_state[SessionKeys.dialog_title] = selected
+            st.session_state[SessionKeys.show_manage_dialog] = False
+            st.session_state[SessionKeys.show_custom_dialog] = True
+            st.rerun()
+        if cols[1].button("Remove", key=SessionKeys.manage_remove_btn(selected)):
+            known.pop(selected, None)
+            active = st.session_state.get(SessionKeys.active_custom_network)
+            if active and active["title"] == selected:
+                st.session_state[SessionKeys.active_custom_network] = None
+            if st.session_state.get(SessionKeys.network) == selected:
+                # The sidebar's own "network" selectbox still holds the
+                # now-removed title -- left alone, the next render would
+                # forward that dangling name straight to `PyPRConfig`
+                # (the "value not in known" branch falls through to
+                # `params["network"] = value`), which raises ValueError
+                # since no such network file exists, surfacing as an
+                # uncaught error in the main app. Reset it the same way an
+                # import/"Close" does.
+                st.session_state[SessionKeys.pending_network_label] = "small"
+            # The radio above was already instantiated earlier in this very
+            # script run, so its session_state value cannot be set directly
+            # here -- defer to the pending-preselect mechanism.
+            st.session_state[SessionKeys.last_created_network] = "small"
+            st.rerun()
+        if cols[2].button("Rename", key=SessionKeys.manage_rename_apply):
+            st.session_state[SessionKeys.manage_rename_open] = not st.session_state.get(
+                SessionKeys.manage_rename_open, False)
+        if st.session_state.get(SessionKeys.manage_rename_open, False):
+            new_name = st.text_input(
+                "New title", value=selected, key=SessionKeys.manage_rename_input,
+                label_visibility="collapsed",
+            )
+            new_name = new_name.strip()
+            reserved = new_name in _RESERVED_NETWORK_NAMES
+            if reserved:
+                st.error(f"'{new_name}' is a built-in network name and cannot be used here.")
+            if st.button("Confirm rename", key=SessionKeys.manage_rename_confirm,
+                         disabled=reserved or not new_name or new_name == selected):
+                known[new_name] = known.pop(selected)
+                active = st.session_state.get(SessionKeys.active_custom_network)
+                if active and active["title"] == selected:
+                    active["title"] = new_name
+                if st.session_state.get(SessionKeys.network) == selected:
+                    # Same dangling-name hazard as "Remove" above -- the
+                    # sidebar's own selectbox must follow the rename too.
+                    st.session_state[SessionKeys.pending_network_label] = new_name
+                st.session_state[SessionKeys.manage_rename_open] = False
+                # The radio above was already instantiated earlier in this
+                # very script run, so its session_state value cannot be set
+                # directly here -- defer to the pending-preselect mechanism
+                # "Create this network" also uses.
+                st.session_state[SessionKeys.last_created_network] = new_name
+                st.rerun()
+    else:
+        st.caption("Built-in network -- cannot be removed or renamed.")
+
+    st.divider()
+    if st.button("Create new network", key=SessionKeys.btn_create_new_network):
+        # Pre-select the dialog's current selection as the new dialog's
+        # "Network to modify" starting point -- set directly (not via the
+        # _pending_*-style workaround) because this happens *before* that
+        # dialog's own SessionKeys.dialog_base_network selectbox is
+        # instantiated in this very script run.
+        st.session_state[SessionKeys.dialog_base_network] = selected
+        st.session_state[SessionKeys.show_manage_dialog] = False
+        st.session_state[SessionKeys.show_custom_dialog] = True
+        st.rerun()
+
+    st.divider()
+    st.markdown("**Load a network from file**")
+    fh = st.file_uploader("Custom network zip", type=["zip"], key=SessionKeys.manage_load_upload)
+    if fh is not None:
+        parsed_title, builder = _load_zip_into_known(fh)
+        if parsed_title is None:
+            st.error(f"Could not import zip: {builder}")
+        else:
+            new_title = st.text_input(
+                "Title for this network", value=parsed_title, key=SessionKeys.manage_load_title,
+                help="Defaults to the zip's own network name -- edit it here "
+                     "to load it under a different title (e.g. to keep both "
+                     "an old and a new version side by side).",
+            )
+            new_title = new_title.strip()
+            reserved = new_title in _RESERVED_NETWORK_NAMES
+            if reserved:
+                st.error(
+                    f"'{new_title}' is a built-in network name and cannot be "
+                    "loaded/overwritten this way -- pick a different title above."
+                )
+            if st.button("Add to list", key=SessionKeys.manage_load_add,
+                         disabled=reserved or not new_title):
+                known[new_title] = builder()
+                # Same already-instantiated-widget constraint as "Confirm
+                # rename" above -- defer to the pending-preselect mechanism.
+                st.session_state[SessionKeys.last_created_network] = new_title
+                st.rerun()
+
+    st.divider()
+    if st.button("Close", type="primary", key=SessionKeys.btn_manage_close):
+        st.session_state[SessionKeys.pending_network_label] = selected
+        st.session_state[SessionKeys.pending_amax_disable] = True
+        st.session_state[SessionKeys.show_manage_dialog] = False
         st.rerun()
 
 
-def _render_custom_network_buttons(params):
-    """Two buttons, stacked, in the "Nuclear reactions" group, opening the
-    popups above.
-
-    Each click explicitly clears the *other* dialog's show-flag as a first
-    line of defence; ``on_dismiss=`` on both ``@st.dialog``s
-    (``_on_custom_dialog_dismiss``/``_on_import_dialog_dismiss``) is the
-    second, clearing the right flag when the user dismisses one via its own
-    close ("x"), Esc, or click-outside, so the flag never gets stuck True --
-    which would otherwise both pop the dialog back open on the next unrelated
-    rerun (e.g. editing a sidebar number) and block opening the other dialog
-    (Streamlit allows only one at a time).
+def _render_network_management_button(params):
+    """Single "Manage networks" button in the "Nuclear reactions" group,
+    opening :func:`_manage_networks_dialog` (the gateway to every
+    create/import/remove/rename action -- see its docstring).
     """
     st.session_state.setdefault(SessionKeys.known_custom_networks, {})
-    if st.button("Import custom network", use_container_width=True,
-                key=SessionKeys.btn_import_custom_network):
-        st.session_state[SessionKeys.show_import_dialog] = True
+    if st.button("Manage networks", use_container_width=True,
+                key=SessionKeys.btn_manage_networks):
+        st.session_state[SessionKeys.show_manage_dialog] = True
         st.session_state[SessionKeys.show_custom_dialog] = False
-    if st.button("Create/modify network", use_container_width=True,
-                key=SessionKeys.btn_create_custom_network):
-        # Pre-select whichever network is currently active in the sidebar as
-        # the dialog's "Network to modify" -- set directly (not via the
-        # _pending_*-style workaround) because this assignment happens
-        # *before* the dialog (and so its SessionKeys.dialog_base_network selectbox)
-        # is instantiated in this very script run.
-        st.session_state[SessionKeys.dialog_base_network] = st.session_state.get(SessionKeys.network, "small")
-        st.session_state[SessionKeys.show_custom_dialog] = True
-        st.session_state[SessionKeys.show_import_dialog] = False
 
-    if st.session_state.get(SessionKeys.show_import_dialog):
-        _import_dialog()
+    if st.session_state.get(SessionKeys.show_manage_dialog):
+        _manage_networks_dialog(params)
     elif st.session_state.get(SessionKeys.show_custom_dialog):
         _custom_network_dialog(params)
 
@@ -1297,6 +1487,15 @@ def render_sidebar_form():
     if pending_network is not None:
         st.session_state[SessionKeys.network] = pending_network
 
+    # A freshly built/imported custom network is already a concrete,
+    # fully-resolved reaction list -- applying the sidebar's own "Limit max
+    # mass number" filter on top of it (left enabled from a previous,
+    # unrelated network) would silently drop reactions the user explicitly
+    # chose to keep. Set by `_render_dialog_footer`'s "Create this network"
+    # and `_import_dialog`'s import, both right before their own `st.rerun()`.
+    if st.session_state.pop(SessionKeys.pending_amax_disable, False):
+        st.session_state[SessionKeys.amax_enabled] = False
+
     params = {}
 
     st.sidebar.header("Parameters")
@@ -1319,15 +1518,31 @@ def render_sidebar_form():
                     # enable/disable checkbox rather than a bare number
                     # input (which could never represent "no filter"). Now
                     # offered for every network, not just "large".
+                    #
+                    # A custom network (selected via the "network" dropdown,
+                    # processed earlier in this same loop -- or about to be,
+                    # on the very first render after "Close"/an import, see
+                    # pending_amax_disable above) is already a concrete,
+                    # fully-resolved reaction list, so amax never applies to
+                    # it -- disable (grey out) the checkbox entirely rather
+                    # than silently ignoring a value it shows as settable.
+                    is_custom = st.session_state.get(SessionKeys.network) in (
+                        st.session_state.get(SessionKeys.known_custom_networks, {}))
                     enabled = st.checkbox(
                         "Limit max mass number", value=False,
-                        help=help_text, key=SessionKeys.amax_enabled,
+                        help=(help_text if not is_custom else
+                              help_text + " Disabled: the active network is a "
+                              "custom one, already a fixed reaction list."),
+                        key=SessionKeys.amax_enabled, disabled=is_custom,
                     )
                     if enabled:
-                        params["amax"] = int(st.number_input(
+                        value = int(st.number_input(
                             label, min_value=2, value=20, step=1,
                             help=help_text, key=SessionKeys.amax_value,
+                            disabled=is_custom,
                         ))
+                        if not is_custom:
+                            params["amax"] = value
                     continue
 
                 if key in _CONDITIONAL:
@@ -1370,7 +1585,7 @@ def render_sidebar_form():
                     params[key] = value
 
             if group == "Nuclear reactions":
-                _render_custom_network_buttons(params)
+                _render_network_management_button(params)
 
     # ---- Constants: GN and tau_n only ----------------------------------------
     with st.sidebar.expander("Constants", expanded=False):

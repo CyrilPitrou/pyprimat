@@ -249,26 +249,6 @@ def main():
     params, quick_mc, mc_samples = render_sidebar_form()
     _render_footer()
 
-    # Apply an "Apply and run BBN" custom-network dialog click staged by the
-    # *previous* rerun (params_form._render_dialog_footer) -- one rerun after
-    # that dialog has already closed (render_sidebar_form() above, called
-    # before this check, is what actually closes it: SessionKeys.show_custom_dialog
-    # was already cleared when pending_run was staged). Applying these keys
-    # any earlier -- e.g. before render_sidebar_form() -- would skip this
-    # pass's sidebar render entirely (and so the dialog's own closing render)
-    # via the st.rerun() below; applying them in *this* same pass (rather
-    # than staging) would instead make "up_to_date" True immediately, so the
-    # solve would start in the very same pass responsible for closing the
-    # dialog -- which a Streamlit dialog only closes once its pass fully
-    # completes, making it appear stuck open for the whole solve.
-    pending_run = st.session_state.pop(SessionKeys.pending_run, None)
-    if pending_run is not None:
-        st.session_state[SessionKeys.params] = pending_run["params"]
-        st.session_state[SessionKeys.quick_mc] = pending_run["quick_mc"]
-        st.session_state[SessionKeys.mc_samples] = pending_run["mc_samples"]
-        st.session_state[SessionKeys.run_custom_network_dict] = pending_run["run_custom_network_dict"]
-        st.rerun()
-
     # `params` already carries a JSON "custom_network" entry when one is
     # active (set by render_sidebar_form's "network" branch), so comparing
     # its sorted items against the last-run snapshot (`st.session_state

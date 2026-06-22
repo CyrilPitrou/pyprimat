@@ -31,8 +31,8 @@ import numpy as np
 import streamlit as st
 
 from pyprimat.network_data import (
-    _resample_rate_table, reaction_stoichiometry, load_reaction_names,
-    _load_decay_table,
+    _resample_rate_table, reaction_stoichiometry, reaction_display_name,
+    load_reaction_names, _load_decay_table,
 )
 
 
@@ -171,14 +171,49 @@ def stamp_upload(name, raw_text):
     -------
     str
         ``raw_text`` with two new leading lines: a one-line provenance
-        comment naming the reaction, then a full line of ``#`` as a visual
-        separator from whatever header the upload itself carried.
+        comment naming the reaction (in the same human-readable
+        ``"react1 + react2 > prod1 + prod2   [name]"`` form as the shipped
+        tables' own headers, see :func:`reaction_display_name`), then a full
+        line of ``#`` as a visual separator from whatever header the upload
+        itself carried.
     """
     lines = [
-        f"# {name}: rate table loaded into PyPRIMAT as a custom override",
+        f"# {reaction_display_name(name)}   [{name}]   (custom rate)",
         "#" * 70,
     ]
     return "\n".join(lines) + "\n" + raw_text
+
+
+def _strip_own_stamp(name, header):
+    """Drop :func:`stamp_upload`'s own two-line preamble from ``header``.
+
+    ``header`` (as returned by :func:`parse_rate_upload`) is read straight
+    off an already-:func:`stamp_upload`-ed table -- e.g. when
+    :func:`export_zip` re-parses a stored "kept" table to recompute its
+    on-grid form -- so it starts with ``stamp_upload``'s own bookkeeping
+    lines (``"# {react} > {prod}   [{name}]   (custom rate)"`` + a
+    ``"#"*70`` fence). Passing those straight through to
+    :func:`effective_table_text` as ``source_header`` would duplicate that
+    bookkeeping underneath the new reinterpolation header it writes itself;
+    only a genuine header carried by the *original* upload (if any),
+    following that preamble, is worth preserving.
+
+    Parameters
+    ----------
+    name : str
+        Bare reaction name (must match the preamble's own ``name``).
+    header : sequence[str]
+        Leading ``#``-lines as returned by :func:`parse_rate_upload`.
+
+    Returns
+    -------
+    list[str]
+    """
+    header = list(header)
+    own_stamp = f"# {reaction_display_name(name)}   [{name}]   (custom rate)"
+    if len(header) >= 2 and header[0] == own_stamp and header[1] == "#" * 70:
+        return header[2:]
+    return header
 
 
 def effective_table_text(cfg, T9, rate, err, name="custom", source_header=()):
@@ -222,7 +257,8 @@ def effective_table_text(cfg, T9, rate, err, name="custom", source_header=()):
     # verbatim below) is a separate, prior provenance -- not something
     # PyPRIMAT itself wrote.
     lines = [
-        f"# {name}: imported into PyPRIMAT and reinterpolated onto the master T9 grid",
+        f"# {reaction_display_name(name)}   [{name}]   "
+        "(custom rate reinterpolated by PyPRIMAT)",
         "#" * 70,
     ]
     lines.extend(source_header)
@@ -378,15 +414,21 @@ def export_zip(cfg, custom_network, kept_names, network_filename="custom"):
                     continue
                 try:
                     T9, rate, err, header = parse_rate_upload(raw_text)
-                    table_text = effective_table_text(cfg, T9, rate, err, name=name,
-                                                       source_header=header)
+                    table_text = effective_table_text(
+                        cfg, T9, rate, err, name=name,
+                        source_header=_strip_own_stamp(name, header))
                 except ValueError:
                     table_text = raw_text
-                # Genuinely new/edited content is suffixed with *this*
-                # custom network's own title, not a generic placeholder, so
-                # several exported networks' tables never collide if ever
-                # inspected side by side.
-                fname = f"{name}_{network_filename}.txt"
+                # Prefer the basename already agreed on at upload time
+                # ("<name>_custom_<uploaded filename>", see the "New rate
+                # table for <name>" uploader in params_form.py) so a
+                # downloaded zip's filename matches what the dialog itself
+                # showed throughout editing. Only legacy callers with no
+                # "filenames" entry (e.g. the post-run Reactions-tab export
+                # of an old-style "Customise Reactions" session) fall back
+                # to a generic name suffixed with this network's own title.
+                fname = (custom_network.get("filenames", {}).get(name)
+                          or f"{name}_{network_filename}.txt")
                 lines.append(f"{name}, {fname}")
                 zf.writestr(f"tables/{name}/{fname}", table_text)
                 continue
