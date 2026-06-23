@@ -190,7 +190,7 @@ def RecomputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
     4. **Forced recompute**: if `cfg.spectral_distortions and
        cfg.analytic_distortions`, the cache is bypassed entirely (never
        loaded, never written).  Analytic distortions are continuous knobs
-       (`delta_xi_nu`, `y_SZ`) typically scanned point-by-point in an MCMC;
+       (`y_SZ`, `y_gray`) typically scanned point-by-point in an MCMC;
        caching them would write one file per parameter point and pollute
        rates/weak/.  The same rule applies to any future user-supplied
        `dFDneu_func` that cannot be fingerprinted.

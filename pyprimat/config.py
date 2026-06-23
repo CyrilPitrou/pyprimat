@@ -49,11 +49,12 @@ DEFAULT_PARAMS: dict = {
     # Two sub-modes, selected by analytic_distortions (see neutrino_history.py):
     #   False (default): read the distortion from the full NEVO spectrum file
     #     (86-column, not _col_1_7); requires incomplete_decoupling=True.
-    #   True: analytic mu-type + y-type (SZ) + gray-type distortion controlled
-    #     by delta_xi_nu/y_SZ/y_gray, also contributing rho_nuSD to the
-    #     Friedmann equation.
+    #   True: analytic y-type (SZ) + gray-type distortion controlled by
+    #     y_SZ/y_gray, also contributing rho_nuSD to the Friedmann equation.
+    # NOTE: there is deliberately no mu-type (chemical-potential) spectral
+    # distortion -- a neutrino chemical potential is not a spectral distortion;
+    # use munuOverTnu instead (it shifts the weak rates AND the energy density).
     "analytic_distortions":       False,
-    "delta_xi_nu":                0., # Amplitude of the mu-type (chemical-potential shift) distortion, same for all three flavours; see neutrino_history.AnalyticDistortion.
     "y_SZ":                       0., # Amplitude of the y-type (Sunyaev-Zel'dovich-like, Compton) distortion; see neutrino_history.AnalyticDistortion.
     "y_gray":                     0., # Amplitude of the gray-type (gray-body temperature-rescaling) distortion: delta_f(y) = -fd(y) + fd(y/(1+y_gray))/(1+y_gray)**3.
     # Despite the shared "y_*" naming and despite generate_rates/PRIMAT-Main-gray.m
@@ -231,7 +232,11 @@ DEFAULT_PARAMS: dict = {
     "Omegach2":                   0.11933,  # cold dark matter density parameter Omega_c h^2 (Planck 2018)
     "h":                          0.6766,   # reduced Hubble constant h = H_0 / (100 km/s/Mpc) (Planck 2018)
     "DeltaNeff":                  0.,
-    "munuOverTnu":                0., # Reduced chemical potential xi = mu/T of neutrinos (same for all flavours, nu_e, nu_mu, nu_tau).
+    "munuOverTnu":                0., # Reduced chemical potential xi = mu/T of neutrinos (same for all flavours, nu_e, nu_mu, nu_tau; antineutrinos carry -xi).
+    # A genuine chemical potential: it shifts the n<->p weak rates (FD_nu3 in the
+    # rate integrands) AND raises the neutrino energy density / Neff by
+    # rho(xi) = T^4 (7pi^2/120 + xi^2/4 + xi^4/(8 pi^2)) per flavour
+    # (plasma.rho_nu_chempot_excess). It is part of the weak-rate cache fingerprint.
     # munuOverTnu != 0 with incomplete_decoupling=True is physically inconsistent (the NEVO table assumes it vanishes); use incomplete_decoupling=False to explore non-zero values.
 
     # ---- Decay-era options -------------------------------------------------

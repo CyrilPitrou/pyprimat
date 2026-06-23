@@ -144,14 +144,10 @@ _FORM_METADATA = {
     ),
     "analytic_distortions": (
         "Physics", "→ analytic distortion model",
-        "Parameterise the distortion analytically as μ-type "
-        "(delta_xi_nu) and/or y-type (y_SZ) instead of reading the full "
-        "NEVO spectrum file. Requires incomplete_decoupling=False.",
-    ),
-    "delta_xi_nu": (
-        "Physics", "→ δξν (μ-type distortion)",
-        "Shift of the reduced neutrino chemical potential for the μ-type "
-        "spectral distortion (applied to all three flavours).",
+        "Parameterise the distortion analytically as y-type (y_SZ) and/or "
+        "gray-type (y_gray) instead of reading the full NEVO spectrum file. "
+        "Requires incomplete_decoupling=False. (A neutrino chemical potential "
+        "is not a spectral distortion -- use munuOverTnu for that.)",
     ),
     "y_SZ": (
         "Physics", "→ y_SZ (y-type distortion)",
@@ -204,7 +200,6 @@ _CONSTANTS_METADATA = {
 # render_sidebar_form rather than through this table.
 _CONDITIONAL = {
     "analytic_distortions": ("spectral_distortions", True),
-    "delta_xi_nu": ("spectral_distortions", True),
     "y_SZ": ("spectral_distortions", True),
 }
 

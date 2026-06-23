@@ -27,7 +27,7 @@ attributes.  Two concrete implementations cover the two decoupling regimes:
                                       neutrino temperature fixed by EM entropy
                                       conservation and no heating.
 
-The analytic mu-type / y-type (SZ) spectral distortion is a *decorator*,
+The analytic y-type (SZ) + gray-type spectral distortion is a *decorator*,
 :class:`AnalyticDistortion`, that wraps either base history and overrides only
 ``dFDneu_func`` / ``rho_nu_SD`` (leaving the temperatures and heating untouched).
 :func:`make_neutrino_history` is the factory that assembles the right object
@@ -78,6 +78,33 @@ __all__ = ["NeutrinoHistory", "NEVOTable", "InstantaneousDecoupling",
 # (matches the weak_rates / PRIMAT exp_cutoff convention).
 _EXP_CUT = 3e2
 
+# Number of neutrino flavours sharing the distortion / chemical potential.
+# munuOverTnu and the y/gray distortions are applied identically to nu_e,
+# nu_mu, nu_tau, so the extra energy density they carry is summed over all three.
+_N_NU = 3.0
+
+# Standard single-particle Fermi-Dirac integral ∫₀^∞ y³ f_FD dy (zero μ).
+_INTY3_FD = 7. * np.pi**4 / 120.
+
+
+def _rho_nu_SD_from_int(Tnu, extra_int):
+    """Extra neutrino energy density [MeV⁴] from a (genuine) spectral distortion
+    of dimensionless, ν+ν̄-summed, per-flavour integral excess ``extra_int`` =
+    Δ∫y³f dy, summed over the three flavours.
+
+    Mirrors PRIMAT-Main-gray.m line 832 exactly:
+
+        ρ_νSD = N_ν · (k T_ν)⁴/(2π²ℏ³c⁵) · extra_int = N_ν · (T_ν⁴/2π²) · extra_int
+
+    NOTE: the historical Python port wrote this as ``rho_nu(Tnu)·extra_int/
+    Inty3_FD`` which equals ``2·(T_ν⁴/2π²)·extra_int`` -- an effective N_ν = 2,
+    because ``rho_nu`` already carries the ν+ν̄ factor of 2 for one flavour and
+    that was mistaken for the flavour count 3, making ρ_νSD (and ΔNeff of every
+    analytic distortion) a factor 2/3 too small. PRIMAT-Main-gray.m
+    (NeutrinosGenerations = 3, explicit single-particle prefactor) was correct.
+    """
+    return _N_NU * (Tnu**4 / (2. * np.pi**2)) * extra_int
+
 
 class NeutrinoHistory:
     """Neutrino-sector background interface (see module docstring).
@@ -125,7 +152,7 @@ class NeutrinoHistory:
         """Optionally set dFDneu_func / rho_nu_SD.
 
         Default: no distortion.  ``NEVOTable`` overrides this for its
-        table-based spectrum; the analytic mu+y distortion is added by the
+        table-based spectrum; the analytic y/gray distortion is added by the
         :class:`AnalyticDistortion` decorator instead of here.
         """
         pass
@@ -421,7 +448,7 @@ class InstantaneousDecoupling(NeutrinoHistory):
 
 
 class AnalyticDistortion(NeutrinoHistory):
-    """Analytic mu-type + y-type (SZ/Compton) + gray-type spectral distortion.
+    """Analytic y-type (SZ/Compton) + gray-type spectral distortion.
 
     Wraps an existing :class:`NeutrinoHistory` (``base``) and adds the analytic
     distortion: it inherits ``base``'s temperatures and heating unchanged and
@@ -431,12 +458,14 @@ class AnalyticDistortion(NeutrinoHistory):
     ``cfg.analytic_distortions``; ``PyPRConfig`` guarantees that pairing implies
     instantaneous decoupling, so ``base`` is an :class:`InstantaneousDecoupling`.
 
-    The distortion amplitudes are continuous knobs: ``cfg.delta_xi_nu``
-    (mu-type, a shift of the reduced chemical potential), ``cfg.y_SZ``
-    (y-type / SZ/Compton), and ``cfg.y_gray`` (gray-type, a number-density-
-    preserving temperature-like rescaling -- see ``cfg.y_gray``'s docstring
-    in config.py for why this is a *different* shape from ``y_SZ`` despite
-    generate_rates/PRIMAT-Main-gray.m's misleading "YSZ" name for it).
+    The distortion amplitudes are continuous knobs: ``cfg.y_SZ`` (y-type /
+    SZ/Compton) and ``cfg.y_gray`` (gray-type, a number-density-preserving
+    temperature-like rescaling -- see ``cfg.y_gray``'s docstring in config.py
+    for why this is a *different* shape from ``y_SZ`` despite
+    generate_rates/PRIMAT-Main-gray.m's misleading "YSZ" name for it). There is
+    no mu-type distortion: a genuine neutrino chemical potential
+    (``cfg.munuOverTnu``) is handled exactly in the weak rates and the energy
+    density, not as a (linearised) spectral distortion.
     """
 
     # Composition rather than calling the base __init__ machinery: we already
@@ -458,15 +487,19 @@ class AnalyticDistortion(NeutrinoHistory):
         cfg = self.cfg
         xi_nu = cfg.munuOverTnu   # reduced chemical potential ξ = μ/T_ν
 
-        # ---- μ-type, y-type (SZ/Compton) and gray-type analytic distortions ----
-        # μ-type: shift of the reduced chemical potential by delta_xi_nu.
-        #   δf_μ^ν(y)   = 1/(e^{y-(ξ+δξ)}+1) − 1/(e^{y−ξ}+1)
-        #   δf_μ^{ν̄}(y) = 1/(e^{y+(ξ+δξ)}+1) − 1/(e^{y+ξ}+1)
+        # ---- y-type (SZ/Compton) and gray-type analytic distortions ----
+        # There is deliberately NO μ-type distortion: a neutrino chemical
+        # potential is not a spectral distortion. A genuine chemical potential
+        # (cfg.munuOverTnu) is treated exactly -- in the n<->p weak rates via
+        # the FD_nu3(sgnq*xi_nu) integrand, and in the energy density via
+        # NeutrinoHistory.rho_nu -- so the old, linearised μ-type "distortion"
+        # (delta_xi_nu) has been removed.
+        #
         # y-type: the SZ/Compton spectral shape is the energy derivative of
         # the Fermi-Dirac weighted by y²:
         #   δf_y^ν(y)   = (1/y²) d/dy(y⁴ df_FD/dy)
         #               = f_FD(1−f_FD)[4 − y(1−2f_FD)]  (analytic)
-        # Ref: PRIMAT-Main.m, MuDistortionNeutrinos / YDistortionNeutrinos.
+        # Ref: PRIMAT-Main.m, YDistortionNeutrinos.
         #
         # gray-type: a third, independent distortion -- not the Compton/SZ
         # shape above despite generate_rates/PRIMAT-Main-gray.m naming its
@@ -481,7 +514,6 @@ class AnalyticDistortion(NeutrinoHistory):
         #   δf_gray(y) = -1/(e^y+1) + 1/(e^{y/(1+γ)}+1) / (1+γ)³,  γ=y_gray
         # Same shape for neutrinos and antineutrinos (no ξ dependence), per
         # PRIMAT-Main-gray.m's dFDneuRawy/dFDantineuRawy.
-        dxi    = cfg.delta_xi_nu
         y_sz   = cfg.y_SZ
         y_gray = cfg.y_gray
 
@@ -500,7 +532,7 @@ class AnalyticDistortion(NeutrinoHistory):
             return np.where(arg > _EXP_CUT, 0., 1. / (np.exp(np.minimum(arg, _EXP_CUT)) + 1.))
 
         def _dFDneu_analytic(en, x, znu, sgnq):
-            """Analytic μ+y spectral distortion of neutrinos/antineutrinos.
+            """Analytic y/gray spectral distortion of neutrinos/antineutrinos.
 
             en   : electron energy E/me (≥ 0 for forward, < 0 for blocking)
             x    : me/(kB Tγ)  — not used in analytic mode, present for
@@ -517,11 +549,15 @@ class AnalyticDistortion(NeutrinoHistory):
             y  = en * znu
             # signed ξ: positive for neutrinos (sgnq=+1), negative for
             # antineutrinos (sgnq=−1), consistent with chemical-potential
-            # convention where μ_{ν̄} = −μ_ν.
+            # convention where μ_{ν̄} = −μ_ν. A genuine chemical potential
+            # (cfg.munuOverTnu) is handled directly in the weak-rate integrands
+            # (FD_nu3) and in the neutrino energy density (NeutrinoHistory.rho_nu);
+            # here it only sets the Fermi-Dirac the y-type distortion sits on.
             xi = sgnq * xi_nu
 
-            # μ-type distortion (shift chemical potential by dxi)
-            dist = _fd(y - (xi + dxi)) - _fd(y - xi)
+            # No μ-type spectral distortion any more (it was just the linearised
+            # form of a chemical potential, which is now treated genuinely).
+            dist = np.zeros_like(y, dtype=float)
 
             if y_sz != 0.:
                 # y-type (SZ/Compton) distortion: (1/y²) d/dy(y⁴ d f_FD/dy)
@@ -601,12 +637,6 @@ class AnalyticDistortion(NeutrinoHistory):
         # 54 self-checks" against finite differences (h=1e-6, threshold
         # 1e-7). This avoids the earlier hand-merge transcription bug (a
         # `x1**3` mistyped as `x1**4` in the y-piece) by construction.
-        def _M_2_p1_mu(en, znu, xi):
-            x0 = en * znu
-            x1 = _fd(x0 - xi)
-            x2 = _fd(-dxi + en * znu - xi)
-            return -en * (x0 * (x1 * (x1 - 1) - x2 * (x2 - 1)) + 2 * x1 - 2 * x2)
-
         def _M_2_p1_y(en, znu, xi):
             x0 = en * znu
             x1 = _fd(x0 - xi)
@@ -624,15 +654,8 @@ class AnalyticDistortion(NeutrinoHistory):
             return -en * (2 * x0 * (x0**3 * x3 - x4) + x2 * (x1 * x3 * (x3 - 1) - x4 * (x4 - 1))) / x1
 
         def _raw_M2p1(en, znu, xi):
-            return (_M_2_p1_mu(en, znu, xi)
-                    + y_sz * _M_2_p1_y(en, znu, xi)
+            return (y_sz * _M_2_p1_y(en, znu, xi)
                     + _M_2_p1_gray(en, znu))
-
-        def _M_3_p1_mu(en, znu, xi):
-            x0 = en * znu
-            x1 = _fd(x0 - xi)
-            x2 = _fd(-dxi + en * znu - xi)
-            return -en**2 * (x0 * (x1 * (x1 - 1) - x2 * (x2 - 1)) + 3 * x1 - 3 * x2)
 
         def _M_3_p1_y(en, znu, xi):
             x0 = en**2
@@ -652,15 +675,8 @@ class AnalyticDistortion(NeutrinoHistory):
             return -en**2 * (3 * x0 * (x0**3 * x3 - x4) + x2 * (x1 * x3 * (x3 - 1) - x4 * (x4 - 1))) / x1
 
         def _raw_M3p1(en, znu, xi):
-            return (_M_3_p1_mu(en, znu, xi)
-                    + y_sz * _M_3_p1_y(en, znu, xi)
+            return (y_sz * _M_3_p1_y(en, znu, xi)
                     + _M_3_p1_gray(en, znu))
-
-        def _M_4_p1_mu(en, znu, xi):
-            x0 = en * znu
-            x1 = _fd(x0 - xi)
-            x2 = _fd(-dxi + en * znu - xi)
-            return -en**3 * (x0 * (x1 * (x1 - 1) - x2 * (x2 - 1)) + 4 * x1 - 4 * x2)
 
         def _M_4_p1_y(en, znu, xi):
             x0 = en * znu
@@ -679,18 +695,8 @@ class AnalyticDistortion(NeutrinoHistory):
             return -en**3 * (4 * x0 * (x0**3 * x3 - x4) + x2 * (x1 * x3 * (x3 - 1) - x4 * (x4 - 1))) / x1
 
         def _raw_M4p1(en, znu, xi):
-            return (_M_4_p1_mu(en, znu, xi)
-                    + y_sz * _M_4_p1_y(en, znu, xi)
+            return (y_sz * _M_4_p1_y(en, znu, xi)
                     + _M_4_p1_gray(en, znu))
-
-        def _M_2_p2_mu(en, znu, xi):
-            x0 = en * znu
-            x1 = _fd(x0 - xi)
-            x2 = _fd(-dxi + en * znu - xi)
-            x3 = x1 - 1
-            x4 = x2 - 1
-            return (-en**2 * znu**2 * (x1**2 * x3 + x1 * x3**2 - x2**2 * x4 - x2 * x4**2)
-                    - 4 * x0 * (x1 * x3 - x2 * x4) - 2 * x1 + 2 * x2)
 
         def _M_2_p2_y(en, znu, xi):
             x0 = en * znu
@@ -716,18 +722,8 @@ class AnalyticDistortion(NeutrinoHistory):
                     + 2 * x0**2 * x5 - 4 * x0 * x2 * (x0**4 * x6 - x5 * x7) - x1 * x4) / x1
 
         def _raw_M2p2(en, znu, xi):
-            return (_M_2_p2_mu(en, znu, xi)
-                    + y_sz * _M_2_p2_y(en, znu, xi)
+            return (y_sz * _M_2_p2_y(en, znu, xi)
                     + _M_2_p2_gray(en, znu))
-
-        def _M_3_p2_mu(en, znu, xi):
-            x0 = en * znu
-            x1 = _fd(x0 - xi)
-            x2 = _fd(-dxi + en * znu - xi)
-            x3 = x1 - 1
-            x4 = x2 - 1
-            return -en * (en**2 * znu**2 * (x1**2 * x3 + x1 * x3**2 - x2**2 * x4 - x2 * x4**2)
-                           + 6 * x0 * (x1 * x3 - x2 * x4) + 6 * x1 - 6 * x2)
 
         def _M_3_p2_y(en, znu, xi):
             x0 = en * znu
@@ -752,19 +748,8 @@ class AnalyticDistortion(NeutrinoHistory):
                            + 6 * x0**2 * (x0**3 * x3 - x4) + 6 * x0 * x2 * (x0**4 * x5 - x4 * x6)) / x1
 
         def _raw_M3p2(en, znu, xi):
-            return (_M_3_p2_mu(en, znu, xi)
-                    + y_sz * _M_3_p2_y(en, znu, xi)
+            return (y_sz * _M_3_p2_y(en, znu, xi)
                     + _M_3_p2_gray(en, znu))
-
-        def _M_4_p2_mu(en, znu, xi):
-            x0 = en**2
-            x1 = en * znu
-            x2 = _fd(x1 - xi)
-            x3 = _fd(-dxi + en * znu - xi)
-            x4 = x2 - 1
-            x5 = x3 - 1
-            return -x0 * (x0 * znu**2 * (x2**2 * x4 + x2 * x4**2 - x3**2 * x5 - x3 * x5**2)
-                           + 8 * x1 * (x2 * x4 - x3 * x5) + 12 * x2 - 12 * x3)
 
         def _M_4_p2_y(en, znu, xi):
             x0 = en**2
@@ -791,8 +776,7 @@ class AnalyticDistortion(NeutrinoHistory):
                            + 12 * x1**2 * (x1**3 * x4 - x5) + 8 * x1 * x3 * (x1**4 * x6 - x5 * x7)) / x2
 
         def _raw_M4p2(en, znu, xi):
-            return (_M_4_p2_mu(en, znu, xi)
-                    + y_sz * _M_4_p2_y(en, znu, xi)
+            return (y_sz * _M_4_p2_y(en, znu, xi)
                     + _M_4_p2_gray(en, znu))
 
         # Antisymmetric dispatch (see derivation above), one closure per
@@ -808,6 +792,10 @@ class AnalyticDistortion(NeutrinoHistory):
                 # on whole quadrature-grid arrays from
                 # weak_rates/corrections.py's _chi_func_sd_fm_v).
                 en = np.asarray(en)
+                # The base chemical potential xi_nu shifts the Fermi-Dirac that
+                # the y-type distortion sits on: +sgnq for the forward
+                # (initial-state) piece, -sgnq for the Pauli-blocking (en<0)
+                # piece. The gray-type has no xi dependence.
                 forward = raw(en, znu, sgnq * xi_nu)
                 blocking = sign * raw(-en, znu, -sgnq * xi_nu)
                 return np.where(en >= 0., forward, blocking)
@@ -838,27 +826,21 @@ class AnalyticDistortion(NeutrinoHistory):
         # (the factor 2 on Inty3Gray sums the neutrino+antineutrino
         # contributions, identical shapes since δf_gray has no ξ dependence;
         # Inty3Mu/Inty3SZ already are the summed neutrino+antineutrino forms.)
-        #
-        # In PyPRIMAT units (MeV throughout) the prefactor is
-        #   N_ν × (kT_ν)⁴/(2π²) × (MeV_to_secm1/c)³/(c²)
-        # which is exactly rho_nu(T_ν) × (Inty3 / Inty3_FD) where the
-        # standard FD integral ∫y³ f_FD dy = 7π⁴/120 per degree of freedom.
-        # We use the rho_nu function from plasma.py and rescale by the ratio.
-        #
-        # N_ν = 3 (three flavours, assumed to have the same distortion).
-        Inty3_FD = 7. * np.pi**4 / 120.   # ∫₀^∞ y³ f_FD dy (zero μ)
+        # The overall normalisation (N_ν=3, single-particle prefactor) lives in
+        # the module-level helper _rho_nu_SD_from_int (see PRIMAT-Main-gray.m
+        # line 832); the historical bug that put N_ν=2 there is documented
+        # in that helper's docstring.
+        Inty3_FD = _INTY3_FD   # ∫₀^∞ y³ f_FD dy (zero μ)
+
+        # The genuine chemical-potential energy (cfg.munuOverTnu) is carried by
+        # the neutrino energy density itself (NeutrinoHistory.rho_nu), NOT here:
+        # rho_nu_SD is reserved for the genuine spectral distortions (y/gray).
 
         def _rho_nu_SD(Tnu):
-            """Extra neutrino energy density from the analytic distortion."""
-            # ξ = 0 assumed for the energy-density integrals (munuOverTnu
-            # affects f_FD shape but is typically 0 in standard BBN).
-            Inty3_mu = (dxi / 4.) * (dxi + 2.*xi_nu) * (
-                dxi**2 + 2.*dxi*xi_nu + 2.*(np.pi**2 + xi_nu**2))
+            """Extra neutrino energy density [MeV⁴] from the y/gray distortions."""
             Inty3_sz = 7.*np.pi**4/15. + 2.*np.pi**2*xi_nu**2 + xi_nu**4
-            extra_int = Inty3_mu + y_sz * Inty3_sz + 2. * y_gray * Inty3_FD
-            # rho_nu(Tnu) = Nnu * 7π⁴/120 × (kTnu)⁴/(2π²) × prefactor,
-            # so ρ_νSD/rho_nu = Nnu × extra_int / (Nnu × Inty3_FD).
-            return self.plasma.rho_nu(Tnu) * extra_int / Inty3_FD
+            extra_int = y_sz * Inty3_sz + 2. * y_gray * Inty3_FD
+            return _rho_nu_SD_from_int(Tnu, extra_int)
 
         self.rho_nu_SD = _rho_nu_SD
 
@@ -874,7 +856,13 @@ def make_neutrino_history(cfg, plasma):
        else :class:`InstantaneousDecoupling` (which also builds the NEVO-table
        spectral distortion when that mode is active);
     2. if ``cfg.spectral_distortions and cfg.analytic_distortions``, wrap it in
-       :class:`AnalyticDistortion` to layer on the analytic μ+y distortion.
+       :class:`AnalyticDistortion` to layer on the analytic y/gray distortion.
+
+    A genuine neutrino chemical potential ``cfg.munuOverTnu`` needs no special
+    handling here: it shifts the n<->p weak rates through the FD_nu3 integrand
+    and raises the neutrino energy density through ``NeutrinoHistory.rho_nu``
+    (both built into the base history), so it is fully accounted for in either
+    branch below.
 
     Args:
         cfg    : PyPRConfig instance.

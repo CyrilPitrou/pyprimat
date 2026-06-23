@@ -89,13 +89,12 @@ def test_analytic_distortion_decorates_instantaneous():
         "spectral_distortions": True,
         "analytic_distortions": True,
         "incomplete_decoupling": False,
-        "delta_xi_nu": 0.05,
         "y_SZ": 0.01,
     })
     assert isinstance(nh, AnalyticDistortion)
     assert nh.dFDneu_func is not None
     assert nh.rho_nu_SD is not None
-    # A nonzero mu-shift must produce a nonzero distortion somewhere.
+    # A nonzero y-type amplitude must produce a nonzero distortion somewhere.
     vals = [nh.dFDneu_func(en, 1.0, 1.0, +1) for en in (0.5, 1.0, 2.0)]
     assert any(abs(v) > 0. for v in vals)
     # Extra energy density is positive and a small fraction of rho_nu.

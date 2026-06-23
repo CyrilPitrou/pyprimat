@@ -60,7 +60,6 @@ _WEAK_RATE_BG_FIELDS = [
     "incomplete_decoupling",
     "spectral_distortions",
     "analytic_distortions",
-    "delta_xi_nu",
     "y_SZ",
     "y_gray",
     "T_start_cosmo_MeV",

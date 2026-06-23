@@ -233,14 +233,14 @@ def test_fingerprint_changes_with_munuOverTnu():
     assert fp0 != fp1
 
 
-def test_fingerprint_changes_with_delta_xi_nu():
-    """A change in delta_xi_nu (analytic spectral-distortion amplitude) must
+def test_fingerprint_changes_with_y_SZ():
+    """A change in y_SZ (analytic spectral-distortion amplitude) must
     invalidate the weak-rate cache, for the same reason as munuOverTnu above.
     """
     common = {"spectral_distortions": True, "analytic_distortions": True,
               "incomplete_decoupling": False}
-    cfg0 = PyPRConfig({**common, "delta_xi_nu": 0.0})
-    cfg1 = PyPRConfig({**common, "delta_xi_nu": 0.05})
+    cfg0 = PyPRConfig({**common, "y_SZ": 0.0})
+    cfg1 = PyPRConfig({**common, "y_SZ": 0.05})
 
     fp0 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg0))
     fp1 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg1))
@@ -476,7 +476,7 @@ def test_analytic_distortion_weak_rates_stay_fast():
     combination is *never* cached (weak_rates.api.ComputeWeakRates's
     `forced_recompute` bypasses the rates/weak/ cache whenever
     spectral_distortions and analytic_distortions are both True, since
-    delta_xi_nu/y_SZ are continuous MCMC-scanned knobs), so every single
+    y_SZ/y_gray are continuous MCMC-scanned knobs), so every single
     "Run BBN" with this flag combination pays this cost -- it must stay fast.
 
     Builds a small-network PyPR once per case (first call absorbs any
@@ -493,7 +493,7 @@ def test_analytic_distortion_weak_rates_stay_fast():
     slow_cases = [
         {"network": "small", "analytic_distortions": True, "incomplete_decoupling": False},
         {"network": "small", "analytic_distortions": True, "incomplete_decoupling": False,
-         "delta_xi_nu": 0.05, "y_SZ": 0.1, "y_gray": 0.05},
+         "y_SZ": 0.1, "y_gray": 0.05},
         {"network": "small", "analytic_distortions": True, "incomplete_decoupling": False,
          "finite_mass_corrections": True, "radiative_corrections": False},
     ]
@@ -569,7 +569,7 @@ def test_dFDneu_moments_keys_present_only_in_analytic_mode():
     AnalyticDistortion sets it (NEVO-table mode has no closed-form
     en-derivative of the tabulated distortion)."""
     _, hist = _analytic_history({"network": "small", "y_SZ": 0.05,
-                                  "delta_xi_nu": 0.02, "y_gray": 0.03})
+                                  "y_gray": 0.03})
     expected_keys = {"e2p0", "e3p0", "e2p1", "e3p1", "e4p1",
                       "e2p2", "e3p2", "e4p2"}
     assert set(hist.dFDneu_moments) == expected_keys
@@ -589,7 +589,7 @@ def test_dFDneu_moments_match_finite_difference():
     naive h=1e-6 that works for first derivatives only).
     """
     _, hist = _analytic_history({"network": "small", "y_SZ": 0.11,
-                                  "delta_xi_nu": 0.07, "y_gray": 0.17})
+                                  "y_gray": 0.17})
     znu = 1.3
     for en in (-3.5, -0.4, 0.4, 3.5):
         for sgnq in (+1.0, -1.0):
@@ -605,11 +605,11 @@ def test_dFDneu_moments_match_finite_difference():
 
 
 def test_sd_fm_vanishes_at_zero_distortion_amplitude():
-    """With y_SZ=delta_xi_nu=y_gray=0, dFDneu_func (hence its moments) is
+    """With y_SZ=y_gray=0, dFDneu_func (hence its moments) is
     identically zero, so the SD-FM correction (built entirely from those
     moments) must vanish too."""
     cfg, hist = _analytic_history({"network": "small", "y_SZ": 0.,
-                                    "delta_xi_nu": 0., "y_gray": 0.,
+                                    "y_gray": 0.,
                                     "munuOverTnu": 0.})
     ctx = wr._build_rate_context([np.array([1e9, 2e9]), np.array([0.7e9, 1.4e9])], cfg)
     T_arr = np.array([1e9, 5e9])
@@ -623,7 +623,7 @@ def test_sd_fm_nonzero_for_nonzero_distortion():
     """A nonzero distortion amplitude must make the SD-FM correction nonzero
     (sanity check that the term is actually wired up, not a silent no-op)."""
     cfg, hist = _analytic_history({"network": "small", "y_SZ": 0.05,
-                                    "delta_xi_nu": 0.02, "y_gray": 0.03})
+                                    "y_gray": 0.03})
     ctx = wr._build_rate_context([np.array([1e9, 2e9]), np.array([0.7e9, 1.4e9])], cfg)
     T_arr = np.array([1e9, 5e9])
     val = wr._L_SD_FMCCR(ctx, T_arr, +1, hist.dFDneu_moments)
@@ -638,7 +638,7 @@ def test_correction_terms_includes_sd_fm_only_with_finite_mass_corrections():
     corrections being on is implicit there since deltaChiFM is the only
     place that function is used)."""
     cfg, hist = _analytic_history({"network": "small", "y_SZ": 0.05,
-                                    "delta_xi_nu": 0.02, "y_gray": 0.03,
+                                    "y_gray": 0.03,
                                     "finite_mass_corrections": True})
     ctx = wr._build_rate_context([np.array([1e9, 2e9]), np.array([0.7e9, 1.4e9])], cfg)
     T_arr = np.array([1e9, 5e9])

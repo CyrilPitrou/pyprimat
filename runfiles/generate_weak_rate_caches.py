@@ -28,12 +28,29 @@ Run from the repo root::
 
     python runfiles/generate_weak_rate_caches.py
 
-After running, force-add the new/changed files, e.g.::
+The cache filenames embed a hash of the weak-rate / thermal fingerprint
+(``weak_rates/cache.py``: ``_weak_rate_fingerprint`` / ``_thermal_fingerprint``
+and their ``_WEAK_RATE_BG_FIELDS`` / ``_THERMAL_BG_FIELDS`` field lists).
+Whenever those field lists change -- e.g. a field is added to or removed from
+``_WEAK_RATE_BG_FIELDS`` -- EVERY hash shifts and the previously shipped files
+become orphaned (they would never be hit again, so they only bloat the repo).
 
-    git add -f rates/weak/nTOp_<hash>.txt rates/weak/nTOp_thermal_<hash>.txt
+To keep the shipped set self-consistent, this script computes the exact set
+of filenames the combos below SHOULD produce and then prunes any git-tracked
+``nTOp_*.txt`` / ``nTOp_thermal_*.txt`` file in ``rates/weak/`` that is no
+longer in that set (only git-tracked files, so a developer's local
+non-shipped caches are left untouched). Pruning + (re)generation together
+leave the working tree holding exactly the canonical shipped set.
+
+After running, stage the result (new files force-added past .gitignore,
+deletions recorded)::
+
+    git add -f rates/weak/nTOp_*.txt rates/weak/nTOp_thermal_*.txt
+    git add -u rates/weak/                       # record pruned deletions
 """
 import sys
 import os
+import subprocess
 import time
 
 _pyprimat_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -41,6 +58,9 @@ if _pyprimat_path not in sys.path:
     sys.path.insert(0, _pyprimat_path)
 
 from pyprimat import PyPR
+from pyprimat.cache_utils import fingerprint_hash, weak_cache_dir
+from pyprimat.weak_rates.cache import (_weak_rate_fingerprint,
+                                       _thermal_fingerprint)
 
 # Each entry only lists the flags that deviate from the PyPRConfig defaults
 # (radiative_corrections/finite_mass_corrections/thermal_corrections all
@@ -57,6 +77,52 @@ _COMBOS = [
           spectral_distortions=False)),
 ]
 
+def _expected_filenames(combos):
+    """Filenames (no directory) the given combos should leave on disk.
+
+    For each combo we build the same PyPRConfig the generation loop uses (but
+    without writing anything) and read off both fingerprint hashes, so this
+    stays in lockstep with whatever the live fingerprint definition is.
+
+    Returns:
+        (set_of_filenames, cache_dir): the expected ``nTOp_*`` /
+        ``nTOp_thermal_*`` basenames and the absolute cache directory.
+    """
+    expected = set()
+    cache_dir = None
+    for _, extra in combos:
+        # Pure inspection: never touch the cache here (weak_rate_cache=False so
+        # nothing is loaded, save_* False so nothing is written).
+        cfg = PyPR(params=dict(extra, verbose=False, weak_rate_cache=False,
+                               save_nTOp=False, save_nTOp_thermal=False)).cfg
+        cache_dir = weak_cache_dir(cfg)
+        expected.add("nTOp_" + fingerprint_hash(_weak_rate_fingerprint(cfg)) + ".txt")
+        expected.add("nTOp_thermal_" + fingerprint_hash(_thermal_fingerprint(cfg)) + ".txt")
+    return expected, cache_dir
+
+
+def _tracked_cache_files(cache_dir):
+    """git-tracked ``nTOp_*.txt`` / ``nTOp_thermal_*.txt`` basenames in cache_dir.
+
+    Returns an empty set (and prints a warning) if git is unavailable or this
+    is not a git checkout -- in that case we simply skip pruning rather than
+    risk deleting a developer's local caches.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "-C", _pyprimat_path, "ls-files", cache_dir],
+            check=True, capture_output=True, text=True).stdout
+    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+        print(f"  [prune skipped: git unavailable: {exc}]")
+        return set()
+    tracked = set()
+    for line in out.splitlines():
+        base = os.path.basename(line.strip())
+        if base.startswith(("nTOp_", "nTOp_thermal_")) and base.endswith(".txt"):
+            tracked.add(base)
+    return tracked
+
+
 if __name__ == "__main__":
     for label, extra in _COMBOS:
         print(f"--- {label} ---")
@@ -67,3 +133,23 @@ if __name__ == "__main__":
         PyPR(params=dict(extra, verbose=False, save_nTOp=True,
                           save_nTOp_thermal=True))
         print(f"    done in {time.time() - t0:.1f} s")
+
+    # ---- prune git-tracked files that are no longer part of the shipped set --
+    # (stale after a fingerprint change: their hash no longer matches any combo).
+    expected, cache_dir = _expected_filenames(_COMBOS)
+    orphans = sorted(_tracked_cache_files(cache_dir) - expected)
+    print("\n--- pruning stale shipped cache files ---")
+    if not orphans:
+        print("    none (shipped set already consistent)")
+    for base in orphans:
+        path = os.path.join(cache_dir, base)
+        if os.path.exists(path):
+            os.remove(path)
+            print(f"    removed orphan {base}")
+        else:
+            # Tracked but already gone from the working tree; nothing to delete.
+            print(f"    orphan {base} (already absent from working tree)")
+
+    print("\nShipped weak-rate cache set is now:")
+    for base in sorted(expected):
+        print(f"    {base}")

@@ -153,6 +153,29 @@ def rho_nu(Tnu):
     return 2. * (7. / 8.) * (np.pi**2 / 30.) * Tnu**4
 
 
+def rho_nu_chempot_excess(Tnu, c):
+    """Extra ν+ν̄ energy density [MeV⁴] PER FLAVOUR from a genuine reduced
+    chemical potential ``c`` = μ/T_ν (the antineutrino carries −c).
+
+    The energy density of one flavour (ν at +c, ν̄ at −c) is
+
+        ρ(c) = T_ν⁴ (7π²/120 + c²/4 + c⁴/(8π²))
+
+    i.e. the non-degenerate result :func:`rho_nu` (7π²/120·T⁴) plus an even
+    polynomial in c -- only quadratic and quartic terms survive because ρ is
+    even in c (ν and ν̄ contributions add). This returns just the excess over
+    c=0, ρ(c) − ρ(0) = T_ν⁴ (c²/4 + c⁴/(8π²)); the caller sums it over the
+    three neutrino flavours. A neutrino chemical potential is NOT a spectral
+    distortion: this energy feeds the expansion rate / Neff directly.
+
+    Example
+    -------
+    >>> rho_nu_chempot_excess(1.0, 0.05)   # tiny excess at Tnu=1 MeV, c=0.05
+    6.2...e-04
+    """
+    return Tnu**4 * (c * c / 4. + c**4 / (8. * np.pi**2))
+
+
 def drho_nu_dT(Tnu):
     """Temperature derivative of one-flavour neutrino energy density [MeV³].
 
@@ -875,7 +898,25 @@ class Plasma:
         return drho_g_dT(Tg)
 
     def rho_nu(self, Tnu):
-        return rho_nu(Tnu)
+        """One-flavour (ν+ν̄) neutrino energy density [MeV⁴] at temperature Tnu,
+        including a genuine reduced chemical potential ``cfg.munuOverTnu``.
+
+        For c = μ/T_ν (antineutrino at −c) the per-flavour energy density is
+        ρ(c) = T_ν⁴ (7π²/120 + c²/4 + c⁴/(8π²)) (even in c). With c = 0 this is
+        the standard module-level :func:`rho_nu`. The chemical-potential excess
+        is added here so it feeds the expansion rate (Hubble) and Neff through
+        the background's ``thermo.rho_nu`` sums; it is NOT a spectral distortion.
+        """
+        c = self._cfg.munuOverTnu
+        base = rho_nu(Tnu)
+        if c != 0.:
+            base = base + rho_nu_chempot_excess(Tnu, c)
+        return base
 
     def drho_nu_dT(self, Tnu):
+        # Note: the genuine chemical-potential excess in rho_nu above is not
+        # added here -- drho_nu_dT is currently unused by the background ODE
+        # (the a(T) relation is fixed by EM entropy conservation, independent of
+        # the neutrino chemical potential). If a future caller needs the
+        # T-derivative of the chempot-corrected rho_nu, add 4*excess/Tnu here.
         return drho_nu_dT(Tnu)

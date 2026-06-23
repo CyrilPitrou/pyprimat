@@ -1,6 +1,6 @@
 # T[K] Gamma_nTOp[1/tau_n] Gamma_pTOn[1/tau_n]
-# fingerprint_hash: 1ec99437faf12b03
-# fingerprint: {"QED_corrections":false,"T_end_MeV":0.001,"T_start_cosmo_MeV":40.0,"analytic_distortions":false,"delta_xi_nu":0.0,"finite_mass_corrections":true,"format_version":1,"incomplete_decoupling":true,"munuOverTnu":0.0,"nevo_file":null,"nevo_file_prefix":"NEVOPRIMAT","nevo_spectral_file":null,"radiative_corrections":true,"sampling_nTOp_per_decade":80,"spectral_distortions":true,"y_SZ":0.0,"y_gray":0.0}
+# fingerprint_hash: 631e4ebd94ca4c87
+# fingerprint: {"QED_corrections":false,"T_end_MeV":0.001,"T_start_cosmo_MeV":40.0,"analytic_distortions":false,"finite_mass_corrections":true,"format_version":1,"incomplete_decoupling":true,"munuOverTnu":0.0,"nevo_file":null,"nevo_file_prefix":"NEVOPRIMAT","nevo_spectral_file":null,"radiative_corrections":true,"sampling_nTOp_per_decade":80,"spectral_distortions":true,"y_SZ":0.0,"y_gray":0.0}
 1.160451812155007198e+07 9.999983390277757955e-01 0.000000000000000000e+00
 1.194445382843508385e+07 9.999982903866279083e-01 0.000000000000000000e+00
 1.229434740548801981e+07 9.999982403221133742e-01 0.000000000000000000e+00
