@@ -258,14 +258,24 @@ def main():
     # makes this False again until "Run BBN" is clicked anew.
     current_items = tuple(sorted(params.items()))
     stored_params = st.session_state.get(SessionKeys.params)
-    up_to_date = (stored_params is not None
+    params_up_to_date = (stored_params is not None
                  and tuple(sorted(stored_params.items())) == current_items)
+    # The stored quick-MC settings only update on a "Run BBN" click (see
+    # below), same as `stored_params` -- so if the sidebar's quick-MC
+    # toggle/sample-count has moved away from what was last actually run,
+    # the button must stay clickable even though `params` itself hasn't
+    # changed, or there would be no way to ever trigger the new MC request.
+    mc_up_to_date = (not quick_mc) or (
+        st.session_state.get(SessionKeys.quick_mc, False)
+        and mc_samples == st.session_state.get(SessionKeys.mc_samples)
+    )
+    up_to_date = params_up_to_date and mc_up_to_date
 
     # Above the result tabs (not in the sidebar) so it stays visible even
     # when the sidebar is folded; left at its natural (content-sized) width
     # rather than stretched across the full column. "Shaded" (secondary,
     # disabled) once the current configuration is already solved -- nothing
-    # left to run until something changes.
+    # left to run until something changes (including the quick-MC request).
     run_clicked = st.button("Run BBN", type=("secondary" if up_to_date else "primary"),
                             disabled=up_to_date)
 
@@ -286,7 +296,7 @@ def main():
         st.session_state[SessionKeys.run_custom_network_dict] = (
             active["custom_network"] if active else None)
         stored_params = st.session_state[SessionKeys.params]
-        up_to_date = True
+        params_up_to_date = True
 
     # The active tab is forced via a "_tabs_gen"-keyed remount (st.tabs's
     # `default=` is otherwise only honoured the very first time a given key
@@ -294,11 +304,13 @@ def main():
     # params_form's session_keys.SessionKeys docstring for the general pattern):
     # whenever "up to date" flips, bump the generation so the new `default`
     # actually takes effect instead of being ignored in favour of whichever
-    # tab the user last had open.
-    if st.session_state.get("_tabs_up_to_date") != up_to_date:
-        st.session_state["_tabs_up_to_date"] = up_to_date
+    # tab the user last had open. Gated on `params_up_to_date` alone (not the
+    # MC-aware `up_to_date`) -- a stale quick-MC request must not hide the
+    # already-solved BBN results tabs.
+    if st.session_state.get("_tabs_up_to_date") != params_up_to_date:
+        st.session_state["_tabs_up_to_date"] = params_up_to_date
         st.session_state["_tabs_gen"] = st.session_state.get("_tabs_gen", 0) + 1
-    default_tab = "Final abundances" if up_to_date else "Reactions summary"
+    default_tab = "Final abundances" if params_up_to_date else "Reactions summary"
     tabs_gen = st.session_state.get("_tabs_gen", 0)
 
     tab_reactions, tab_results, tab_evolution, tab_downloads = st.tabs(
@@ -321,7 +333,7 @@ def main():
         else:
             panels.render_reactions_panel(preview)
 
-    if not up_to_date:
+    if not params_up_to_date:
         not_run_msg = (
             "This tab will appear once **Run BBN** has solved the current "
             "configuration."
@@ -400,8 +412,8 @@ def main():
 def _render_footer():
     """Sidebar attribution footer, shown below the parameter form."""
     st.sidebar.caption(
-        "PyPRIMAT and this GUI are developed by "
-        "[Cyril Pitrou](https://www2.iap.fr/users/pitrou/)."
+        "PyPRIMAT is developed by [Cyril Pitrou](https://www2.iap.fr/users/pitrou/) "
+        "and Julien Froustey. This GUI is developed by Cyril Pitrou."
     )
     st.sidebar.caption(
         "Download the [source code](https://github.com/CyrilPitrou/pyprimat) "

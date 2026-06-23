@@ -89,6 +89,38 @@ def validate_new_reaction(name):
     return f"{_side(react)} -> {_side(prod)}"
 
 
+# Shown to the user whenever an uploaded rate table fails to parse (see
+# parse_rate_upload's ValueError, caught at every upload site in
+# params_form.py) -- the opening lines of a real shipped table
+# (B12_t__C15_g), illustrating the expected layout: optional leading
+# '#'-comments, then whitespace-separated columns T9 [GK], rate[, error].
+RATE_TABLE_FORMAT_EXAMPLE = """\
+# B12 + t > C15 + g   [B12_t__C15_g]   ref=TALYS2, Koning et al. 2023
+# detailed balance: alpha=1.1104e+11 beta=1.5 gamma=-214.052  Q=18.4456
+# T9                 rate                error
+1.000000e-03   1.000000e-35   1.000000e+02
+1.018629e-03   1.014102e-35   1.000000e+02
+1.037605e-03   1.025274e-35   1.000000e+02
+"""
+
+
+def show_rate_format_help():
+    """Explain the expected rate-table layout, with a real shipped example.
+
+    Called wherever an upload fails :func:`parse_rate_upload`'s validation,
+    so the user immediately sees what is expected instead of just the bare
+    parse error.
+    """
+    st.info(
+        "Expected format: optional leading lines starting with `#` "
+        "(comments/provenance, ignored), followed by 2 or 3 "
+        "whitespace-separated numeric columns -- `T9 [GK]`, `rate`, and an "
+        "optional `error` (uncertainty factor). Example (first lines of a "
+        "shipped table):"
+    )
+    st.code(RATE_TABLE_FORMAT_EXAMPLE, language=None)
+
+
 def parse_rate_upload(fh):
     """Parse an uploaded rate-table file into raw ``(T9, rate, err, header)``.
 

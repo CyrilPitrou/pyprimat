@@ -292,7 +292,10 @@ class NuclearNetwork:
         # species that the chosen network does not track (e.g. heavy-nuclide-only
         # networks that drop He6 — though in practice all three standard networks
         # include all SPECIES_MD members).
-        finL = {s: sol_LT.y[i][-1] for i, s in enumerate(species_L)}
+        # Clamp to 0: the BDF solver can leave near-extinct nuclides at a
+        # tiny negative value (numerical noise around zero), which is
+        # unphysical for an abundance and breaks log-scale displays/ratios.
+        finL = {s: max(sol_LT.y[i][-1], 0.0) for i, s in enumerate(species_L)}
         for s in SPECIES_MD:
             finL.setdefault(s, 0.0)
 

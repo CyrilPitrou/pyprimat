@@ -62,7 +62,7 @@ __all__ = [
     '_N_GL', '_GL_NODES', '_GL_WEIGHTS',
     '_RateContext', '_chi_func', '_fermi_stat', '_quad_grid',
     '_L_BORN', '_L_CCR', '_chi_func_fm_v', '_L_FMCCR', '_L_FMNoCCR',
-    '_L_SD', '_L_SD_CCR', '_chi_func_sd_fm_v', '_vectorize_moments',
+    '_L_SD', '_L_SD_CCR', '_chi_func_sd_fm_v',
     '_L_SD_FMCCR', '_L_SD_FMNoCCR', '_L_CCRTh_interpolants',
     '_correction_terms', '_build_rate_context', '_thermal_correction_interpolants',
 ]
@@ -678,16 +678,18 @@ def _L_SD(ctx, T_arr, sgnq, dFDneu_func):
     Used when cfg.spectral_distortions=True and cfg.radiative_corrections=False.
     See also :func:`_L_SD_CCR` for the version with Coulomb/radiative factors.
 
-    ``dFDneu_func`` is a user-supplied scalar callable (analytic μ/y or NEVO
-    table lookup, with internal ``if`` branches), so it cannot be expressed in
-    closed numpy form here.  We wrap it once in ``np.vectorize`` and broadcast
-    it over the (n_T, _N_GL) grid; spectral distortions are off by default and
-    only used in dedicated, slower runs, so this Python-level loop over the
-    grid is acceptable (the dominant CCR/FMCCR terms stay fully vectorised).
+    ``dFDneu_func`` is a user-supplied callable (analytic μ/y or NEVO table
+    lookup). The analytic-distortion implementation
+    (``neutrino_history.AnalyticDistortion``) is itself array-vectorised and
+    marked with a ``vectorized`` attribute, so it is called directly; the
+    NEVO-table lookup has internal scalar ``if``/interpolator-call branches
+    and cannot be expressed in closed numpy form, so it is wrapped in
+    ``np.vectorize`` instead (slower, but the table-distortion mode is the
+    less commonly used one).
     """
     p, w, x, xnu = _quad_grid(ctx, T_arr)
     E = np.sqrt(p**2 + 1.)
-    dfd = np.vectorize(dFDneu_func)
+    dfd = dFDneu_func if getattr(dFDneu_func, "vectorized", False) else np.vectorize(dFDneu_func)
 
     def delta_chi(en):
         # delta_chi(en) = dFDneu(en - sgnq*Q/me) * g(-en, x) * (en - sgnq*Q/me)^2,
@@ -713,15 +715,14 @@ def _L_SD_CCR(ctx, T_arr, sgnq, dFDneu_func):
     to the SD integrand, making the spectral-distortion correction self-consistent
     with the base CCR rate.
 
-    ``dFDneu_func`` cannot be expressed in closed numpy form (it carries internal
-    ``if`` branches for the analytic/table modes), so np.vectorize is used, as in
-    :func:`_L_SD`.
+    Same direct-call/``np.vectorize`` choice as :func:`_L_SD`, based on
+    ``dFDneu_func``'s ``vectorized`` attribute.
     """
     cfg, me, Q = ctx.cfg, ctx.me, ctx.Q
     p, w, x, xnu = _quad_grid(ctx, T_arr)
     E = np.sqrt(p**2 + 1.)
     b = p / E
-    dfd = np.vectorize(dFDneu_func)
+    dfd = dFDneu_func if getattr(dFDneu_func, "vectorized", False) else np.vectorize(dFDneu_func)
 
     def delta_chi(en):
         # SD chi: replace g_nu in the Born chi function with the deviation δf/f_FD.
@@ -792,17 +793,6 @@ def _chi_func_sd_fm_v(ctx, en, pe, x, znu, sgnq, dFDneu_moments_v):
               * (m["e2p1"](enu, x, znu, sgnq) * FD2_en))
 
 
-def _vectorize_moments(dFDneu_moments):
-    """np.vectorize every scalar moment callable once per call site.
-
-    The moments dict's callables branch internally on the sign of ``en``
-    (see neutrino_history._make_moment), so -- like dFDneu_func in
-    :func:`_L_SD`/:func:`_L_SD_CCR` -- they cannot be expressed in closed
-    numpy form and are wrapped individually instead.
-    """
-    return {key: np.vectorize(f) for key, f in dFDneu_moments.items()}
-
-
 def _L_SD_FMCCR(ctx, T_arr, sgnq, dFDneu_moments):
     """SD-FM correction (finite-mass x spectral-distortion) x Coulomb x radiative.
 
@@ -818,11 +808,15 @@ def _L_SD_FMCCR(ctx, T_arr, sgnq, dFDneu_moments):
     p, w, x, xnu = _quad_grid(ctx, T_arr)
     E = np.sqrt(p**2 + 1.)
     b = p / E
-    moments_v = _vectorize_moments(dFDneu_moments)
-    integ = p**2 * (_chi_func_sd_fm_v(ctx, E, p, x, xnu, sgnq, moments_v)
+    # dFDneu_moments' callables are natively array-vectorised (np.where-based,
+    # see neutrino_history.AnalyticDistortion._make_moment) -- no np.vectorize
+    # wrapping needed (a prior version wrapped them here, which was the
+    # dominant cost of an analytic_distortions=True run: ~20 s of per-point
+    # Python calls for what is now a handful of numpy ops over the whole grid).
+    integ = p**2 * (_chi_func_sd_fm_v(ctx, E, p, x, xnu, sgnq, dFDneu_moments)
                     * RadCorrResum(b, np.abs(sgnq * Q / me - E), E, cfg)
                     * _fermi_stat(ctx, sgnq, 1, b)
-                    + _chi_func_sd_fm_v(ctx, -E, p, x, xnu, sgnq, moments_v)
+                    + _chi_func_sd_fm_v(ctx, -E, p, x, xnu, sgnq, dFDneu_moments)
                     * RadCorrResum(b, np.abs(sgnq * Q / me + E), E, cfg)
                     * _fermi_stat(ctx, sgnq, -1, b))
     return np.sum(w * integ, axis=1)
@@ -837,9 +831,8 @@ def _L_SD_FMNoCCR(ctx, T_arr, sgnq, dFDneu_moments):
     """
     p, w, x, xnu = _quad_grid(ctx, T_arr)
     E = np.sqrt(p**2 + 1.)
-    moments_v = _vectorize_moments(dFDneu_moments)
-    integ = p**2 * (_chi_func_sd_fm_v(ctx,  E, p, x, xnu, sgnq, moments_v)
-                    + _chi_func_sd_fm_v(ctx, -E, p, x, xnu, sgnq, moments_v))
+    integ = p**2 * (_chi_func_sd_fm_v(ctx,  E, p, x, xnu, sgnq, dFDneu_moments)
+                    + _chi_func_sd_fm_v(ctx, -E, p, x, xnu, sgnq, dFDneu_moments))
     return np.sum(w * integ, axis=1)
 
 

@@ -486,8 +486,18 @@ class AnalyticDistortion(NeutrinoHistory):
         y_gray = cfg.y_gray
 
         def _fd(arg):
-            # Safe Fermi-Dirac: returns 0 for large positive arguments.
-            return 0. if arg > _EXP_CUT else 1. / (np.exp(arg) + 1.)
+            # Safe Fermi-Dirac, elementwise over scalars or arrays: clamp the
+            # exponent before exp() (avoids overflow) and mask the result to
+            # 0 above _EXP_CUT. np.where-based (not a Python if/else) so this
+            # -- and everything built from it below (dFDneu_func, the M_*p*
+            # moment closures) -- stays array-vectorised: the SD-FM
+            # correction (_L_SD_FMCCR/_NoCCR in weak_rates/corrections.py)
+            # evaluates these over O(1e4-1e5)-point quadrature grids, and a
+            # scalar-only _fd previously forced np.vectorize to fall back to
+            # a million-plus individual Python calls (~20 s; see git log for
+            # the profiling that found this).
+            arg = np.asarray(arg)
+            return np.where(arg > _EXP_CUT, 0., 1. / (np.exp(np.minimum(arg, _EXP_CUT)) + 1.))
 
         def _dFDneu_analytic(en, x, znu, sgnq):
             """Analytic μ+y spectral distortion of neutrinos/antineutrinos.
@@ -535,14 +545,25 @@ class AnalyticDistortion(NeutrinoHistory):
             or p→n (sgnq=−1).  The blocking cases carry an extra minus
             sign and use the conjugate spectrum.
             """
-            if en >= 0.:
-                # Neutrino (sgnq>0) or antineutrino (sgnq<0) in initial state
-                return _dFDneu_analytic(en, x, znu, sgnq)
-            else:
-                # Pauli-blocking factor: the conjugate particle is the one
-                # that appears in the final state, so flip both en and sgnq.
-                return -_dFDneu_analytic(-en, x, znu, -sgnq)
+            # np.where (not a Python if/else) so this stays array-vectorised
+            # over `en` -- see _fd's docstring above for why that matters.
+            # Both branches are cheap closed-form numpy expressions, so
+            # evaluating both unconditionally and selecting is fine.
+            en = np.asarray(en)
+            # Neutrino (sgnq>0) or antineutrino (sgnq<0) in initial state
+            forward = _dFDneu_analytic(en, x, znu, sgnq)
+            # Pauli-blocking factor: the conjugate particle is the one that
+            # appears in the final state, so flip both en and sgnq.
+            blocking = -_dFDneu_analytic(-en, x, znu, -sgnq)
+            return np.where(en >= 0., forward, blocking)
 
+        # Marks this callable as already array-vectorised, so
+        # weak_rates/corrections.py's _L_SD/_L_SD_CCR can call it directly
+        # over a whole quadrature grid instead of wrapping it in
+        # np.vectorize (needed for the *other* dFDneu_func implementation,
+        # NEVOTable's table-lookup version above, which is genuinely
+        # scalar-only).
+        dFDneu_func.vectorized = True
         self.dFDneu_func = dFDneu_func
 
         # ---- en-moment derivatives of δf, for the SD-FM (finite-nucleon- ----
@@ -782,12 +803,14 @@ class AnalyticDistortion(NeutrinoHistory):
             sign = sign_p1 if order == 1 else sign_p2
 
             def moment(en, x, znu, sgnq):
-                if en >= 0.:
-                    xi_here = sgnq * xi_nu
-                    return raw(en, znu, xi_here)
-                else:
-                    xi_here = -sgnq * xi_nu
-                    return sign * raw(-en, znu, xi_here)
+                # Same np.where-over-both-branches vectorisation as
+                # dFDneu_func above (and for the same reason: this is called
+                # on whole quadrature-grid arrays from
+                # weak_rates/corrections.py's _chi_func_sd_fm_v).
+                en = np.asarray(en)
+                forward = raw(en, znu, sgnq * xi_nu)
+                blocking = sign * raw(-en, znu, -sgnq * xi_nu)
+                return np.where(en >= 0., forward, blocking)
 
             return moment
 

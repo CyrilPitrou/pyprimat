@@ -220,8 +220,7 @@ def render_reactions_panel(run):
     st.subheader(f"{len(reactions)} reactions")
     st.caption(
         "Full reaction set of the low-temperature solver. The MT era uses a "
-        "fixed 18-reaction subset of these. Sources are the `ref=` labels from "
-        "each rate table header; download the rate tables above."
+        "fixed 18-reaction subset of these."
     )
 
     # Content-sized HTML table with collapsed borders -> crisp grid lines and no
@@ -570,7 +569,11 @@ def render_evolution_panel(run):
                 line=dict(color=color, dash=_plotly_dash(linestyle)),
             ))
 
-    x_title = "Photon temperature T_γ [K]" if use_temperature else "Cosmic time t [s]"
+    # Plain unicode, not "$...$" LaTeX: st.plotly_chart doesn't load the
+    # MathJax script LaTeX rendering needs, so a "$...$" title would just
+    # show the literal dollar-quoted source instead of rendering -- matches
+    # the T_γ notation already used in the radio label above.
+    x_title = "T_γ [K]" if use_temperature else "Cosmic time t [s]"
     # Y-axis floor: large network has heavy isotopes with abundances as low as
     # ~1e-45, so we clip the range at 1e-50 to keep them visible; for the
     # light small/amax-restricted networks 1e-36 is sufficient and avoids blank space.
@@ -585,6 +588,11 @@ def render_evolution_panel(run):
         height=600,
         margin=dict(l=10, r=10, t=30, b=10),
     )
+    # "power" forces ticks like 10^3 instead of plotly's default mix of plain
+    # digits ("1000") and exponents -- the user wants powers of 10 explicit
+    # everywhere on this log axis.
+    fig.update_xaxes(exponentformat="power")
+    fig.update_yaxes(exponentformat="power")
     if use_temperature:
         # T_gamma decreases monotonically with cosmic time, so the natural
         # data order runs from high to low T; reverse the axis so time still

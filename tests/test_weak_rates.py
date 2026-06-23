@@ -7,6 +7,20 @@ from pyprimat.config import PyPRConfig
 from pyprimat.plasma import Plasma
 from pyprimat.neutrino_history import InstantaneousDecoupling, AnalyticDistortion
 import pyprimat.weak_rates as wr
+import pyprimat.weak_rates.corrections as corrections
+
+
+def test_corrections_all_names_exist():
+    """Every name in corrections.__all__ must resolve to a real attribute.
+
+    ``from .corrections import *`` (pyprimat/weak_rates/__init__.py) raises
+    ``AttributeError`` at import time -- i.e. ``import pyprimat`` itself
+    fails -- if ``__all__`` lists a name that was renamed/removed without
+    updating ``__all__`` to match. Catches that class of mistake directly
+    rather than relying on every refactor remembering to grep for it.
+    """
+    missing = [name for name in corrections.__all__ if not hasattr(corrections, name)]
+    assert not missing, f"corrections.__all__ lists missing names: {missing}"
 
 
 @pytest.fixture(scope="module")
@@ -429,6 +443,61 @@ def test_recomputed_rates_match_cached():
         for cached, fresh in ((r_cached.background.weak_nTOp_frwrd_raw, r_fresh.background.weak_nTOp_frwrd_raw),
                               (r_cached.background.weak_nTOp_bkwrd_raw, r_fresh.background.weak_nTOp_bkwrd_raw)):
             assert fresh(T_K) == pytest.approx(cached(T_K), rel=2e-3)
+
+
+@pytest.mark.slow
+def test_analytic_distortion_weak_rates_stay_fast():
+    """Guard against the SD-FM np.vectorize regression that made
+    analytic_distortions=True PyPR builds take ~17 s instead of ~1-2 s.
+
+    Root cause (now fixed): the SD-FM correction
+    (weak_rates.corrections._L_SD_FMCCR/_NoCCR, active whenever
+    spectral_distortions=True, analytic_distortions=True,
+    finite_mass_corrections=True) evaluated
+    neutrino_history.AnalyticDistortion's `_fd`/`dFDneu_func`/energy-moment
+    closures through `np.vectorize`, even though every one of them is built
+    from plain elementwise numpy arithmetic and only needed a scalar `if`
+    replaced by `np.where` to become natively array-vectorised -- np.vectorize
+    instead fell back to ~3.7e6 individual Python calls per build. This
+    combination is *never* cached (weak_rates.api.ComputeWeakRates's
+    `forced_recompute` bypasses the rates/weak/ cache whenever
+    spectral_distortions and analytic_distortions are both True, since
+    delta_xi_nu/y_SZ are continuous MCMC-scanned knobs), so every single
+    "Run BBN" with this flag combination pays this cost -- it must stay fast.
+
+    Builds a small-network PyPR once per case (first call absorbs any
+    one-time numba JIT compilation, so it isn't charged to the timing below)
+    then times a second, JIT-warm build; asserts it stays within a generous
+    multiple of the plain-default build time -- loose enough to tolerate
+    ordinary hardware/load variance, tight enough to catch a return of the
+    ~10x np.vectorize blow-up.
+    """
+    import time
+    from pyprimat import PyPR
+
+    baseline_params = {"network": "small"}
+    slow_cases = [
+        {"network": "small", "analytic_distortions": True, "incomplete_decoupling": False},
+        {"network": "small", "analytic_distortions": True, "incomplete_decoupling": False,
+         "delta_xi_nu": 0.05, "y_SZ": 0.1, "y_gray": 0.05},
+        {"network": "small", "analytic_distortions": True, "incomplete_decoupling": False,
+         "finite_mass_corrections": True, "radiative_corrections": False},
+    ]
+
+    def _timed_build(params):
+        PyPR(params=dict(params))  # warm-up: absorb one-time numba JIT compilation
+        t0 = time.perf_counter()
+        PyPR(params=dict(params))
+        return time.perf_counter() - t0
+
+    baseline = _timed_build(baseline_params)
+    for params in slow_cases:
+        elapsed = _timed_build(params)
+        budget = max(5.0, 8. * baseline)
+        assert elapsed < budget, (
+            f"weak-rate build for {params} took {elapsed:.2f}s "
+            f"(baseline {baseline:.2f}s, budget {budget:.2f}s) -- likely a "
+            "return of the np.vectorize SD-FM performance regression")
 
 
 def test_setup_fd_impls_rewraps_on_numba_installed_change():

@@ -62,9 +62,16 @@ class SessionKeys:
     show_manage_dialog = "_show_manage_dialog"
     btn_manage_networks = "_btn_manage_networks"
     manage_selected_network = "_manage_selected_network"
-    manage_load_upload = "_manage_load_upload"
+    manage_load_upload_gen = "_manage_load_upload_gen"
     manage_load_title = "_manage_load_title"
     manage_load_add = "_manage_load_add"
+
+    @staticmethod
+    def manage_load_upload(gen):
+        # Embeds a generation counter so bumping it remounts the
+        # file_uploader with a fresh empty widget (Streamlit does not let a
+        # file_uploader's selection be cleared by writing to session_state).
+        return f"_manage_load_upload_{gen}"
     manage_rename_open = "_manage_rename_open"
     manage_rename_input = "_manage_rename_input"
     manage_rename_apply = "_manage_rename_apply"
@@ -80,6 +87,10 @@ class SessionKeys:
     @staticmethod
     def manage_modify_btn(name):
         return f"_manage_modify_{name}"
+
+    @staticmethod
+    def manage_download_btn(name):
+        return f"_manage_download_{name}"
 
     # ---- "Create custom network" dialog: per-session, not per-reaction -----
     dialog_title = "_dialog_title"

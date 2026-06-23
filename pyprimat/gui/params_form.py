@@ -880,6 +880,20 @@ def _render_decay_category(names, decay_rates):
             _render_decay_row(name, decay_rates[name])
 
 
+def _render_rate_table_popover(name):
+    """Read-only viewer for one reaction's rate table.
+
+    Stays a ``st.popover`` (not ``st.dialog``) because every caller of
+    ``_render_reaction_row`` is already inside the "Create custom network"
+    ``st.dialog`` -- Streamlit forbids nesting a dialog inside another
+    dialog, so a dialog's built-in close "X" isn't an option here; the
+    click-outside-to-dismiss behaviour both widgets share is what we get.
+    """
+    with st.popover("Show rate table", use_container_width=True):
+        st.markdown(f"**{name}**")
+        st.code(_current_table_text(name), language=None)
+
+
 def _render_reaction_row(name):
     """One reaction's toggle + equation + rate-table picker + uploader."""
     keep_map = _DialogState().keep
@@ -922,8 +936,8 @@ def _render_reaction_row(name):
         # Fold/unfold: a second click on the same reaction folds the upload
         # region back up again, e.g. if the user changed their mind.
         st.session_state[show_uploader_key] = not st.session_state.get(show_uploader_key, False)
-    with cols[4].popover("Show rate table", use_container_width=True):
-        st.code(_current_table_text(name), language=None)
+    with cols[4]:
+        _render_rate_table_popover(name)
 
     if st.session_state.get(show_uploader_key, False):
         # Rendered on its own full-width line below the row (not squeezed
@@ -936,6 +950,7 @@ def _render_reaction_row(name):
                 custom_rates.parse_rate_upload(raw)
             except Exception as exc:
                 st.error(f"`{name}`: {exc}")
+                custom_rates.show_rate_format_help()
             else:
                 # "<name>_custom_<uploaded filename>" rather than the bare
                 # upload name, so the table-choice/"File" column unambiguously
@@ -1049,6 +1064,7 @@ def _render_add_rate_section(dialog_amax, all_entries):
                 custom_rates.parse_rate_upload(raw)
             except Exception as exc:
                 st.error(f"Rate table: {exc}")
+                custom_rates.show_rate_format_help()
                 return
             _DialogState().added[bare] = custom_rates.stamp_upload(bare, raw)
             _DialogState().keep[bare] = True
@@ -1331,8 +1347,26 @@ def _manage_networks_dialog(params):
     )
 
     if selected in known:
-        cols = st.columns([1, 1, 1, 2])
-        if cols[0].button("Modify", key=SessionKeys.manage_modify_btn(selected)):
+        entry = known[selected]
+        safe_title = _sanitize_filename(selected)
+        try:
+            zip_bytes = custom_rates.export_zip(
+                _cfg(), entry["custom_network"], entry["kept"], network_filename=safe_title)
+        except Exception:
+            zip_bytes = None
+
+        row1 = st.columns([1, 1])
+        row1[0].download_button(
+            "Download", data=zip_bytes or b"", disabled=zip_bytes is None,
+            file_name=f"{safe_title}.zip", mime="application/zip",
+            key=SessionKeys.manage_download_btn(selected), use_container_width=True,
+            help="Save this network as a re-importable .zip "
+                 "(networks/<title>.txt + tables/<name>/<filename> for "
+                 "every kept reaction) -- same format produced by "
+                 "\"Create new network\"'s own download button.",
+        )
+        if row1[1].button("Modify", key=SessionKeys.manage_modify_btn(selected),
+                           use_container_width=True):
             # Same hand-off as "Create new network" below, except the title
             # is preset to the network's own name -- so "Create this
             # network" there overwrites this entry in place instead of
@@ -1342,7 +1376,10 @@ def _manage_networks_dialog(params):
             st.session_state[SessionKeys.show_manage_dialog] = False
             st.session_state[SessionKeys.show_custom_dialog] = True
             st.rerun()
-        if cols[1].button("Remove", key=SessionKeys.manage_remove_btn(selected)):
+
+        row2 = st.columns([1, 1])
+        if row2[0].button("Remove", key=SessionKeys.manage_remove_btn(selected),
+                           use_container_width=True):
             known.pop(selected, None)
             active = st.session_state.get(SessionKeys.active_custom_network)
             if active and active["title"] == selected:
@@ -1362,7 +1399,8 @@ def _manage_networks_dialog(params):
             # here -- defer to the pending-preselect mechanism.
             st.session_state[SessionKeys.last_created_network] = "small"
             st.rerun()
-        if cols[2].button("Rename", key=SessionKeys.manage_rename_apply):
+        if row2[1].button("Rename", key=SessionKeys.manage_rename_apply,
+                           use_container_width=True):
             st.session_state[SessionKeys.manage_rename_open] = not st.session_state.get(
                 SessionKeys.manage_rename_open, False)
         if st.session_state.get(SessionKeys.manage_rename_open, False):
@@ -1408,7 +1446,8 @@ def _manage_networks_dialog(params):
 
     st.divider()
     st.markdown("**Load a network from file**")
-    fh = st.file_uploader("Custom network zip", type=["zip"], key=SessionKeys.manage_load_upload)
+    upload_gen = st.session_state.get(SessionKeys.manage_load_upload_gen, 0)
+    fh = st.file_uploader("Custom network zip", type=["zip"], key=SessionKeys.manage_load_upload(upload_gen))
     if fh is not None:
         parsed_title, builder = _load_zip_into_known(fh)
         if parsed_title is None:
@@ -1433,6 +1472,12 @@ def _manage_networks_dialog(params):
                 # Same already-instantiated-widget constraint as "Confirm
                 # rename" above -- defer to the pending-preselect mechanism.
                 st.session_state[SessionKeys.last_created_network] = new_title
+                # Bump the uploader's generation so the next render mounts a
+                # fresh (empty) file_uploader -- without this the just-loaded
+                # file and its title field would stay populated, hiding the
+                # uploader behind the title input it had already advanced to.
+                st.session_state[SessionKeys.manage_load_upload_gen] = upload_gen + 1
+                st.session_state.pop(SessionKeys.manage_load_title, None)
                 st.rerun()
 
     st.divider()
@@ -1488,6 +1533,29 @@ def render_sidebar_form():
     pending_network = st.session_state.pop(SessionKeys.pending_network_label, None)
     if pending_network is not None:
         st.session_state[SessionKeys.network] = pending_network
+
+    # Same constraint, applied the same way: analytic_distortions requires
+    # incomplete_decoupling=False (PyPRConfig enforces/validates this
+    # combination). Reconcile it here -- before either widget is
+    # instantiated below -- because Streamlit forbids setting
+    # st.session_state["incomplete_decoupling"] once that widget exists, and
+    # both keys already persist their *previous* run's value in
+    # st.session_state at this point even though neither widget has been
+    # (re)created yet this run.
+    if (st.session_state.get("analytic_distortions", DEFAULT_PARAMS["analytic_distortions"])
+            and st.session_state.get("incomplete_decoupling", DEFAULT_PARAMS["incomplete_decoupling"])):
+        st.session_state["incomplete_decoupling"] = False
+
+    # The opposite-direction constraint: spectral_distortions=True with
+    # analytic_distortions=False needs the full NEVO spectrum table, which
+    # only exists in non-instantaneous-decoupling mode (PyPRConfig raises
+    # ValueError otherwise -- see neutrino_history.py). Force
+    # incomplete_decoupling on here, before its widget is instantiated,
+    # rather than letting the user hit that ValueError on "Run BBN".
+    if (st.session_state.get("spectral_distortions", DEFAULT_PARAMS["spectral_distortions"])
+            and not st.session_state.get("analytic_distortions", DEFAULT_PARAMS["analytic_distortions"])
+            and not st.session_state.get("incomplete_decoupling", DEFAULT_PARAMS["incomplete_decoupling"])):
+        st.session_state["incomplete_decoupling"] = True
 
     params = {}
 
@@ -1580,6 +1648,20 @@ def render_sidebar_form():
                 value = _widget_for(key, label, help_text)
                 if value != DEFAULT_PARAMS[key]:
                     params[key] = value
+
+                if key == "analytic_distortions" and value and st.session_state.get(
+                        "incomplete_decoupling", DEFAULT_PARAMS["incomplete_decoupling"]):
+                    # The reconciliation already happened before this loop
+                    # started (see render_sidebar_form's top), so by the time
+                    # we get here incomplete_decoupling's widget should
+                    # already reflect False. If it still doesn't (e.g. the
+                    # user just flipped analytic_distortions on this very
+                    # run, after incomplete_decoupling's widget already
+                    # rendered earlier in this same pass), force a rerun so
+                    # the pre-loop reconciliation can take effect on the next
+                    # pass -- without touching the now-instantiated widget's
+                    # session_state directly, which Streamlit forbids.
+                    st.rerun()
 
             if group == "Nuclear reactions":
                 _render_network_management_button(params)
