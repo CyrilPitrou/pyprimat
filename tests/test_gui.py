@@ -348,10 +348,16 @@ def test_quick_mc_uncertainty_with_customised_network():
     assert "± 1σ (quick MC, 30 samples)" in ratios_md.value
 
 
-def test_invalid_flag_combination_surfaces_as_error_not_traceback():
+def test_spectral_distortions_forces_incomplete_decoupling_on():
     """spectral_distortions=True + incomplete_decoupling=False (with the
     default analytic_distortions=False) is rejected by `PyPRConfig.__init__`
-    (config.py); the GUI must show `st.error`, not crash."""
+    (config.py): the full NEVO spectrum table -- needed for spectral
+    distortions when analytic_distortions=False -- only exists in
+    non-instantaneous-decoupling mode. Rather than let the user hit that
+    ValueError on "Run BBN", `render_sidebar_form` (params_form.py) now
+    reconciles this automatically: ticking "Spectral distortions" with
+    "Incomplete decoupling" off forces the latter back on before either
+    widget is instantiated, so the run succeeds with no error at all."""
     at = AppTest.from_file(APP_PATH)
     at.run(timeout=60)
 
@@ -362,12 +368,10 @@ def test_invalid_flag_combination_surfaces_as_error_not_traceback():
     toggle("spectral_distortions").set_value(True)
     toggle("incomplete_decoupling").set_value(False)
     at.run(timeout=60)
+
+    assert toggle("incomplete_decoupling").value is True
+
     _run_bbn(at)
 
     assert not at.exception
-    # The same invalid flag combination now surfaces twice -- once from the
-    # Reactions summary tab's unsolved preview build (app._build_preview),
-    # once from the actual "Run BBN" solve below it -- both as a clean
-    # st.error, never a traceback.
-    assert len(at.error) == 2
-    assert all("incomplete_decoupling" in e.value for e in at.error)
+    assert not at.error

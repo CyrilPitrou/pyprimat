@@ -1504,6 +1504,23 @@ def _render_network_management_button(params):
         _custom_network_dialog(params)
 
 
+@st.dialog("Flag combination resolved automatically")
+def _explain_forced_flag_dialog(title, body):
+    """Modal explaining why ``render_sidebar_form`` just auto-corrected an
+    invalid analytic_distortions/spectral_distortions/incomplete_decoupling
+    combination (see its two call sites, right at the top of that function).
+
+    Called mid-script, before the sidebar's own widgets are instantiated --
+    not nested inside any other dialog at that point, so this is safe (an
+    ``st.dialog`` cannot nest inside another ``st.dialog``, see
+    ``_render_rate_table_popover``'s docstring for the case where it isn't).
+    """
+    st.markdown(f"**{title}**")
+    st.markdown(body)
+    if st.button("OK", type="primary"):
+        st.rerun()
+
+
 def render_sidebar_form():
     """Render the full parameter form in the Streamlit sidebar.
 
@@ -1545,6 +1562,13 @@ def render_sidebar_form():
     if (st.session_state.get("analytic_distortions", DEFAULT_PARAMS["analytic_distortions"])
             and st.session_state.get("incomplete_decoupling", DEFAULT_PARAMS["incomplete_decoupling"])):
         st.session_state["incomplete_decoupling"] = False
+        _explain_forced_flag_dialog(
+            "Incomplete decoupling turned off",
+            "**Analytic distortions** requires instantaneous-decoupling weak "
+            "rates (the analytic distortion model doesn't have a "
+            "non-instantaneous-decoupling counterpart), so **Incomplete "
+            "decoupling** has been turned off for you.",
+        )
 
     # The opposite-direction constraint: spectral_distortions=True with
     # analytic_distortions=False needs the full NEVO spectrum table, which
@@ -1556,6 +1580,13 @@ def render_sidebar_form():
             and not st.session_state.get("analytic_distortions", DEFAULT_PARAMS["analytic_distortions"])
             and not st.session_state.get("incomplete_decoupling", DEFAULT_PARAMS["incomplete_decoupling"])):
         st.session_state["incomplete_decoupling"] = True
+        _explain_forced_flag_dialog(
+            "Incomplete decoupling turned on",
+            "**Spectral distortions** without **Analytic distortions** "
+            "needs the full NEVO spectrum table, which only exists in "
+            "non-instantaneous-decoupling mode, so **Incomplete "
+            "decoupling** has been turned on for you.",
+        )
 
     params = {}
 

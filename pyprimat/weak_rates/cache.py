@@ -9,10 +9,15 @@ weak_rates.corrections (the CCRTh thermal-correction cache).  See
 weak_rates.api for the cache-file layout and invalidation policy.
 """
 
+import os
+
 import numpy as np
 
+from ..cache_utils import fingerprint_hash
+
 __all__ = ['WEAK_RATE_FORMAT_VERSION', '_WEAK_RATE_BG_FIELDS', '_THERMAL_BG_FIELDS',
-           'n_points_per_decade', '_thermal_fingerprint', '_weak_rate_fingerprint']
+           'n_points_per_decade', '_thermal_fingerprint', '_weak_rate_fingerprint',
+           'thermal_cache_exists']
 
 # ---------------------------------------------------------------------------
 # Fingerprinted cache for the n<->p weak-rate tables
@@ -123,6 +128,28 @@ def _thermal_fingerprint(cfg):
     for key in _THERMAL_BG_FIELDS:
         fp[key] = getattr(cfg, key)
     return fp
+
+
+def thermal_cache_exists(cfg):
+    """Whether ``cfg``'s CCRTh thermal-correction cache file is already on disk.
+
+    ``True`` means :func:`weak_rates.corrections._L_CCRTh_interpolants` will
+    load the fingerprinted ``nTOp_thermal_<hash>.txt`` file instead of
+    running its (multi-minute, vegas-based) Monte-Carlo integration --
+    callers that only need to know "is this about to be slow" (e.g. the GUI's
+    progress message in ``gui/app.py``) should check this rather than just
+    ``cfg.thermal_corrections``, since that flag alone says nothing about
+    whether a cache hit is coming.
+
+    Args:
+        cfg: PyPRConfig instance.
+
+    Returns:
+        bool.
+    """
+    path = os.path.join(cfg.data_dir, "rates", "weak",
+                         "nTOp_thermal_" + fingerprint_hash(_thermal_fingerprint(cfg)) + ".txt")
+    return os.path.exists(path)
 
 
 def _weak_rate_fingerprint(cfg):

@@ -310,10 +310,19 @@ def test_nevo_file_with_custom_copy_reproduces_default(tmp_path):
         # precision. rel=1e-4 is generous against that noise while still
         # catching a real regression (e.g. accidentally loading the wrong
         # file content, which would shift results at the percent level).
+        # save_nTOp=False/save_nTOp_thermal=False: weak_rate_cache=False alone
+        # forces a recompute but does NOT stop the result being written back
+        # to the tracked rates/weak/ cache files -- since vegas has no fixed
+        # seed, that recompute-and-overwrite would dirty the committed
+        # nTOp_thermal_<hash>.txt for the *default* fingerprint on every test
+        # run, and (for the custom-fingerprint run) leave a stray new cache
+        # file behind. Disable both so this test only reads, never writes.
         r_default = PyPR({"network": "small", "verbose": False,
-                           "weak_rate_cache": False}).PyPRresults()
+                           "weak_rate_cache": False,
+                           "save_nTOp": False, "save_nTOp_thermal": False}).PyPRresults()
         r_custom = PyPR({"network": "small", "verbose": False,
                           "weak_rate_cache": False,
+                          "save_nTOp": False, "save_nTOp_thermal": False,
                           "nevo_file": "NEVOPRIMAT_col_1_7_test_copy.csv"}).PyPRresults()
     finally:
         os.remove(dst)
@@ -367,10 +376,15 @@ def test_nevo_file_prefix_reproduces_default(tmp_path):
         fp1 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg1))
         assert fp0 != fp1
 
+        # See the matching comment in test_nevo_file_with_custom_copy_reproduces_default:
+        # save_nTOp=False/save_nTOp_thermal=False keep this test read-only
+        # w.r.t. the tracked rates/weak/ cache files.
         r_default = PyPR({"network": "small", "verbose": False,
-                           "weak_rate_cache": False}).PyPRresults()
+                           "weak_rate_cache": False,
+                           "save_nTOp": False, "save_nTOp_thermal": False}).PyPRresults()
         r_custom  = PyPR({"network": "small", "verbose": False,
                            "weak_rate_cache": False,
+                           "save_nTOp": False, "save_nTOp_thermal": False,
                            "nevo_file_prefix": "MYPREFIX"}).PyPRresults()
     finally:
         for _, dst_name in pairs:

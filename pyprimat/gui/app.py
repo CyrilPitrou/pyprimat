@@ -21,15 +21,19 @@ import json
 import os
 import tempfile
 import time
+import types
 
 import streamlit as st
 
 from pyprimat import PyPR
+from pyprimat.config import PyPRConfig
 from pyprimat.gui import panels
 from pyprimat.gui.params_form import render_sidebar_form
 from pyprimat.main import mc_uncertainty
 from pyprimat.gui.panels import _RATIO_FORMAT
 from pyprimat.gui.session_keys import SessionKeys
+from pyprimat.network_data import UpdateNuclearRates
+from pyprimat.weak_rates.cache import thermal_cache_exists
 
 
 st.set_page_config(
@@ -42,6 +46,15 @@ st.set_page_config(
 @st.cache_resource(show_spinner=False)
 def _solve(params_items):
     """Build a ``PyPR`` instance for ``params`` and solve the network.
+
+    Shows a "Computing weak rates…"/"Solving the BBN network…" progress
+    placeholder (created internally via ``st.empty()``, not passed in --
+    Streamlit forbids mutating, inside a cached function, a widget/element
+    created outside of it, since that mutation wouldn't replay on a cache
+    *hit*) so the user can tell which stage a (potentially many-second) run
+    is actually in, rather than staring at a single generic spinner. Cleared
+    again once the solve succeeds; left on screen if it raises, as a hint at
+    which stage failed.
 
     Parameters
     ----------
@@ -123,7 +136,28 @@ def _solve(params_items):
     os.close(fd_evo)
     fd_bg, tmp_bg = tempfile.mkstemp(suffix=".tsv", prefix="pyprimat_background_")
     os.close(fd_bg)
+    status = st.empty()
     try:
+        # PyPR.__init__ itself (before solve()) is where the n<->p weak
+        # rates get (re)computed -- see CLAUDE.md's "Execution flow" step 1
+        # -- so that's the message to show here, not "Solving...". When
+        # thermal_corrections is on AND its fingerprinted cache file isn't
+        # already on disk, that step also runs the CCRTh finite-temperature
+        # correction's vegas Monte Carlo integration -- by far the slowest
+        # part of the whole weak-rate computation -- so it's worth calling
+        # out explicitly. A cheap throwaway PyPRConfig (no rate loading) is
+        # enough to check thermal_cache_exists; ``PyPR`` below builds its
+        # own cfg from the same params regardless. Checking the cache
+        # rather than just ``cfg.thermal_corrections`` matters because that
+        # flag alone says nothing about whether a slow recompute is
+        # actually about to happen -- most of the time it's already cached
+        # and this step is fast.
+        note = "### Computing weak rates…"
+        preview_cfg = PyPRConfig(params)
+        if preview_cfg.thermal_corrections and not thermal_cache_exists(preview_cfg):
+            note += ("  \n*(includes finite-temperature thermal "
+                     "corrections — this can take a while)*")
+        status.markdown(note)
         run = PyPR(params=dict(params,
                                output_time_evolution=True,
                                output_file=tmp_evo,
@@ -131,6 +165,7 @@ def _solve(params_items):
                                output_background_file=tmp_bg,
                                **decay_extras),
                    custom_network=custom_network)
+        status.markdown("### Solving the BBN network…")
         run.solve()
         with open(tmp_evo) as f:
             time_evolution_tsv = f.read()
@@ -139,6 +174,7 @@ def _solve(params_items):
     finally:
         os.remove(tmp_evo)
         os.remove(tmp_bg)
+    status.empty()
     return run, time_evolution_tsv, background_tsv, time.time() - t0
 
 
@@ -212,17 +248,31 @@ def _quick_mc(params_items, num_mc, run):
 
 @st.cache_resource(show_spinner=False)
 def _build_preview(params_items):
-    """Construct (but do not ``solve()``) a ``PyPR`` for ``params_items``.
+    """Build just enough of a ``PyPR`` to back the Reactions summary tab.
 
-    Backs the Reactions summary tab, which must always reflect whatever the
-    sidebar currently shows -- even before "Run BBN" is first clicked, and
-    even after the sidebar has been changed since the last completed run.
-    ``PyPR.__init__`` alone (no ``solve()``) already builds the compiled
-    MT/LT networks and their rate tables (see ``CLAUDE.md``'s "Execution
-    flow"), which is all :func:`pyprimat.gui.panels.render_reactions_panel`
-    needs; skipping the (potentially many-second) ODE integration keeps this
-    cheap enough to rerun on every sidebar tweak. Cached the same way as
-    :func:`_solve` so repeatedly viewing the same configuration is instant.
+    That tab (:func:`pyprimat.gui.panels.render_reactions_panel` and
+    :func:`pyprimat.gui.panels._render_reaction_downloads`) only ever reads
+    ``run.cfg`` and ``run.nucl`` -- the compiled MT/LT networks and their
+    rate tables (see ``CLAUDE.md``'s "Execution flow", step 3). It never
+    touches ``run.background``/``run.nuclear``, so building a full ``PyPR``
+    here would needlessly also run step 4: constructing ``StandardBackground``,
+    which computes the n<->p weak rates. Those depend on most of the
+    "Physics" sidebar group (``radiative_corrections``, ``thermal_corrections``,
+    ``spectral_distortions``, ``analytic_distortions``, ...), so changing any
+    of them busts this function's ``st.cache_resource`` key and forces a full
+    weak-rate (re)computation, sometimes several seconds -- on *every* such
+    sidebar edit, even though this tab reflects only ``run.nucl`` and has
+    nothing to do with weak rates at all. Skipping straight to
+    ``PyPRConfig`` + ``UpdateNuclearRates`` (mirroring ``PyPR.__init__``'s
+    own steps 1+3, see ``main.py``) avoids that cost entirely; a
+    ``types.SimpleNamespace`` stands in for ``PyPR`` since only the two
+    attributes above are ever read off it.
+
+    This tab must always reflect whatever the sidebar currently shows --
+    even before "Run BBN" is first clicked, and even after the sidebar has
+    been changed since the last completed run -- so it cannot simply reuse
+    :func:`_solve`'s cached result. Cached the same way as :func:`_solve` so
+    repeatedly viewing the same configuration is instant.
 
     ``params_items`` is the same sorted-items encoding as :func:`_solve`'s
     (``params`` straight from ``render_sidebar_form``, which already embeds
@@ -232,7 +282,9 @@ def _build_preview(params_items):
     params = dict(params_items)
     custom_network_json = params.pop("custom_network", None)
     custom_network = json.loads(custom_network_json) if custom_network_json else None
-    return PyPR(params=params, custom_network=custom_network)
+    cfg = PyPRConfig(params)
+    nucl = UpdateNuclearRates(cfg, custom_network=custom_network)
+    return types.SimpleNamespace(cfg=cfg, nucl=nucl)
 
 
 def main():
@@ -354,12 +406,15 @@ def main():
     # dict never causes a spurious cache miss).
     params_items = tuple(sorted(stored_params.items()))
 
-    # A plain st.spinner(...) renders its message at normal body-text size;
-    # ``st.spinner``'s own text can't be styled, so the large-font message is
-    # a separate placeholder above it instead, cleared again once the solve
-    # (success or failure) is done.
-    status_placeholder = st.empty()
-    status_placeholder.markdown("### Solving the BBN network…")
+    # _solve advances its own large-font status placeholder through
+    # "Computing weak rates…"/"Solving the BBN network…" as it actually
+    # reaches each stage (see its docstring) -- it must create that
+    # placeholder itself rather than have it passed in from here: Streamlit
+    # forbids mutating, inside a `@st.cache_resource`-decorated function, a
+    # widget/element that was created outside of it (the mutation wouldn't
+    # replay on a cache hit, leaving the two inconsistent). A plain
+    # st.spinner(...) renders its own message at normal body-text size,
+    # hence the separate, larger placeholder for the stage text.
     try:
         with st.spinner(""):
             # `elapsed` comes back *from* _solve (timed inside the cached
@@ -376,11 +431,11 @@ def main():
         # flag combination, raising ValueError on bad input; nuclear_network
         # raises RuntimeError for internal-state misuse. Surface those as a
         # clean message rather than a traceback. Other exception types are
-        # genuine bugs and should propagate so they show up loudly.
-        status_placeholder.empty()
+        # genuine bugs and should propagate so they show up loudly. Whichever
+        # stage message _solve last showed is left on screen above this
+        # error -- a useful hint at which stage actually failed.
         st.error(f"PyPRIMAT run failed: {exc}")
         return
-    status_placeholder.empty()
 
     if run_clicked:
         # The "Run BBN" button's own disabled/shaded state (and the active
