@@ -1,0 +1,37 @@
+# Python (pyprimat) baseline timings for `make bench`'s comparison
+# (CPLAN.md S12), captured once on this machine via:
+#
+#   python3 -c "
+#   import time, sys; sys.path.insert(0, '.')
+#   from pyprimat import PyPR
+#   for net, kwargs in [('small', {'network':'small'}),
+#                       ('large_amax8', {'network':'large','amax':8})]:
+#       t0 = time.time()
+#       p = PyPR({**kwargs, 'verbose': False, 'debug': False})
+#       p.solve()
+#       print(net, time.time() - t0)
+#   "
+#
+# run from the repo root (so pyprimat/rates/ resolves), with the shipped
+# weak-rate/electron-thermo caches warm (a cold first run pays a one-time
+# ~0.7 s electron-thermo + cache-miss n<->p weak-rate cost on both sides
+# equally, so it is excluded here -- both timings below are cache-hit runs,
+# matching `make bench`'s own `./cprimat` calls).
+#
+# python_small_s            = 1.589
+# python_large_amax8_s      = 1.844
+#
+# CPRIMAT (this port) on the same machine, same cache state, `make bench`:
+#   cprimat_small_s         ~ 0.06   (~25x faster)
+#   cprimat_large_amax8_s   ~ 0.17   (~11x faster)
+#
+# (cprimat_small_s dropped from ~0.10 to ~0.06 after background.c's t(a)
+# ODE RHS was switched to a smooth cubic-spline T(a) lookup instead of the
+# public piecewise-linear cpr_bg_T_of_a -- see DtDlnaCtx's docstring in
+# background.c and tests/unit/test_nuclear_network.c's "Perf note".)
+#
+# Re-run both sides and update this file if either the reference physics
+# (CLAUDE.md's table) or the default numerical_precision/rate_grid_npts
+# changes enough to shift these by more than a rounding error.
+python_small_s = 1.589
+python_large_amax8_s = 1.844
