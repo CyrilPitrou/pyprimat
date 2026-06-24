@@ -11,7 +11,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-13, macos-14, windows-latest]
+        # ubuntu-latest/ubuntu-24.04-arm64 each build natively for their own
+        # arch (no QEMU emulation, which previously hung pulling the aarch64
+        # manylinux image cross-arch). macos-14 alone covers both macOS
+        # arches via Xcode cross-compilation -- macos-13 dropped as redundant.
+        os: [ubuntu-latest, ubuntu-24.04-arm64, macos-14, windows-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: pypa/cibuildwheel@v2.23
@@ -19,7 +23,7 @@ jobs:
           CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-*"
           CIBW_SKIP: "*-musllinux* pp*"          # skip PyPy + musl initially; add later if needed
           CIBW_ARCHS_MACOS: "x86_64 arm64"
-          CIBW_ARCHS_LINUX: "x86_64 aarch64"
+          CIBW_ARCHS_LINUX: "auto"               # native arch only; matrix provides both via separate runners
           CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
           CIBW_MANYLINUX_AARCH64_IMAGE: "manylinux_2_28"
           CIBW_ENVIRONMENT: "CFLAGS='-O2'"
