@@ -156,6 +156,8 @@ typedef struct {
     char *output_final_file;
     int output_background_evolution;
     char *output_background_file;
+    int output_mc_samples;
+    char *output_mc_file;
 
     /* ---- nuclear network ---- */
     char *rate_interp_order; /* "linear" | "quadratic" | "cubic" */

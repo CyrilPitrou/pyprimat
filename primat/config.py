@@ -189,6 +189,16 @@ DEFAULT_PARAMS: dict = {
     "output_background_evolution": False,
     "output_background_file":     "results/output_background.tsv",
 
+    # Writes a TSV (cfg.output_mc_file) with every Monte-Carlo sample drawn by
+    # backend.run_mc/main.mc_uncertainty: one column per requested quantity
+    # (nuclide final-Y names and/or result-dict observables), one row per
+    # sample. Has no effect by itself -- only the MC entry points write this
+    # file, never a plain solve() -- so it is opt-in plumbing for callers that
+    # want every sample on disk (e.g. for an external corner plot) rather than
+    # just the summary mean/std (see primat.backend.dump_mc_samples).
+    "output_mc_samples":           False,
+    "output_mc_file":              "results/output_mc_samples.tsv",
+
 
     # ---- nuclear network --------------------------------------------------
     "rate_interp_order":          "linear",   # interpolation of every nuclear rate table:

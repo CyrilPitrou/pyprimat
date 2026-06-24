@@ -463,6 +463,8 @@ class NuclearNetwork:
             H2            1.835287e-05
             ...
         """
+        from .backend import dump_final_with_sigma
+
         cfg  = self.cfg
         # Resolve relative paths against the current working directory (the
         # universal convention), same rule as output_file.
@@ -472,9 +474,7 @@ class NuclearNetwork:
             os.makedirs(out_dir, exist_ok=True)
         names = self.abundance_names
         with open(path, 'w') as f:
-            f.write(f"# {'nuclide':<12}Y\n")
-            for nm in names:
-                f.write(f"{nm:<14}{self.Y_final[nm]:.6e}\n")
+            f.write(dump_final_with_sigma(names, self.Y_final))
         # Always announce: this file is written only on explicit request
         # (output_final_result=True), so the user wants to know where it landed.
         print(f"[output] Final abundances ({len(names)} nuclides) written to {path}")

@@ -27,11 +27,12 @@ Python literal is kept as a plain string (e.g. ``--set network=large``).
 import argparse
 import ast
 import json
+import os
 import sys
 import time
 
 from . import PRIMAT, __version__
-from .backend import HAS_C_BACKEND, run_bbn
+from .backend import HAS_C_BACKEND, dump_mc_samples, run_bbn, run_mc
 from .cache_utils import clear_weak_cache, list_weak_cache_files
 from .config import PRIMATConfig
 
@@ -117,6 +118,30 @@ def _build_parser():
         help="Which solver implementation to use: 'auto' (default) picks the "
              "compiled C extension when available, 'c' forces it (error if "
              "unavailable), 'python' forces the pure-Python implementation.",
+    )
+    parser.add_argument(
+        "--mc", type=int, default=None, metavar="N",
+        help="Also run an N-sample Monte-Carlo nuclear-rate/tau_n uncertainty "
+             "propagation (primat.backend.run_mc) and print each observable "
+             "as 'value +/- sigma' instead of a bare value. Uses the C "
+             "backend when available (--backend auto/c), else joblib in "
+             "pure Python; see primat.backend's docstring for the RNG caveat.",
+    )
+    parser.add_argument(
+        "--mc-seed", type=int, default=0, metavar="SEED",
+        help="Base RNG seed for --mc (default: 0); sample i uses seed+i.",
+    )
+    parser.add_argument(
+        "--mc-jobs", type=int, default=-1, metavar="N",
+        help="Parallel worker count for --mc (default: -1, all CPUs; Python "
+             "backend only -- the C backend always uses one pthread per sample).",
+    )
+    parser.add_argument(
+        "--mc-output", default=None, metavar="FILE",
+        help="Write the --mc samples (one column per quantity, one row per "
+             "sample) to FILE as TSV. Without this flag, the samples file is "
+             "only written when output_mc_samples=True (--set "
+             "output_mc_samples=True), to output_mc_file.",
     )
     parser.add_argument(
         "--json", action="store_true",
@@ -207,23 +232,54 @@ def main(argv=None):
 
     start_time = time.time()
     results = run_bbn(params=params, force_backend=args.backend)
+    mc = None
+    if args.mc is not None:
+        mc = run_mc(args.mc, params=params, force_backend=args.backend,
+                    seed=args.mc_seed, n_jobs=args.mc_jobs)
     elapsed = time.time() - start_time
 
     if args.json:
-        print(json.dumps(results, indent=2))
+        out = dict(results)
+        if mc is not None:
+            out["mc"] = {q: {"central": mc[q].central, "mean": mc[q].mean,
+                              "std": mc[q].std, "values": list(mc[q].values)}
+                         for q in mc.quantity_names()}
+        print(json.dumps(out, indent=2))
     else:
-        print(f"Neff       = {results['Neff']:.8f}")
-        print(f"YP (BBN)   = {results['YPBBN']:.8f}")
-        print(f"YP (CMB)   = {results['YPCMB']:.8f}")
-        print(f"D/H        = {results['DoH']:.7e}")
-        print(f"He3/H      = {results['He3oH']:.7e}")
+        print(f"Neff       = {results['Neff']:.8f}" +
+              (f" +/- {mc['Neff'].std:.8f}" if mc is not None and "Neff" in mc.quantity_names() else ""))
+        print(f"YP (BBN)   = {results['YPBBN']:.8f}" +
+              (f" +/- {mc['YPBBN'].std:.8f}" if mc is not None and "YPBBN" in mc.quantity_names() else ""))
+        print(f"YP (CMB)   = {results['YPCMB']:.8f}" +
+              (f" +/- {mc['YPCMB'].std:.8f}" if mc is not None and "YPCMB" in mc.quantity_names() else ""))
+        print(f"D/H        = {results['DoH']:.7e}" +
+              (f" +/- {mc['DoH'].std:.7e}" if mc is not None and "DoH" in mc.quantity_names() else ""))
+        print(f"He3/H      = {results['He3oH']:.7e}" +
+              (f" +/- {mc['He3oH'].std:.7e}" if mc is not None and "He3oH" in mc.quantity_names() else ""))
         print(f"He3/He4    = {results['He3oHe4']:.7e}")
-        print(f"Li7/H      = {results['Li7oH']:.6e}")
+        print(f"Li7/H      = {results['Li7oH']:.6e}" +
+              (f" +/- {mc['Li7oH'].std:.6e}" if mc is not None and "Li7oH" in mc.quantity_names() else ""))
         if "Li6oLi7" in results:
             print(f"Li6/Li7    = {results['Li6oLi7']:.6e}")
         if "YCNO" in results:
             print(f"CNO (mass) = {results['YCNO']:.6e}")
+        if mc is not None:
+            print(f"--- Monte-Carlo: {args.mc} samples ---")
         print(f"--- running time: {elapsed:.2f} seconds ---")
+
+    if mc is not None:
+        mc_output_path = args.mc_output
+        if mc_output_path is None:
+            cfg_check = PRIMATConfig(params)
+            if cfg_check.output_mc_samples:
+                mc_output_path = cfg_check.output_mc_file
+        if mc_output_path:
+            out_dir = os.path.dirname(mc_output_path)
+            if out_dir:
+                os.makedirs(out_dir, exist_ok=True)
+            with open(mc_output_path, "w") as f:
+                f.write(dump_mc_samples(mc))
+            print(f"MC samples written to {mc_output_path}")
 
     return 0
 

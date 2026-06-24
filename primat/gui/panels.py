@@ -141,20 +141,41 @@ def render_results_panel(run, mc=None):
     st.markdown("\n".join(lines))
 
 
-def final_abundances_text(run):
+def final_abundances_text(run, mc=None):
     """Return the ``output_final.dat``-format text for every tracked nuclide.
 
-    Same two-column ``nuclide  Y`` format as ``PRIMAT._write_final_result``
-    (``output_final_result=True``), built from the in-memory results so that
-    flag is not needed just to export this table. ``Y`` is the final
-    mass-fraction abundance of every nuclide in ``run.abundance_names`` (8 /
-    ~59 for the large network, fewer with an amax cutoff).
+    Same two-/three-column format as ``PRIMAT._write_final_result``
+    (``output_final_result=True``), via :func:`primat.backend.dump_final_with_sigma`,
+    built from the in-memory results so that flag is not needed just to
+    export this table. ``Y`` is the final mass-fraction abundance of every
+    nuclide in ``run.abundance_names`` (8 / ~59 for the large network, fewer
+    with an amax cutoff).
+
+    Parameters
+    ----------
+    mc : primat.main.MCResult or None, optional
+        The cached "quick MC" result (see ``primat.gui.app._quick_mc``); when
+        given and a nuclide name is one of its quantities, a third
+        ``sigma_N<n>`` column is added for that nuclide (quick MC only covers
+        the standard ratios, not nuclide Y's, so in practice this column is
+        currently always empty for nuclides -- kept generic so it picks up
+        nuclide sigmas automatically if quick MC's quantity set ever grows).
     """
-    lines = [f"# {'nuclide':<12}Y"]
-    lines += [
-        f"{name:<14}{run.get_quantity(name):.6e}" for name in run.abundance_names
-    ]
-    return "\n".join(lines) + "\n"
+    from primat.backend import dump_final_with_sigma
+
+    names = run.abundance_names
+    Y = {name: run.get_quantity(name) for name in names}
+    if mc is None:
+        return dump_final_with_sigma(names, Y)
+    mc_names = set(mc.quantity_names())
+    sigma = {name: mc[name].std for name in names if name in mc_names}
+    num_mc = len(next(iter(mc._data.values())).values)
+    if not sigma:
+        return dump_final_with_sigma(names, Y)
+    # Nuclides outside quick MC's quantity set get a 0.0 placeholder sigma
+    # rather than being dropped, so every row keeps the same column count.
+    sigma = {name: sigma.get(name, 0.0) for name in names}
+    return dump_final_with_sigma(names, Y, sigma=sigma, num_mc=num_mc)
 
 
 # ---------------------------------------------------------------------------
@@ -329,7 +350,7 @@ def weak_rates_text(run):
     return "\n".join(lines)
 
 
-def render_downloads_panel(run):
+def render_downloads_panel(run, mc=None):
     """Render the Output tab: the standard, network-independent output files.
 
     Collects every file a user might want to export from a completed run in one
@@ -355,11 +376,20 @@ def render_downloads_panel(run):
     (:func:`_render_reaction_downloads`), visible immediately above the
     (potentially long) reaction list rather than tucked away in this tab.
 
+    * **output_mc_samples.tsv** -- every quick-MC sample drawn (one column per
+      quantity, one row per sample), via :func:`primat.backend.dump_mc_samples`
+      -- only offered when ``mc`` is given, i.e. a quick MC was actually run.
+
     Parameters
     ----------
     run : primat.PRIMAT
         An already-solved ``PRIMAT`` instance, with ``output_time_evolution=True``
         so that ``run.nuclear.evolution`` is populated.
+    mc : primat.main.MCResult or None, optional
+        The cached "quick MC" result (``primat.gui.app._quick_mc``), or
+        ``None`` if no quick MC has been run for this result -- in which case
+        no MC-samples download button is shown, and ``final_abundances_text``
+        falls back to its plain two-column form.
     """
     # Each file gets its own subsection title directly above its download
     # button (rather than a blanket "Output"/"Output files" header), stacked
@@ -373,9 +403,19 @@ def render_downloads_panel(run):
 
     _file_download(
         "Final abundances", "output_final.dat",
-        data=final_abundances_text(run), file_name="output_final.dat",
+        data=final_abundances_text(run, mc=mc), file_name="output_final.dat",
         mime="text/plain", key="dl_final",
     )
+    if mc is not None:
+        from primat.backend import dump_mc_samples
+
+        n_mc = len(next(iter(mc._data.values())).values)
+        _file_download(
+            "Quick MC samples", "output_mc_samples.tsv",
+            data=dump_mc_samples(mc), file_name="output_mc_samples.tsv",
+            mime="text/tab-separated-values", key="dl_mc_samples",
+            help=f"{n_mc} quick-MC samples, one column per quantity.",
+        )
     _file_download(
         "Abundances time evolution", "output_time_evolution.tsv",
         data=dump_evolution(run.nuclear.evolution), file_name="output_time_evolution.tsv",

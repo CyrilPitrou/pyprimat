@@ -266,6 +266,8 @@ static const FieldDesc FIELD_TABLE[] = {
     FLD(output_final_file, F_STRING),
     FLD(output_background_evolution, F_BOOL),
     FLD(output_background_file, F_STRING),
+    FLD(output_mc_samples, F_BOOL),
+    FLD(output_mc_file, F_STRING),
     FLD(rate_interp_order, F_STRING),
     FLD(rate_grid_npts, F_INT),
     FLD(rate_grid_T9_min, F_DOUBLE),
@@ -358,6 +360,8 @@ int cpr_config_init_defaults(CPRConfig *cfg, const char *rates_dir, char **errms
     cfg->output_final_file = cpr_strdup("results/output_final.dat");
     cfg->output_background_evolution = 0;
     cfg->output_background_file = cpr_strdup("results/output_background.tsv");
+    cfg->output_mc_samples = 0;
+    cfg->output_mc_file = cpr_strdup("results/output_mc_samples.tsv");
 
     cfg->rate_interp_order = cpr_strdup("linear");
     cfg->rate_grid_npts = 1000;

@@ -448,7 +448,7 @@ def main():
     with tab_evolution:
         panels.render_evolution_panel(run)
     with tab_downloads:
-        panels.render_downloads_panel(run)
+        panels.render_downloads_panel(run, mc=mc)
 
 
 def _render_footer():

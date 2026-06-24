@@ -29,14 +29,12 @@ from .background   import StandardBackground, CustomBackground
 from .nuclear_network import NuclearNetwork
 
 
-__version__ = "0.1.0"
-
 # Column order for abundance interpolators; names match PRIMATConfig.Nuclides keys
 _NUC_NAMES_SMALL = ["n", "p", "H2", "H3", "He3", "He4", "Li7", "Be7"]
 _NUC_NAMES_FULL  = ["n", "p", "H2", "H3", "He3", "He4", "Li7", "Be7",
                     "He6", "Li8", "Li6", "B8"]
 
-_BANNER = """
+_BANNER_TEMPLATE = """
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃                                                 ┃
 ┃   ░█▀█░█░█░█▀█░█▀▄░▀█▀░█▄█░█▀█░▀█▀              ┃
@@ -46,7 +44,20 @@ _BANNER = """
 ┃    Welcome to PyPRIMAT v{version} — Cyril Pitrou    ┃
 ┃                                                 ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-""".format(version=__version__)
+"""
+
+
+def _banner():
+    """Render the startup banner with the installed package version.
+
+    Reads ``primat.__version__`` lazily (rather than caching it at import
+    time in a module-level constant) so the banner always reflects the
+    version actually installed (``pyproject.toml``'s single source of
+    truth), even if it changes within a long-lived process (e.g. tests
+    reinstalling an editable checkout).
+    """
+    from . import __version__
+    return _BANNER_TEMPLATE.format(version=__version__)
 
 
 class PRIMAT:
@@ -162,7 +173,7 @@ class PRIMAT:
         self.A = {name: NZ[0] + NZ[1]   for name, NZ in cfg.Nuclides.items()}
 
         if cfg.verbose:
-            print(_BANNER)
+            print(_banner())
             for msg in cfg._init_messages:
                 print(msg)
             self._t0 = time.time()
@@ -525,6 +536,26 @@ class MCResult:
 
     def __getitem__(self, quantity):
         return self._data[quantity]
+
+    def quantity_names(self):
+        """Quantity names in their original (insertion) order.
+
+        Used by :func:`primat.backend.dump_mc_samples` as the column order
+        of the MC-samples TSV, so the header always matches the order the
+        caller requested -- regardless of whether this ``MCResult`` came
+        from the Python (`mc_uncertainty`) or C (`backend.run_mc`) path.
+        """
+        return list(self._data)
+
+    def samples_array(self):
+        """Stack every quantity's ``values`` into one ``(num_mc, n_quantity)``
+        array, columns in :meth:`quantity_names` order.
+
+        This is the backend-agnostic "common language" for MC samples: any
+        ``MCResult`` (Python or C in origin) can be serialised the same way
+        via :func:`primat.backend.dump_mc_samples`.
+        """
+        return np.column_stack([self._data[q].values for q in self.quantity_names()])
 
     def __iter__(self):
         return iter(self._data)

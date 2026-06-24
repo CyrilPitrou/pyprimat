@@ -22,6 +22,7 @@
 
 #include "cprimat/api.h"
 #include "cprimat/config.h"
+#include "cprimat/mc.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -273,12 +274,172 @@ static PyObject *primat_c_run_bbn(PyObject *self, PyObject *args)
     return d;
 }
 
+/* Converts a Python `params` dict into a CPRParamSet array suitable for
+ * cpr_mc_uncertainty's `base_params` (each worker thread re-applies these
+ * to its own CPRConfig -- see mc.c's worker_setup). Unlike run_bbn's
+ * streaming cpr_config_set_by_name loop, mc needs the (key, value) pairs
+ * collected up front since they are reused by every worker. `key`s point
+ * directly into the live `params` dict's str objects (valid for the
+ * lifetime of this call, no copy needed); CPR_STRING `value`s are
+ * strdup'd via py_to_cprparam and tracked in `*out_owned` for the caller
+ * to free after the cpr_mc_uncertainty call returns. Returns 0 on
+ * success, 1 (with a Python exception set, partial state already freed)
+ * on failure. */
+static int dict_to_paramset(PyObject *params, CPRParamSet **out_set,
+                             char ***out_owned, size_t *out_n)
+{
+    Py_ssize_t n = PyDict_Size(params);
+    CPRParamSet *set = malloc((size_t)n * sizeof(CPRParamSet));
+    char **owned = calloc((size_t)n, sizeof(char *));
+    if ((n > 0 && (!set || !owned))) {
+        free(set); free(owned);
+        PyErr_NoMemory();
+        return 1;
+    }
+
+    PyObject *key, *value;
+    Py_ssize_t pos = 0;
+    size_t idx = 0;
+    while (PyDict_Next(params, &pos, &key, &value)) {
+        if (!PyUnicode_Check(key)) {
+            PyErr_SetString(PyExc_TypeError, "params keys must be str");
+            goto fail;
+        }
+        const char *name = PyUnicode_AsUTF8(key);
+        if (!name) goto fail;
+
+        CPRParam p;
+        if (py_to_cprparam(value, &p, &owned[idx]))
+            goto fail;
+        set[idx].key = name;
+        set[idx].value = p;
+        idx++;
+    }
+
+    *out_set = set;
+    *out_owned = owned;
+    *out_n = (size_t)n;
+    return 0;
+
+fail:
+    for (size_t i = 0; i < (size_t)n; i++) free(owned[i]);
+    free(owned);
+    free(set);
+    return 1;
+}
+
+static PyObject *primat_c_run_mc(PyObject *self, PyObject *args, PyObject *kwargs)
+{
+    (void)self;
+    PyObject *params, *quantities_obj;
+    const char *data_dir;
+    int num_mc;
+    int seed = 0;
+    int n_jobs = -1;
+
+    static char *kwlist[] = {"params", "data_dir", "num_mc", "quantities",
+                              "seed", "n_jobs", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OsiO|ii", kwlist,
+                                      &params, &data_dir, &num_mc, &quantities_obj,
+                                      &seed, &n_jobs))
+        return NULL;
+    if (!PyDict_Check(params)) {
+        PyErr_SetString(PyExc_TypeError, "params must be a dict");
+        return NULL;
+    }
+    PyObject *quantities_seq = PySequence_Fast(quantities_obj,
+        "quantities must be a sequence of str");
+    if (!quantities_seq)
+        return NULL;
+    Py_ssize_t n_q = PySequence_Fast_GET_SIZE(quantities_seq);
+    const char **quantities = malloc((size_t)n_q * sizeof(char *));
+    if (n_q > 0 && !quantities) {
+        Py_DECREF(quantities_seq);
+        return PyErr_NoMemory();
+    }
+    for (Py_ssize_t i = 0; i < n_q; i++) {
+        PyObject *item = PySequence_Fast_GET_ITEM(quantities_seq, i);
+        if (!PyUnicode_Check(item)) {
+            PyErr_SetString(PyExc_TypeError, "quantities must be a sequence of str");
+            free(quantities);
+            Py_DECREF(quantities_seq);
+            return NULL;
+        }
+        quantities[i] = PyUnicode_AsUTF8(item);
+        if (!quantities[i]) {
+            free(quantities);
+            Py_DECREF(quantities_seq);
+            return NULL;
+        }
+    }
+
+    CPRParamSet *paramset = NULL;
+    char **owned = NULL;
+    size_t n_params = 0;
+    if (dict_to_paramset(params, &paramset, &owned, &n_params)) {
+        free(quantities);
+        Py_DECREF(quantities_seq);
+        return NULL;
+    }
+
+    CPRMCResult out;
+    char *errmsg = NULL;
+    int rc = cpr_mc_uncertainty(num_mc, quantities, (size_t)n_q, data_dir,
+                                 paramset, n_params, seed, n_jobs, &out, &errmsg);
+
+    for (size_t i = 0; i < n_params; i++) free(owned[i]);
+    free(owned);
+    free(paramset);
+    free(quantities);
+    Py_DECREF(quantities_seq);
+
+    if (rc) {
+        PyErr_Format(PyExc_RuntimeError, "cpr_mc_uncertainty failed: %s",
+                     errmsg ? errmsg : "(no message)");
+        free(errmsg);
+        return NULL;
+    }
+
+    PyObject *d = PyDict_New();
+    if (!d) { cpr_mc_result_free(&out); return NULL; }
+    for (size_t i = 0; i < out.n; i++) {
+        PyObject *item = PyDict_New();
+        PyObject *vals = NULL;
+        if (!item
+            || PyDict_SetItemString(item, "central", PyFloat_FromDouble(out.items[i].central)) < 0
+            || PyDict_SetItemString(item, "mean", PyFloat_FromDouble(out.items[i].mean)) < 0
+            || PyDict_SetItemString(item, "std", PyFloat_FromDouble(out.items[i].std)) < 0
+            || !(vals = doubles_to_list(out.items[i].values, (size_t)num_mc))
+            || PyDict_SetItemString(item, "values", vals) < 0
+            || PyDict_SetItemString(d, out.items[i].name, item) < 0) {
+            Py_XDECREF(vals);
+            Py_XDECREF(item);
+            Py_DECREF(d);
+            cpr_mc_result_free(&out);
+            return NULL;
+        }
+        Py_DECREF(vals);
+        Py_DECREF(item);
+    }
+    cpr_mc_result_free(&out);
+    return d;
+}
+
 static PyMethodDef primat_c_methods[] = {
     {"run_bbn", primat_c_run_bbn, METH_VARARGS,
      "run_bbn(params: dict, data_dir: str) -> dict\n\n"
      "Run one cprimat_run-equivalent BBN computation and return the result "
      "dict (same keys as primat.PRIMAT.solve()), plus a 'Y_final' sub-dict "
      "of every tracked nuclide's final mass fraction."},
+    {"run_mc", (PyCFunction)primat_c_run_mc, METH_VARARGS | METH_KEYWORDS,
+     "run_mc(params, data_dir, num_mc, quantities, seed=0, n_jobs=-1) -> dict\n\n"
+     "Run cpr_mc_uncertainty (primat-c/src/mc.c): num_mc threaded MC samples "
+     "of every quantity in `quantities` (result-dict key or nuclide name), "
+     "perturbing nuclear rates and tau_n. Returns {name: {central, mean, "
+     "std, values}}; values has length num_mc. Note: the C side uses a "
+     "pthread/xoshiro256** RNG, not NumPy's default_rng, so samples are "
+     "statistically but not bit-for-bit comparable to the Python backend's "
+     "mc_uncertainty (see mc.h)."},
     {NULL, NULL, 0, NULL}
 };
 
