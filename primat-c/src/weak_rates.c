@@ -14,7 +14,6 @@
 #include "cprimat/quad.h"
 
 #include <math.h>
-#include <complex.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -154,6 +153,46 @@ static double li2(double y)
 static double spence_real(double x) { return li2(1.0 - x); }
 
 /* ------------------------------------------------------------------------
+ * Minimal hand-rolled complex arithmetic (re,im pair), used only by
+ * clgamma below. We deliberately avoid C99's <complex.h>/_Complex: MSVC's
+ * C mode has no usable support for it (cl.exe rejects `double complex` and
+ * the I literal outright), which would break the Windows wheel build of
+ * this extension (PRIMAT.md S6.1's flagged MSVC risk) -- a handful of
+ * (re,im) struct ops is plenty for the one Lanczos/log-gamma routine that
+ * needs complex values at all.
+ * ------------------------------------------------------------------------ */
+
+typedef struct { double re, im; } CCplx;
+
+static CCplx cc(double re, double im) { CCplx z; z.re = re; z.im = im; return z; }
+static CCplx cc_add(CCplx a, CCplx b) { return cc(a.re + b.re, a.im + b.im); }
+static CCplx cc_sub(CCplx a, CCplx b) { return cc(a.re - b.re, a.im - b.im); }
+static CCplx cc_mul(CCplx a, CCplx b)
+{
+    return cc(a.re * b.re - a.im * b.im, a.re * b.im + a.im * b.re);
+}
+static CCplx cc_scale(double s, CCplx a) { return cc(s * a.re, s * a.im); }
+
+/* a / b for complex a, b. */
+static CCplx cc_div(CCplx a, CCplx b)
+{
+    double denom = b.re * b.re + b.im * b.im;
+    return cc((a.re * b.re + a.im * b.im) / denom,
+              (a.im * b.re - a.re * b.im) / denom);
+}
+
+/* Principal complex log: ln|z| + i*arg(z). */
+static CCplx cc_log(CCplx z)
+{
+    return cc(0.5 * log(z.re * z.re + z.im * z.im), atan2(z.im, z.re));
+}
+
+static CCplx cc_sin(CCplx z)
+{
+    return cc(sin(z.re) * cosh(z.im), cos(z.re) * sinh(z.im));
+}
+
+/* ------------------------------------------------------------------------
  * Complex log-Gamma function (Lanczos approximation, g=7, n=9 coefficients
  * -- the standard published set, e.g. Numerical Recipes / Boost), needed
  * for |Gamma(1+Gamma_rel + i*alpha/b)|^2 in FermiCoulomb. We work in log
@@ -173,7 +212,7 @@ static double spence_real(double x) { return li2(1.0 - x); }
  * call site.
  * ------------------------------------------------------------------------ */
 
-static double complex clgamma(double complex z)
+static CCplx clgamma(CCplx z)
 {
     static const double g = 7.0;
     static const double p[9] = {
@@ -181,15 +220,22 @@ static double complex clgamma(double complex z)
         771.32342877765313, -176.61502916214059, 12.507343278686905,
         -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7
     };
-    if (creal(z) < 0.5) {
-        const double pi = 3.14159265358979323846;
-        return clog(pi) - clog(csin(pi * z)) - clgamma(1.0 - z);
+    const double pi = 3.14159265358979323846;
+    if (z.re < 0.5) {
+        CCplx piz = cc_scale(pi, z);
+        CCplx one_minus_z = cc(1.0 - z.re, -z.im);
+        return cc_sub(cc_sub(cc(log(pi), 0.0), cc_log(cc_sin(piz))), clgamma(one_minus_z));
     }
-    z -= 1.0;
-    double complex x = p[0];
-    for (int i = 1; i < 9; i++) x += p[i] / (z + (double)i);
-    double complex t = z + g + 0.5;
-    return 0.5 * clog(2.0 * 3.14159265358979323846) + (z + 0.5) * clog(t) - t + clog(x);
+    z = cc(z.re - 1.0, z.im);
+    CCplx x = cc(p[0], 0.0);
+    for (int i = 1; i < 9; i++) x = cc_add(x, cc_div(cc(p[i], 0.0), cc(z.re + (double)i, z.im)));
+    CCplx t = cc(z.re + g + 0.5, z.im);
+    CCplx zp_half = cc(z.re + 0.5, z.im);
+    CCplx result = cc(0.5 * log(2.0 * pi), 0.0);
+    result = cc_add(result, cc_mul(zp_half, cc_log(t)));
+    result = cc_sub(result, t);
+    result = cc_add(result, cc_log(x));
+    return result;
 }
 
 /* ------------------------------------------------------------------------
@@ -214,10 +260,10 @@ double cpr_fermi_coulomb(double b, const CPRConfig *cfg)
     if (b < 1e-12) b = 1e-12;
     double y = g_const.alphaem / b;
 
-    double complex lg = clgamma(gamma1 + y * I);
+    CCplx lg = clgamma(cc(gamma1, y));
     /* exp(pi*y) * |Gamma(gamma1+iy)|^2, computed jointly (see comment above
      * clgamma) so the b->0 (y->infinity) limit stays a finite double. */
-    double sommerfeld = exp(M_PI * y + 2.0 * creal(lg));
+    double sommerfeld = exp(M_PI * y + 2.0 * lg.re);
 
     return (1.0 + Gamma / 2.0)
            * 4.0 * pow((2.0 * g_const.radproton * b) / Fn_Comp, 2.0 * Gamma)
