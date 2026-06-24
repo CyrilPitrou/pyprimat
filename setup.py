@@ -78,5 +78,7 @@ class optional_build_ext(build_ext):
 
 setup(
     ext_modules=ext_modules,
-    cmdclass={"build_ext": optional_build_ext},
+    # TEMPORARY: use standard build_ext so compilation errors show in CI logs.
+    # Revert to cmdclass={"build_ext": optional_build_ext} once the issue is fixed.
+    # cmdclass={"build_ext": optional_build_ext},
 )

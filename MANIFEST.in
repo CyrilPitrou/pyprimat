@@ -1,0 +1,4 @@
+# Include C source and header files needed to compile the _primat_c extension
+recursive-include primat-c/src *.c
+recursive-include primat-c/include *.h
+include primat/_primat_c/_wrapper.c
