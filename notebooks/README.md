@@ -4,9 +4,6 @@ This folder contains demonstration notebooks for PyPRIMAT.
 Each notebook is self-contained and can be run from this directory.
 Figures are saved to `plots/`.
 
-All notebooks were written by [Claude](https://claude.ai) (Anthropic)
-in collaboration with Cyril Pitrou.
-
 ---
 
 ## Notebooks
