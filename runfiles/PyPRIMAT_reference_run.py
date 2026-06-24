@@ -14,10 +14,10 @@ Key choices versus the standard run:
   - sampling_temperature_per_decade = 2000  (denser background grid)
   - numerical_precision = 1e-10  (tighter ODE tolerances)
   - rate_grid_npts = 4000  (denser nuclear-rate master grid; explicit so this
-    reference is decoupled from whatever PyPRConfig's routine-run default is)
+    reference is decoupled from whatever PRIMATConfig's routine-run default is)
   - sampling_nTOp_per_decade = 125  (denser n<->p rate tables)
   - These settings change the n<->p weak-rate fingerprint relative to the
-    shipped rates/weak/*.txt cache (see pyprimat.weak_rates), so the rates
+    shipped rates/weak/*.txt cache (see primat.weak_rates), so the rates
     are automatically recomputed from scratch (not loaded from the cache).
     The thermal corrections are loaded from the existing
     rates/weak/{n__p,pTOn}_thermal_corrections.txt regardless (their
@@ -38,7 +38,7 @@ _pyprimat_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if _pyprimat_path not in sys.path:
     sys.path.insert(0, _pyprimat_path)
 
-from pyprimat import PyPR
+from primat import PRIMAT
 
 # ---------------------------------------------------------------------------
 # Cosmological parameters (standard values)
@@ -71,7 +71,7 @@ MyOptions = {
     # Omegabh2
     "Omegabh2":                   omegabh2,
 
-    # nuclear_qed_corrections: left at its PyPRConfig default (True) -- the
+    # nuclear_qed_corrections: left at its PRIMATConfig default (True) -- the
     # reference values include the radiative-capture QED corrections
     # (Pitrou & Pospelov 2020).
 
@@ -92,7 +92,7 @@ def run_network(label, network, amax=None):
     extra = {"network": network}
     if amax is not None:
         extra["amax"] = amax
-    res = PyPR(params={**MyOptions, **extra}).PyPRresults()
+    res = PRIMAT(params={**MyOptions, **extra}).primat_results()
     elapsed = time.time() - t0
     print(" ")
     print(f" Neff               --> {res['Neff']}")

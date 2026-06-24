@@ -22,7 +22,7 @@ import subprocess
 import sys
 
 TABLES_DIR = os.path.join(
-    os.path.dirname(__file__), "..", "pyprimat", "rates", "nuclear", "tables"
+    os.path.dirname(__file__), "..", "primat", "rates", "nuclear", "tables"
 )
 
 # Known alternate-source suffixes that name a *sibling* table for an existing

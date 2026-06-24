@@ -35,8 +35,8 @@ All solve-based tests carry the ``slow`` marker.
 """
 import pytest
 import numpy as np
-from pyprimat.config import PyPRConfig
-from pyprimat.plasma import Plasma
+from primat.config import PRIMATConfig
+from primat.plasma import Plasma
 
 
 # ---------------------------------------------------------------------------
@@ -44,11 +44,11 @@ from pyprimat.plasma import Plasma
 # ---------------------------------------------------------------------------
 
 def _solve(incomplete_decoupling, QED_corrections):
-    from pyprimat.main import PyPR
-    return PyPR({
+    from primat.main import PRIMAT
+    return PRIMAT({
         "incomplete_decoupling": incomplete_decoupling,
         "QED_corrections":       QED_corrections,
-        # spectral_distortions=True (the PyPRConfig default)
+        # spectral_distortions=True (the PRIMATConfig default)
         # requires incomplete_decoupling=True (NEVO spectrum); this module's
         # 2x2 matrix exercises incomplete_decoupling=False too, and spectral
         # distortions are an independent axis covered by
@@ -68,7 +68,7 @@ class TestPlasmaNoQED:
 
     @pytest.fixture(autouse=True)
     def thermo(self):
-        return Plasma(PyPRConfig({"QED_corrections": False}))
+        return Plasma(PRIMATConfig({"QED_corrections": False}))
 
     def test_PQEDofT_is_zero(self, thermo):
         """QED interaction pressure P must vanish when QED_corrections=False."""
@@ -103,7 +103,7 @@ class TestPlasmaWithQED:
 
     @pytest.fixture(autouse=True)
     def thermo(self):
-        return Plasma(PyPRConfig({"QED_corrections": True}))
+        return Plasma(PRIMATConfig({"QED_corrections": True}))
 
     def test_PQEDofT_nonzero_at_MeV(self, thermo):
         """QED pressure correction is nonzero at T ~ m_e."""
@@ -128,10 +128,10 @@ class TestInstantaneousDecouplingRatio:
 
     def _sbar_ref_from_config(self, QED_corrections):
         """Reproduce the sbar_ref logic from main._setup_background_and_cosmo."""
-        # spectral_distortions=True (PyPRConfig default) requires
+        # spectral_distortions=True (PRIMATConfig default) requires
         # incomplete_decoupling=True; disable it here since this helper always
         # uses incomplete_decoupling=False (instantaneous-decoupling limit).
-        cfg = PyPRConfig({"QED_corrections": QED_corrections,
+        cfg = PRIMATConfig({"QED_corrections": QED_corrections,
                           "incomplete_decoupling": False,
                           "spectral_distortions": False})
         if QED_corrections:
@@ -153,7 +153,7 @@ class TestInstantaneousDecouplingRatio:
         """With QED corrections (Tγ/Tν)³ must equal the perturbative result
         11/4 − 25α/(8π) + 10α^{3/2} √(π/3) / π² (Dodelson & Turner 1992,
         Heckler 1994)."""
-        cfg = PyPRConfig()
+        cfg = PRIMATConfig()
         alpha = cfg.alphaem
         expected = (11.0/4.0
                     - 25.0*alpha / (8.0*np.pi)
@@ -262,16 +262,16 @@ def test_neff_qed_effect_smaller_than_decoupling_effect():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.slow  # incomplete_decoupling/QED_corrections != cache fingerprint
-                    # -> PyPR.__init__ recomputes the n<->p weak rates twice (~3 s)
+                    # -> PRIMAT.__init__ recomputes the n<->p weak rates twice (~3 s)
 def test_nevo_file_selection():
     """Verify that _setup_background_and_cosmo selects the correct NEVO file:
     the QED table for QED_corrections=True, the NoQED table otherwise.
     We check by inspecting the neutrino-temperature ratio T_νe/T_γ at a
     moderate temperature where the two tables differ noticeably."""
-    from pyprimat.main import PyPR
+    from primat.main import PRIMAT
 
-    inst_qed   = PyPR({"incomplete_decoupling": True, "QED_corrections": True})
-    inst_noqed = PyPR({"incomplete_decoupling": True, "QED_corrections": False})
+    inst_qed   = PRIMAT({"incomplete_decoupling": True, "QED_corrections": True})
+    inst_noqed = PRIMAT({"incomplete_decoupling": True, "QED_corrections": False})
 
     # At T_γ ~ 2 MeV the neutrino temperature starts to deviate from T_γ
     # as e+e- annihilations proceed.  The two NEVO tables give different
@@ -297,7 +297,7 @@ def test_nevo_file_selection():
 # "Nheating" time-evolution column: present only for a real NEVO heating
 # table (incomplete_decoupling=True), absent for the N=0 stub used by
 # InstantaneousDecoupling (see Background.has_heating_table /
-# PyPR._write_time_evolution).
+# PRIMAT._write_time_evolution).
 # ---------------------------------------------------------------------------
 
 @pytest.mark.slow
@@ -306,11 +306,11 @@ def test_has_heating_table_flag_tracks_incomplete_decoupling():
     """``background.has_heating_table`` mirrors ``cfg.incomplete_decoupling``:
     True selects NEVOTable (a real N(T_gamma) heating table), False selects
     InstantaneousDecoupling (the N=0 stub)."""
-    from pyprimat.main import PyPR
-    p_nevo = PyPR({"network": "small", "incomplete_decoupling": True})
-    # spectral_distortions=True (PyPRConfig default) requires
+    from primat.main import PRIMAT
+    p_nevo = PRIMAT({"network": "small", "incomplete_decoupling": True})
+    # spectral_distortions=True (PRIMATConfig default) requires
     # incomplete_decoupling=True; disable it for the instantaneous case.
-    p_inst = PyPR({"network": "small", "incomplete_decoupling": False,
+    p_inst = PRIMAT({"network": "small", "incomplete_decoupling": False,
                     "spectral_distortions": False})
     assert p_nevo.background.has_heating_table is True
     assert p_inst.background.has_heating_table is False
@@ -324,10 +324,10 @@ def test_nheating_column_present_only_with_heating_table(tmp_path):
     NEVO heating table is available), and omits it entirely when
     incomplete_decoupling=False (where it would just be a column of zeros
     from the InstantaneousDecoupling stub)."""
-    from pyprimat.main import PyPR
+    from primat.main import PRIMAT
 
     out_nevo = tmp_path / "nevo_background.tsv"
-    PyPR({
+    PRIMAT({
         "network": "small",
         "incomplete_decoupling": True,
         "output_background_evolution": True,
@@ -337,10 +337,10 @@ def test_nheating_column_present_only_with_heating_table(tmp_path):
     assert "Nheating" in header_nevo
 
     out_inst = tmp_path / "inst_background.tsv"
-    PyPR({
+    PRIMAT({
         "network": "small",
         "incomplete_decoupling": False,
-        # spectral_distortions=True (PyPRConfig default) requires
+        # spectral_distortions=True (PRIMATConfig default) requires
         # incomplete_decoupling=True; disable it for the instantaneous case.
         "spectral_distortions": False,
         "output_background_evolution": True,
@@ -362,11 +362,11 @@ def test_time_evolution_HT_era_abundances_are_zero_before_network_starts(tmp_pat
     ``NuclearNetwork._write_time_evolution``'s docstring). The columns must
     still be finite (the NEXT line, the first MT-era row, may legitimately
     still be 0/tiny for a heavy nuclide and is not checked here)."""
-    from pyprimat.main import PyPR
+    from primat.main import PRIMAT
     import numpy as np
 
     out_path = tmp_path / "evolution.tsv"
-    pr = PyPR({
+    pr = PRIMAT({
         "network": "small", "verbose": False,
         "output_time_evolution": True, "output_file": str(out_path),
     })

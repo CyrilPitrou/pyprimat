@@ -3,9 +3,9 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "PyPRIMAT"
-version = "0.2.0"
-description = "Python implementation of PRIMAT for precise Big Bang Nucleosynthesis computations"
+name = "primat"
+version = "0.3.0"
+description = "PRIMAT: precise Big Bang Nucleosynthesis computations, with a fast C backend and a pure-Python fallback"
 readme = "README.md"
 license = { file = "LICENCE" }
 authors = [
@@ -21,8 +21,8 @@ dependencies = [
 ]
 
 [project.scripts]
-pyprimat = "pyprimat.cli:main"
-pyprimat-gui = "pyprimat.gui.launcher:main"
+primat = "primat.cli:main"
+primat-gui = "primat.gui.launcher:main"
 
 [project.optional-dependencies]
 recommended = [
@@ -44,7 +44,7 @@ gui = [
 ]
 
 [tool.setuptools]
-packages = ["pyprimat", "pyprimat.gui"]
+packages = ["primat", "primat.gui", "primat.weak_rates"]
 
 [tool.setuptools.package-data]
-"pyprimat" = ["rates/**/*", "gui/.streamlit/*"]
+"primat" = ["rates/**/*", "gui/.streamlit/*"]

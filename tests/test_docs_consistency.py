@@ -1,6 +1,6 @@
 """Guard against README/CLAUDE.md documentation staling relative to the code.
 
-Both docs quote specific PyPRConfig defaults and specific
+Both docs quote specific PRIMATConfig defaults and specific
 runfiles/PyPRIMAT_reference_run.py parameter names/values (CLAUDE.md's
 "Validation before committing" section says references were produced with
 particular settings). Neither file is machine-checked by anything else, so a
@@ -14,14 +14,14 @@ import os
 
 import pytest
 
-from pyprimat.config import PyPRConfig
+from primat.config import PRIMATConfig
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
 
 def test_save_nTOp_defaults_match_readme():
     """README's n<->p weak-rate section states save_nTOp/save_nTOp_thermal default True."""
-    cfg = PyPRConfig()
+    cfg = PRIMATConfig()
     assert cfg.save_nTOp is True
     assert cfg.save_nTOp_thermal is True
 
@@ -73,14 +73,14 @@ def test_reference_run_params_match_claude_md(key, expected):
 
 
 def test_reference_run_params_are_known_to_config():
-    """Every MyOptions key must be a real PyPRConfig field (catches silent typos)."""
+    """Every MyOptions key must be a real PRIMATConfig field (catches silent typos)."""
     options = _reference_run_options()
     with _no_warning_context():
-        PyPRConfig(options)
+        PRIMATConfig(options)
 
 
 class _no_warning_context:
-    """Fail the test if PyPRConfig(options) emits an 'unknown parameter' warning."""
+    """Fail the test if PRIMATConfig(options) emits an 'unknown parameter' warning."""
 
     def __enter__(self):
         import warnings
@@ -92,4 +92,4 @@ class _no_warning_context:
     def __exit__(self, *exc):
         self._cw.__exit__(*exc)
         unknown = [r for r in self._records if "unknown parameter" in str(r.message)]
-        assert not unknown, f"PyPRConfig reported unknown keys: {unknown}"
+        assert not unknown, f"PRIMATConfig reported unknown keys: {unknown}"

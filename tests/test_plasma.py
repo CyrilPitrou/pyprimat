@@ -1,13 +1,13 @@
 """Tests for plasma thermodynamics functions."""
 import pytest
 import numpy as np
-from pyprimat.config import PyPRConfig
-from pyprimat.plasma import Plasma, rho_g, rho_nu
+from primat.config import PRIMATConfig
+from primat.plasma import Plasma, rho_g, rho_nu
 
 
 @pytest.fixture(scope="module")
 def thermo():
-    return Plasma(PyPRConfig())
+    return Plasma(PRIMATConfig())
 
 
 @pytest.mark.parametrize("T", [0.1, 1.0, 10.0])
@@ -80,17 +80,17 @@ def test_electron_thermo_cache_refreshed_on_fingerprint_mismatch():
     so this test does not leave the working tree dirty.
     """
     import os
-    from pyprimat.cache_utils import fingerprint_hash, read_cache_fingerprint_hash
-    from pyprimat.plasma import Plasma, ELECTRON_THERMO_FORMAT_VERSION
+    from primat.cache_utils import fingerprint_hash, read_cache_fingerprint_hash
+    from primat.plasma import Plasma, ELECTRON_THERMO_FORMAT_VERSION
 
-    cfg = PyPRConfig()
+    cfg = PRIMATConfig()
     cache_path = os.path.join(cfg.data_dir, "rates", "plasma",
                               "electron_thermo_cache.txt")
     before = open(cache_path, "rb").read()
 
     try:
         # Different fingerprint -> guaranteed recompute path inside Plasma.__init__.
-        cfg_alt = PyPRConfig({"T_start_cosmo_MeV": 100.0})
+        cfg_alt = PRIMATConfig({"T_start_cosmo_MeV": 100.0})
         Plasma(cfg_alt)
 
         expected_hash = fingerprint_hash({

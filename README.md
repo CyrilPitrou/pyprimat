@@ -1,20 +1,31 @@
-# PyPRIMAT
+# primat
 
-A Python implementation of the [PRIMAT](https://primat.org) package for precise Big Bang Nucleosynthesis (BBN) computations. It integrates coupled ODEs for the cosmological background (photon/neutrino temperatures, scale factor) and a nuclear reaction network to predict primordial abundances of H, D, He3, He4, Li7, and heavier nuclides.
+A precise Big Bang Nucleosynthesis (BBN) solver. It integrates coupled ODEs
+for the cosmological background (photon/neutrino temperatures, scale factor)
+and a nuclear reaction network to predict primordial abundances of H, D,
+He3, He4, Li7, and heavier nuclides.
 
-## Three ways to use PyPRIMAT
+`primat` ships two interchangeable backends: a pure-Python implementation
+(`primat/`, the one this README documents) and a standalone C99 port
+(`primat-c/`, built independently via `make`) intended for speed-critical use
+(MCMC loops, large-scale parameter scans). The two backends are kept
+numerically in sync and are converging on a shared CLI/output-format
+contract; wiring the C engine into the `primat` Python package as a
+selectable `--backend` is in progress (see `PRIMAT.md`).
 
-PyPRIMAT can be driven in three equivalent ways — all three build the same
-``params`` dict and call ``PyPR(params=params).PyPRresults()``, so they
+## Three ways to use primat
+
+primat can be driven in three equivalent ways — all three build the same
+``params`` dict and call ``PRIMAT(params=params).primat_results()``, so they
 always agree on results for the same configuration:
 
-1. **As a Python library** — `from pyprimat import PyPR` in a script or
+1. **As a Python library** — `from primat import PRIMAT` in a script or
    notebook (see [Quick start](#quick-start)). The most flexible option:
-   the full `pyprimat.config.DEFAULT_PARAMS` surface is available.
-2. **The `pyprimat` command-line tool** — a quick one-liner for the most
-   commonly varied parameters, e.g. `pyprimat --Omegabh2 0.02242 --network
+   the full `primat.config.DEFAULT_PARAMS` surface is available.
+2. **The `primat` command-line tool** — a quick one-liner for the most
+   commonly varied parameters, e.g. `primat --Omegabh2 0.02242 --network
    large --amax 8` (see [Command-line interface](#command-line-interface)).
-3. **The `pyprimat-gui` graphical interface** — a browser-based app with a
+3. **The `primat-gui` graphical interface** — a browser-based app with a
    grouped parameter form, an interactive abundance-evolution plot, and a
    final-abundances/ratios panel (see [Graphical interface](#graphical-interface-gui)).
 
@@ -28,6 +39,9 @@ cd PyPRIMAT
 pip install -e .
 ```
 
+(Once published, a plain `pip install primat` will pull a pre-built wheel
+with the C backend already compiled — no local toolchain needed.)
+
 With optional dependencies for best performance:
 
 ```bash
@@ -40,7 +54,7 @@ pip install -e ".[recommended]"
 | `numba` | Recommended — JIT compilation gives ~5× speedup on rate kernels |
 | `vegas` | Recommended — Monte Carlo integration for thermal weak-rate corrections |
 
-For the graphical interface (`pyprimat-gui`), install the `gui` extra:
+For the graphical interface (`primat-gui`), install the `gui` extra:
 
 ```bash
 pip install -e ".[gui]"
@@ -48,8 +62,8 @@ pip install -e ".[gui]"
 
 | Package | Role |
 |---------|------|
-| `streamlit` | **Required for `pyprimat-gui`** — the web app framework |
-| `pandas` | **Required for `pyprimat-gui`** — final-abundance table |
+| `streamlit` | **Required for `primat-gui`** — the web app framework |
+| `pandas` | **Required for `primat-gui`** — final-abundance table |
 
 For the example notebooks under `notebooks/`, install the `notebooks` extra:
 
@@ -65,15 +79,15 @@ pip install -e ".[notebooks]"
 ## Quick start
 
 ```python
-from pyprimat import PyPR
+from primat import PRIMAT
 
-result = PyPR({"Omegabh2": 0.022425}).solve()
+result = PRIMAT({"Omegabh2": 0.022425}).solve()
 
 print(f"YP  (BBN) = {result['YPBBN']:.6f}")  # ~0.246915
 print(f"D/H = {result['DoH']:.5e}")          # ~2.43647e-05
 ```
 
-The constructor accepts an optional parameter dict that overrides any default in `pyprimat/config.py`. All keys are optional.
+The constructor accepts an optional parameter dict that overrides any default in `primat/config.py`. All keys are optional.
 
 ## Running the example scripts
 
@@ -87,12 +101,12 @@ python runfiles/PyPRIMAT_reference_run.py # High-precision reference run (~2 min
 
 ## Command-line interface
 
-The `pyprimat` console script wraps the same "build a `params` dict and call
-`PyPR`" pattern, exposing the most commonly varied options without writing
+The `primat` console script wraps the same "build a `params` dict and call
+`PRIMAT`" pattern, exposing the most commonly varied options without writing
 any Python:
 
 ```bash
-pyprimat --Omegabh2 0.02242 --network large --amax 8
+primat --Omegabh2 0.02242 --network large --amax 8
 ```
 
 ```
@@ -115,11 +129,11 @@ Li6/Li7    = 1.418945e-05
 | `--amax A` | Drop reactions involving any nuclide with mass number > A (integer >= 1); applies to any `--network` |
 | `--numerical_precision RTOL` | `solve_ivp` relative tolerance (default: 1e-7) |
 | `--json` | Print the full results dict as JSON instead of the short summary |
-| `--verbose` | Enable PyPRIMAT's internal progress messages (timings, cache hits, ...) |
+| `--verbose` | Enable primat's internal progress messages (timings, cache hits, ...) |
 
-Only flags you pass are forwarded to `PyPR`; anything else falls back to
-`pyprimat.config.DEFAULT_PARAMS`. For options not exposed as flags, write a
-short script that builds a `params` dict and calls `PyPR` directly (see
+Only flags you pass are forwarded to `PRIMAT`; anything else falls back to
+`primat.config.DEFAULT_PARAMS`. For options not exposed as flags, write a
+short script that builds a `params` dict and calls `PRIMAT` directly (see
 [Quick start](#quick-start)).
 
 ## Graphical interface (GUI)
@@ -128,15 +142,15 @@ After installing the `gui` extra (`pip install -e ".[gui]"`), launch the
 browser-based app with:
 
 ```bash
-pyprimat-gui
+primat-gui
 ```
 
 From a source checkout you can also run it directly with Streamlit:
 
 ```bash
-streamlit run pyprimat/gui/app.py
+streamlit run primat/gui/app.py
 # or
-python -m pyprimat.gui.launcher
+python -m primat.gui.launcher
 ```
 
 The app mirrors a single CLI/script run:
@@ -161,7 +175,7 @@ The app mirrors a single CLI/script run:
   x-axis.
 
 The GUI builds the same `params` dict and calls
-`PyPR(params=params).PyPRresults()` as the Python API and the `pyprimat` CLI,
+`PRIMAT(params=params).primat_results()` as the Python API and the `primat` CLI,
 so all three agree on results for the same configuration.
 
 ## Key parameters
@@ -192,7 +206,7 @@ Each file is tagged with a *fingerprint* header: a hash of every config field
 that affects its numeric content (background thermodynamics,
 `sampling_nTOp_per_decade`/`sampling_nTOp_thermal_per_decade`,
 `radiative_corrections`, `finite_mass_corrections`, `thermal_corrections`, etc.
-— see `pyprimat.weak_rates`). At every run:
+— see `primat.weak_rates`). At every run:
 
 - If `weak_rate_cache=True` (default) and a cache file's fingerprint matches the
   current configuration, the corresponding rates are loaded directly —
@@ -217,10 +231,10 @@ share the same configuration.
 # sampling_nTOp_per_decade gives a fingerprint that the shipped cache won't
 # match, so this recomputes; save_nTOp=True is the default but spelled out
 # here for clarity)
-PyPR({"save_nTOp": True, "sampling_nTOp_per_decade": 160}).solve()
+PRIMAT({"save_nTOp": True, "sampling_nTOp_per_decade": 160}).solve()
 
 # Step 2 – all subsequent runs with the same sampling_nTOp_per_decade reuse the saved tables
-PyPR({"sampling_nTOp_per_decade": 160}).solve()
+PRIMAT({"sampling_nTOp_per_decade": 160}).solve()
 ```
 
 ### Custom NEVO tables
@@ -237,6 +251,18 @@ construction time, and is included in the n↔p weak-rate cache fingerprint so
 a different table correctly triggers a recompute.
 
 Each nuclear reaction rate has a `p_<name>` parameter (e.g. `p_npTOdg`) for uncertainty propagation: setting it to a non-zero float samples the rate at `median × exp(p × σ)`.
+
+### Rates overlay (custom networks/tables without editing the install)
+
+`user_rates_dir` points at a directory with the same `nuclear/networks/`
+and/or `nuclear/tables/<name>/` layout as the shipped `rates/` tree; any
+network file or per-reaction table found there is used instead of the
+shipped one, while everything not overridden still falls back to the
+shipped default (an additive overlay, not a takeover). `rates_dir` instead
+fully replaces the shipped tree as the first lookup base (still falling
+back to the shipped tree as a last resort, so `small`/`large` never
+disappear). Both default to `None` and are validated as existing
+directories at construction time.
 
 ## Output
 
@@ -266,9 +292,9 @@ note) for `network="large"`.
 ## Architecture
 
 ```
-pyprimat/                    Core package
-  config.py              PyPRConfig: all physical constants + run-time flags
-  main.py                PyPR: top-level driver
+primat/                    Core package
+  config.py              PRIMATConfig: all physical constants + run-time flags
+  main.py                PRIMAT: top-level driver
   plasma.py              Plasma thermodynamics (QED corrections, neutrino bath)
   qed_pressure.py        Analytical QED plasma-pressure corrections
   network_data.py        Nuclear network related functions
@@ -288,6 +314,10 @@ rates/
 generate_rates/    Offline one-off generator (run only to refresh the
                          rate/network data from AC2024 + PRIMAT-main.m + NUBASE):
                            python generate_rates/convert_ac2024_rates.py
+
+primat-c/          Standalone C99 port of the same solver (independent `make`
+                         build, see primat-c/Makefile), kept numerically in
+                         sync with this Python implementation
 ```
 
 ### Networks
@@ -314,7 +344,7 @@ evolution plots.
 
 ### Custom networks (GUI)
 
-The `pyprimat-gui` sidebar's "Nuclear reactions" group offers **"Create
+The `primat-gui` sidebar's "Nuclear reactions" group offers **"Create
 custom network"** (a popup to start from any named network, toggle reactions
 in/out by mass-number category, and substitute or upload alternate rate
 tables) and **"Import custom network"** (re-load a previously saved
@@ -322,7 +352,7 @@ tables) and **"Import custom network"** (re-load a previously saved
 
 ## Cobaya / MCMC interface
 
-A wrapper for PyPRIMAT is available for use
+A wrapper for primat is available for use
 with [Cobaya](https://cobaya.readthedocs.io), allowing BBN to be embedded directly
 in MCMC analyses of CMB or other cosmological data.  The wrapper exposes
 `Omegabh2`, `DeltaNeff`, and the nuclear-rate uncertainty parameters as Cobaya
@@ -331,7 +361,7 @@ etc.) for use in a likelihood.
 
 ## Citation
 
-If you use PyPRIMAT please cite:
+If you use primat please cite:
 
 > Pitrou, Coc, Uzan, Vangioni, *Physics Reports* **754** (2018) 1–67.  
 > [doi:10.1016/j.physrep.2018.04.005](https://doi.org/10.1016/j.physrep.2018.04.005)

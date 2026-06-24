@@ -103,10 +103,10 @@ def _load_nuclides_csv():
 
 @_needs_ac2024
 def test_nuclides_csv_agrees_with_pyprimat_hardcoded_table():
-    """Every nuclide in PyPRConfig.Nuclides must appear in nuclides.csv with the
+    """Every nuclide in PRIMATConfig.Nuclides must appear in nuclides.csv with the
     same (N, Z) -- the generated table is a superset of the hard-coded one."""
-    from pyprimat.config import PyPRConfig
-    cfg = PyPRConfig()
+    from primat.config import PRIMATConfig
+    cfg = PRIMATConfig()
     nuc = _load_nuclides_csv()
     # Check the key ones used in Speciess_Small
     for name in ["n", "p", "H2", "H3", "He3", "He4", "Li7", "Be7"]:
@@ -138,13 +138,13 @@ def test_reaction_list_is_superset_of_known_networks():
     """The deduced large list must contain every reaction of the 12-key and
     68-reaction (large, amax=8 -- the old "medium" network's exact
     equivalent) networks (matched by their <reactants>TO<products> file name)."""
-    from pyprimat.config import PyPRConfig
-    from pyprimat.network_data import to_filename, _KEY12_REACTIONS, load_network
+    from primat.config import PRIMATConfig
+    from primat.network_data import to_filename, _KEY12_REACTIONS, load_network
     names = {r["name"] for r in _load_reactions_csv()}
     for compact in _KEY12_REACTIONS:
         name = compact if 'TO' in compact else to_filename(compact)
         assert name in names, f"{compact} missing from large list"
-    amax8_names = load_network(PyPRConfig({"network": "large", "amax": 8}),
+    amax8_names = load_network(PRIMATConfig({"network": "large", "amax": 8}),
                                era="LT").names
     for compact in amax8_names:
         if compact == "n__p":
@@ -169,9 +169,9 @@ def test_detailed_balance_formula_consistency():
     """alpha,beta,gamma computed from nuclide data must reproduce the
     values in detailed_balance.csv: beta exactly,
     alpha and gamma to better than 1% (the documented detailed-balance accuracy)."""
-    from pyprimat.config import PyPRConfig
-    from pyprimat.network_data import compute_detailed_balance_coefficients, reaction_species
-    cfg = PyPRConfig()
+    from primat.config import PRIMATConfig
+    from primat.network_data import compute_detailed_balance_coefficients, reaction_species
+    cfg = PRIMATConfig()
     with open(os.path.join(_AC2024_DIR, "detailed_balance.csv")) as f:
         db_rows = list(csv.DictReader(f))
     

@@ -1,9 +1,9 @@
 
 import pytest
 import numpy as np
-from pyprimat.main import PyPR
+from primat.main import PRIMAT
 
-# Each test below runs two full PyPR().solve() calls with
+# Each test below runs two full PRIMAT().solve() calls with
 # spectral_distortions on/off (a fingerprint mismatch against the shipped
 # weak-rate cache also triggers a recompute) -- "solve" tier.
 pytestmark = [pytest.mark.slow, pytest.mark.solve]
@@ -19,12 +19,12 @@ def test_spectral_distortions_effect():
         "spectral_distortions": False,
         "verbose": False,
     }
-    pr_base = PyPR(params_base)
+    pr_base = PRIMAT(params_base)
     res_base = pr_base.solve()
     
     params_spec = params_base.copy()
     params_spec["spectral_distortions"] = True
-    pr_spec = PyPR(params_spec)
+    pr_spec = PRIMAT(params_spec)
     res_spec = pr_spec.solve()
     
     # Relative difference should be around 0.02% with the current implementation
@@ -43,12 +43,12 @@ def test_spectral_distortions_Neff():
         "incomplete_decoupling": True,
         "spectral_distortions": False,
     }
-    pr_base = PyPR(params_base)
+    pr_base = PRIMAT(params_base)
     res_base = pr_base.solve()
 
     params_spec = params_base.copy()
     params_spec["spectral_distortions"] = True
-    pr_spec = PyPR(params_spec)
+    pr_spec = PRIMAT(params_spec)
     res_spec = pr_spec.solve()
 
     # Neff is determined by the background solve, which is the same
@@ -80,12 +80,12 @@ def test_ytype_distortion_shifts_Neff():
         "spectral_distortions": False,
         "verbose": False,
     }
-    res_base = PyPR(params_base).solve()
+    res_base = PRIMAT(params_base).solve()
 
     y_sz = 0.01
     params_spec = dict(params_base, spectral_distortions=True,
                         analytic_distortions=True, y_SZ=y_sz)
-    pr_spec = PyPR(params_spec)
+    pr_spec = PRIMAT(params_spec)
     res_spec = pr_spec.solve()
 
     diff = res_spec['Neff'] - res_base['Neff']
@@ -125,12 +125,12 @@ def test_gray_distortion_shifts_Neff():
         "spectral_distortions": False,
         "verbose": False,
     }
-    res_base = PyPR(params_base).solve()
+    res_base = PRIMAT(params_base).solve()
 
     y_gray = 0.05
     params_spec = dict(params_base, spectral_distortions=True,
                         analytic_distortions=True, y_gray=y_gray)
-    pr_spec = PyPR(params_spec)
+    pr_spec = PRIMAT(params_spec)
     res_spec = pr_spec.solve()
 
     diff = res_spec['Neff'] - res_base['Neff']
@@ -164,7 +164,7 @@ def test_genuine_chemical_potential_shifts_rates_and_energy():
        shift to ~1e-7, and is O(xi^2) (positive for either sign of xi).
     """
     import numpy as np
-    from pyprimat.plasma import rho_nu_chempot_excess
+    from primat.plasma import rho_nu_chempot_excess
 
     xi = 0.05
     common = {
@@ -177,8 +177,8 @@ def test_genuine_chemical_potential_shifts_rates_and_energy():
         "spectral_distortions": False,
         "verbose": False,
     }
-    res_base = PyPR(dict(common)).solve()
-    pr_gen = PyPR(dict(common, munuOverTnu=xi))
+    res_base = PRIMAT(dict(common)).solve()
+    pr_gen = PRIMAT(dict(common, munuOverTnu=xi))
     res_gen = pr_gen.solve()
 
     # (1) Weak-rate effect on YP: large, of order -xi (n/p equilibrium shift).
@@ -208,9 +208,9 @@ def test_chemical_potential_neff_is_even_in_sign():
         "incomplete_decoupling": False, "thermal_corrections": False,
         "spectral_distortions": False, "verbose": False,
     }
-    res_p = PyPR(dict(common, munuOverTnu=0.03)).solve()
-    res_m = PyPR(dict(common, munuOverTnu=-0.03)).solve()
-    res_0 = PyPR(dict(common)).solve()
+    res_p = PRIMAT(dict(common, munuOverTnu=0.03)).solve()
+    res_m = PRIMAT(dict(common, munuOverTnu=-0.03)).solve()
+    res_0 = PRIMAT(dict(common)).solve()
     # Neff shift identical for +/- xi (even in xi):
     assert (res_p['Neff'] - res_0['Neff']) == pytest.approx(
         res_m['Neff'] - res_0['Neff'], rel=1e-6)
@@ -239,10 +239,10 @@ def test_finite_mass_corrections_change_SD_FM_contribution():
         "finite_mass_corrections": True,
         "verbose": False,
     }
-    res_fm_on = PyPR(params_fm_on).solve()
+    res_fm_on = PRIMAT(params_fm_on).solve()
 
     params_fm_off = dict(params_fm_on, finite_mass_corrections=False)
-    res_fm_off = PyPR(params_fm_off).solve()
+    res_fm_off = PRIMAT(params_fm_off).solve()
 
     diff = abs(res_fm_on['DoH'] - res_fm_off['DoH']) / res_fm_off['DoH']
     # Toggling finite_mass_corrections here also flips the plain-FD FMCCR

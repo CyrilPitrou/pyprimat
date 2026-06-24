@@ -13,8 +13,8 @@ package is installed as a *wheel* into ``site-packages`` -- a different
 directory layout entirely.  Building the wheel also exercises the
 ``[tool.setuptools.package-data]`` declaration in ``pyproject.toml``: if a
 required file under ``rates/`` were ever excluded, the import would still
-succeed but ``PyPR(...).solve()`` would fail with a ``FileNotFoundError``
-deep inside ``pyprimat.network_data``/``pyprimat.weak_rates``.
+succeed but ``PRIMAT(...).solve()`` would fail with a ``FileNotFoundError``
+deep inside ``primat.network_data``/``primat.weak_rates``.
 
 The venv is created with ``--system-site-packages`` so the already-installed
 numpy/scipy/joblib (and any optional numba/vegas) are reused --
@@ -50,9 +50,9 @@ def test_wheel_install_smoke_solve():
 
     A failure here most likely means ``rates/`` data files are missing from
     the wheel, or a path is computed relative to the source tree instead of
-    the installed package (``pyprimat.config.PyPRConfig.data_dir``).
+    the installed package (``primat.config.PRIMATConfig.data_dir``).
     """
-    with tempfile.TemporaryDirectory(prefix="pyprimat_wheel_") as tmp:
+    with tempfile.TemporaryDirectory(prefix="primat_wheel_") as tmp:
         tmp_path = Path(tmp)
         wheel_dir = tmp_path / "wheel"
         venv_dir  = tmp_path / "venv"
@@ -86,8 +86,8 @@ def test_wheel_install_smoke_solve():
         #    defaults to False, so this does not write into site-packages.
         # ------------------------------------------------------------
         smoke_script = (
-            "from pyprimat import PyPR\n"
-            "r = PyPR({'network': 'small', 'verbose': False, 'debug': False}).solve()\n"
+            "from primat import PRIMAT\n"
+            "r = PRIMAT({'network': 'small', 'verbose': False, 'debug': False}).solve()\n"
             "print(r['YPBBN'], r['DoH'])\n"
         )
         result = subprocess.run(

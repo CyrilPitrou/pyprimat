@@ -24,8 +24,8 @@ the repeat.
 """
 import pytest
 
-from pyprimat.config import PyPRConfig
-from pyprimat.network_data import load_network, reaction_stoichiometry
+from primat.config import PRIMATConfig
+from primat.network_data import load_network, reaction_stoichiometry
 
 
 def test_auto_derived_stoichiometry_for_unknown_reaction():
@@ -41,7 +41,7 @@ def test_auto_derived_stoichiometry_conserves_A_and_Z():
     """The A/Z totals of the auto-derived reactants and products agree, using
     the same nuclide (N, Z) data as check_conservation: p+p (A=2, Z=2) vs
     d + e+ (A=2, Z=1+1=2)."""
-    from pyprimat.network_data import _reaction_catalog, _default_data_dir, _LEPTON_Z
+    from primat.network_data import _reaction_catalog, _default_data_dir, _LEPTON_Z
     _, _, _, nuc_NZ, _, _ = _reaction_catalog(_default_data_dir())
 
     def totals(counts):
@@ -78,7 +78,7 @@ def test_duplicate_reaction_entry_raises_value_error():
     """A network reaction list containing the same entry twice raises
     ValueError naming the duplicated entry, instead of silently dropping or
     double-counting it."""
-    cfg = PyPRConfig({"network": "small", "verbose": False})
+    cfg = PRIMATConfig({"network": "small", "verbose": False})
     with pytest.raises(ValueError, match="n_p__d_g.*already present"):
         load_network(cfg, era="LT",
                       reaction_names=["n_p__d_g", "n_p__d_g", "d_d__He3_n"])

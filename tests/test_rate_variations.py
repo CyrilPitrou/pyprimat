@@ -14,14 +14,14 @@ lives in ``test_config.py`` where it logically belongs.
 import numpy as np
 import pytest
 
-from pyprimat import PyPR, mc_uncertainty
+from primat import PRIMAT, mc_uncertainty
 
 
 @pytest.mark.slow
 @pytest.mark.solve
 def test_solve_variation():
     """Varying p_n_p__d_g shifts D/H; reverting p=0 restores the baseline."""
-    inst = PyPR(params={"network": "small", "verbose": False})
+    inst = PRIMAT(params={"network": "small", "verbose": False})
     res0 = inst.solve()
     dh0  = res0["DoH"]
 

@@ -189,22 +189,22 @@ def conservation_residual(reactants, products):
 
 
 # ---------------------------------------------------------------------------
-# Detailed balance (same physics as pyprimat.network_data.compute_detailed_
+# Detailed balance (same physics as primat.network_data.compute_detailed_
 # balance_coefficients, reimplemented standalone here so this offline
-# generator has no runtime dependency on a live PyPRConfig instance)
+# generator has no runtime dependency on a live PRIMATConfig instance)
 # ---------------------------------------------------------------------------
 class _DBConfig:
-    """Minimal stand-in for ``PyPRConfig`` exposing exactly what
+    """Minimal stand-in for ``PRIMATConfig`` exposing exactly what
     :func:`nuclear_data.detailed_balance` reads: the nuclide property dicts
     (built here for the *whole* large network) and the fundamental constants
-    (copied verbatim from ``pyprimat.constants.CONST``, the frozen single
-    source of truth -- avoids instantiating a full, throwaway ``PyPRConfig``
+    (copied verbatim from ``primat.constants.CONST``, the frozen single
+    source of truth -- avoids instantiating a full, throwaway ``PRIMATConfig``
     just to read seven numbers).  This lets the
     offline generator compute detailed balance over an arbitrary nuclide set
-    without needing a full PyPRConfig."""
+    without needing a full PRIMATConfig."""
 
     def __init__(self, nuclide_table):
-        from pyprimat.constants import CONST
+        from primat.constants import CONST
         for k in ("keV", "kB", "MeV", "ma", "me", "clight", "hbar"):
             setattr(self, k, getattr(CONST, k))
         self.Nuclides = {n: [r["N"], r["Z"]] for n, r in nuclide_table.items()}

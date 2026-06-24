@@ -1,0 +1,18 @@
+# Streamlit theme for the PyPRIMAT GUI.
+#
+# Streamlit auto-discovers a `.streamlit/config.toml` next to the app script
+# (primat/gui/app.py), so this file applies whether the app is launched via
+# `primat-gui` (primat/gui/launcher.py) or `streamlit run
+# primat/gui/app.py` directly -- no extra wiring needed.
+#
+# Colour choices: a deep "cosmic" indigo as the accent (primaryColor),
+# matching the BBN/cosmology subject matter, on a clean light background for
+# good readability of the dataframes and plots.
+
+[theme]
+base = "light"
+primaryColor = "#5B4FE9"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F2F1FB"
+textColor = "#1A1A2E"
+font = "sans serif"

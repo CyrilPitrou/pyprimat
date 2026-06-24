@@ -30,7 +30,7 @@ Source format (one block per reaction)::
          ...                                   (60 rows, grid 0.001..10)
 
 Output:
-  * ``pyprimat/rates/nuclear/tables/<name>/<name><suffix>.txt`` for every
+  * ``primat/rates/nuclear/tables/<name>/<name><suffix>.txt`` for every
     *non-decay* reaction (one folder per reaction, ``<name>`` being the
     ``<reactants>TO<products>``-derived bare name; ``<suffix>`` defaults to
     ``"_primat"``, so the shipped PRIMAT-default table is e.g.
@@ -40,7 +40,7 @@ Output:
     the 500-point grid.  Alternate-source variants (a different ``--suffix``,
     e.g. a Parthenope-extracted table) land as a sibling file in the same
     per-reaction folder, e.g. ``tables/n_p__d_g/n_p__d_g_parthenope3.0.txt``.
-  * ``pyprimat/rates/nuclear/tables/decays.txt`` for every radioactive-decay
+  * ``primat/rates/nuclear/tables/decays.txt`` for every radioactive-decay
     reaction (Bm/Bp on the products side): one row each with
     ``name  halflife_s  rate_s^-1  uncertainty  ref`` -- decay rates don't
     depend on T9, so a 500-row table per reaction would be redundant (see
@@ -49,7 +49,7 @@ Output:
   * ``<datadir>/detailed_balance.csv``: reaction, Q, alpha, beta, gamma for all
     reactions (the backward rate is ``alpha * T9**beta * exp(gamma/T9)`` times
     the forward rate).
-  * ``pyprimat/rates/nuclear/networks/large.txt``: the reaction names from
+  * ``primat/rates/nuclear/networks/large.txt``: the reaction names from
     ``<datadir>/reactions_large.csv``, one per line, each paired with its
     explicit filename (``name, name<suffix>.txt``) per ``load_network``'s
     "never imply the filename" convention -- except decay reactions, written
@@ -77,19 +77,19 @@ from scipy.interpolate import interp1d
 # Make the script self-contained when run as `python generate_rates/convert_ac2024_rates.py`
 # from the repo root: put both this script's directory (for the sibling
 # `nuclide_table` / `nuclear_data` imports) and the repo root (for
-# `from pyprimat.config import PyPRConfig`) on sys.path.
+# `from primat.config import PRIMATConfig`) on sys.path.
 _HERE = os.path.dirname(os.path.abspath(__file__))
 for _p in (_HERE, os.path.dirname(_HERE)):     # generate_rates/ and repo root
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
 # Standard target grid: single-sourced from PyPRIMAT's own master-grid
-# defaults (pyprimat.config.DEFAULT_PARAMS["rate_grid_*"]) so the generator
+# defaults (primat.config.DEFAULT_PARAMS["rate_grid_*"]) so the generator
 # and the runtime grid-resampling in pypr.nuclear.UpdateNuclearRates can never
 # silently drift apart.  DEFAULT_PARAMS is a plain dict,
-# so importing it has no side effects (no PyPRConfig instantiation).
-from pyprimat.config import DEFAULT_PARAMS
-from pyprimat.network_data import _RATE_SYNTAX_, _format_name
+# so importing it has no side effects (no PRIMATConfig instantiation).
+from primat.config import DEFAULT_PARAMS
+from primat.network_data import _RATE_SYNTAX_, _format_name
 GRID_NPTS = DEFAULT_PARAMS["rate_grid_npts"]
 GRID_T9_MIN = DEFAULT_PARAMS["rate_grid_T9_min"]
 GRID_T9_MAX = DEFAULT_PARAMS["rate_grid_T9_max"]
@@ -97,12 +97,12 @@ GRID_T9_MAX = DEFAULT_PARAMS["rate_grid_T9_max"]
 # Output directory for per-reaction rate tables (.txt). Hardcoded -- this is
 # the only location PyPRIMAT's load_network reads rate tables from, so there
 # is no use case for writing them elsewhere.
-TABDIR = "pyprimat/rates/nuclear/tables"
+TABDIR = "primat/rates/nuclear/tables"
 
 # Output file listing the large-network reactions, one name per line: the
 # first column of reactions_large.csv, kept in sync with it by
 # write_network_files.
-LARGE_NETWORK_FILE = "pyprimat/rates/nuclear/networks/large.txt"
+LARGE_NETWORK_FILE = "primat/rates/nuclear/networks/large.txt"
 
 # Numbers may use Fortran 'D'/'d' double-precision exponents (e.g. 1.1133D+10).
 _NUM = r"[-+]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eEdD][-+]?[0-9]+)?"
@@ -229,12 +229,12 @@ _CANON_TOKEN = {"He4": "a", "H2": "d", "H3": "t"}
 
 
 def reaction_name(reactants, products):
-    """Build the canonical reaction name in :data:`pyprimat.network_data._RATE_SYNTAX_`.
+    """Build the canonical reaction name in :data:`primat.network_data._RATE_SYNTAX_`.
 
     Default ``"spaced"`` syntax joins tokens with ``"_"`` and separates the
     reactant/product sides with ``"__"`` (e.g. ``"n_p__d_g"``); legacy
     ``"compact"`` syntax concatenates tokens and separates sides with the
-    literal ``"TO"`` (e.g. ``"npTOdg"``).  See :func:`pyprimat.network_data._format_name`.
+    literal ``"TO"`` (e.g. ``"npTOdg"``).  See :func:`primat.network_data._format_name`.
     """
     def canon(side):
         return [_CANON_TOKEN.get(t, t) for t in side]
@@ -1017,7 +1017,7 @@ def write_network_files(reactions, tab_blocks, nubase_path, outdir, suffix="_pri
     ``suffix`` (default ``"_primat"``, matching the per-reaction rate files
     written by :func:`write_reaction_file`/:func:`write_analytic_file`) is
     appended to each non-decay reaction's filename in ``large.txt``, which
-    ``load_network`` (``pyprimat/network_data.py``) always spells out
+    ``load_network`` (``primat/network_data.py``) always spells out
     explicitly rather than implying -- see CLAUDE.md's "Adding a new
     reaction" section. Decay reactions (Bm/Bp) are written bare: their rate
     lives in the shared, unsuffixed ``decays.txt``, not a per-reaction file.
@@ -1282,7 +1282,7 @@ def _parse_args(argv):
                    help="the tabulated AC2024 reaction-rate compilation")
     p.add_argument("--nubase", default="generate_rates/nubase_4.mas20.txt",
                    help="the NUBASE2020 evaluation (nuclide masses and spins)")
-    p.add_argument("--datadir", default="pyprimat/rates/nuclear/data",
+    p.add_argument("--datadir", default="primat/rates/nuclear/data",
                    help="the directory for network structure files (.csv)")
     p.add_argument("--suffix", default="_primat",
                    help="suffix for generated per-reaction rate files (default "

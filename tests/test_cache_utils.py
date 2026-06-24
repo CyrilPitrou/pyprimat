@@ -1,6 +1,6 @@
-"""Direct unit tests for pyprimat.cache_utils' fingerprinted-cache helpers.
+"""Direct unit tests for primat.cache_utils' fingerprinted-cache helpers.
 
-These are exercised indirectly by every test that builds a PyPRConfig and
+These are exercised indirectly by every test that builds a PRIMATConfig and
 solves (the n<->p weak-rate cache and the electron-thermo cache both use this
 module), but a direct round-trip test pins the contract precisely:
 fingerprint_hash is order-independent, read_cache_fingerprint_hash recovers
@@ -16,7 +16,7 @@ import os
 import numpy as np
 import pytest
 
-from pyprimat.cache_utils import (
+from primat.cache_utils import (
     fingerprint_hash,
     read_cache_fingerprint_hash,
     write_cache_with_fingerprint,

@@ -9,9 +9,9 @@ coefficients for the AC2024 rate-conversion pipeline.
 Only :func:`detailed_balance` is live. The module previously also carried a
 hard-coded ``_DETAILED_BALANCE`` lookup table and ``load_nubase``/
 ``reaction_species`` helpers; all three were unused (``reaction_species`` was
-additionally broken, importing a non-existent ``pyprimat.nuclear`` module)
+additionally broken, importing a non-existent ``primat.nuclear`` module)
 and have been removed -- the equivalent, validated versions live in
-``pyprimat.network_data``, which is what PyPRIMAT itself and the test suite
+``primat.network_data``, which is what PyPRIMAT itself and the test suite
 import.
 """
 

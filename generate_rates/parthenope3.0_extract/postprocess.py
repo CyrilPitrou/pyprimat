@@ -17,9 +17,9 @@ stay positive and monotone so PyPRIMAT's log-log resampler can ingest them.
 import os
 import numpy as np
 
-OUT_DIR = "/Users/pitrou/Cosmologie/SDrive/iap/PRIMAT_suite/PyPRIMAT/pyprimat/rates/nuclear/tables"
+OUT_DIR = "/Users/pitrou/Cosmologie/SDrive/iap/PRIMAT_suite/PyPRIMAT/primat/rates/nuclear/tables"
 
-# pyprimat name -> (header arrow string, Parthenope source/branch)
+# primat name -> (header arrow string, Parthenope source/branch)
 META = {
     "npTOdg":     ("n + p > d + g",        "Serpico et al 2004"),
     "dpTOHe3g":   ("d + p > He3 + g",      "Pisanti et al 2020 (PIS2020, default)"),

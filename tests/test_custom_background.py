@@ -33,7 +33,7 @@ pytestmark = pytest.mark.slow
 
 
 # ---------------------------------------------------------------------------
-# Helper: write a background file from a solved PyPR instance
+# Helper: write a background file from a solved PRIMAT instance
 # ---------------------------------------------------------------------------
 
 def _write_background_file(background, path):
@@ -45,7 +45,7 @@ def _write_background_file(background, path):
     CustomBackground._load_table).
 
     Args:
-        background: a solved pyprimat.background.Background with has_scale_factor=True.
+        background: a solved primat.background.Background with has_scale_factor=True.
         path (str): destination file path.
     """
     cfg     = background.cfg
@@ -66,7 +66,7 @@ def _write_background_file(background, path):
 
 @pytest.fixture(scope="module")
 def ref_run():
-    """Standard PyPR run with instantaneous decoupling (the baseline for
+    """Standard PRIMAT run with instantaneous decoupling (the baseline for
     the custom-background comparison).
 
     Uses ``incomplete_decoupling=False`` and ``spectral_distortions=False``
@@ -74,10 +74,10 @@ def ref_run():
     physics (instantaneous-decoupling T_ν(T_γ)).
 
     Returns:
-        Solved PyPR instance.
+        Solved PRIMAT instance.
     """
-    from pyprimat.main import PyPR
-    r = PyPR({
+    from primat.main import PRIMAT
+    r = PRIMAT({
         "incomplete_decoupling":  False,
         "spectral_distortions":   False,
         "network":                "small",
@@ -103,12 +103,12 @@ def test_custom_background_matches_reference(ref_run, tmp_path):
     Neff is expected to be in (2.9, 3.1): the standard instantaneous-decoupling
     value is ~3.0.
     """
-    from pyprimat.main import PyPR
+    from primat.main import PRIMAT
 
     bg_file = str(tmp_path / "background.tsv")
     _write_background_file(ref_run.background, bg_file)
 
-    r_custom = PyPR({
+    r_custom = PRIMAT({
         "custom_background": bg_file,
         "network":           "small",
     })
@@ -146,14 +146,14 @@ def test_custom_background_matches_reference(ref_run, tmp_path):
 @pytest.mark.solve
 def test_custom_background_warns_incomplete_decoupling(ref_run, tmp_path):
     """custom_background must warn and override incomplete_decoupling=True."""
-    from pyprimat.main import PyPR
+    from primat.main import PRIMAT
 
     bg_file = str(tmp_path / "bg_warn_id.tsv")
     _write_background_file(ref_run.background, bg_file)
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        r = PyPR({
+        r = PRIMAT({
             "custom_background":     bg_file,
             "incomplete_decoupling": True,   # should be overridden with a warning
             "network":               "small",
@@ -171,14 +171,14 @@ def test_custom_background_warns_incomplete_decoupling(ref_run, tmp_path):
 @pytest.mark.solve
 def test_custom_background_warns_spectral_distortions(ref_run, tmp_path):
     """custom_background must warn and override spectral_distortions=True."""
-    from pyprimat.main import PyPR
+    from primat.main import PRIMAT
 
     bg_file = str(tmp_path / "bg_warn_sd.tsv")
     _write_background_file(ref_run.background, bg_file)
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        r = PyPR({
+        r = PRIMAT({
             "custom_background":   bg_file,
             "spectral_distortions": True,   # incompatible, should be overridden
             # Need incomplete_decoupling=False to avoid the "no NEVO + SD" error
@@ -201,21 +201,21 @@ def test_custom_background_warns_spectral_distortions(ref_run, tmp_path):
 
 def test_custom_background_missing_columns(tmp_path):
     """A file lacking the 'a' column must raise a ValueError."""
-    from pyprimat.main import PyPR
+    from primat.main import PRIMAT
 
     bad_file = str(tmp_path / "bad.tsv")
     np.savetxt(bad_file, np.ones((5, 2)), delimiter='\t',
                header="T\tt", comments='')
 
     with pytest.raises(ValueError, match="missing required columns"):
-        PyPR({"custom_background": bad_file, "network": "small"})
+        PRIMAT({"custom_background": bad_file, "network": "small"})
 
 
 def test_custom_background_external_scale_factor_conflict():
     """Combining custom_background with external_scale_factor must raise ValueError."""
     with pytest.raises(ValueError, match="mutually exclusive"):
-        from pyprimat.config import PyPRConfig
-        PyPRConfig({
+        from primat.config import PRIMATConfig
+        PRIMATConfig({
             "custom_background":  "some_file.tsv",
             "external_scale_factor": True,
         })

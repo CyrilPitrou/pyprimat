@@ -1,18 +1,18 @@
 """
 Tests for the generic, stoichiometry-driven network builder
-(``pyprimat.network_builder``) and its integration into ``UpdateNuclearRates``.
+(``primat.network_builder``) and its integration into ``UpdateNuclearRates``.
 
 The builder compiles an abstract reaction list into flat arrays and evaluates
 dY/dt and the Jacobian with two small kernels.  These tests check that:
 
 1. the compiled kernels reproduce the table-driven reference in
-   ``pyprimat.reactions`` to machine precision, for all three reaction orders;
+   ``primat.reactions`` to machine precision, for all three reaction orders;
 2. the formal neutron/proton conservation check passes for the real networks and
    fires on a deliberately broken one;
 3. the assembled RHS conserves baryon number numerically (sum_s A_s dY_s = 0);
 4. the full ``UpdateNuclearRates`` driver -- its ``rhs``/``rhsMT``/``rhsLT`` and
    the matching Jacobian methods, with real rate splines and detailed-balance
-   backward rates -- reproduces the ``pyprimat.reactions`` declarative reference for
+   backward rates -- reproduces the ``primat.reactions`` declarative reference for
    every era (small / MT / LT);
 5. the era-independent structural invariants of the reaction table (buffer-order
    lengths, per-reaction baryon/charge conservation) are guarded;
@@ -23,12 +23,12 @@ dY/dt and the Jacobian with two small kernels.  These tests check that:
 import numpy as np
 import pytest
 
-from pyprimat.network_data import (phase_network,
+from primat.network_data import (phase_network,
                           ORDER_SMALL, ORDER_MT, ORDER_LT, load_network,
                           SPECIES_SMALL, SPECIES_MD)
-from pyprimat.network_builder import (compile_network, NetworkKernels,
+from primat.network_builder import (compile_network, NetworkKernels,
                                  check_conservation)
-from pyprimat.config import PyPRConfig
+from primat.config import PRIMATConfig
 from _oracles import network_rhs, network_jacobian
 
 # ORDER_LT is now the *full* large-network order (429 entries spanning nuclides
@@ -37,7 +37,7 @@ from _oracles import network_rhs, network_jacobian
 # actually self-consistent -- use the large network restricted to amax=8
 # instead (the old "medium" network's exact 68-reaction equivalent, see
 # CUSTOMPOPUP.md §3.1).
-_ORDER_LT_AMAX8 = load_network(PyPRConfig({"network": "large", "amax": 8}),
+_ORDER_LT_AMAX8 = load_network(PRIMATConfig({"network": "large", "amax": 8}),
                                 era="LT").names
 
 _ORDERS = [("SMALL", ORDER_SMALL, SPECIES_SMALL),
@@ -47,7 +47,7 @@ _ORDERS = [("SMALL", ORDER_SMALL, SPECIES_SMALL),
 
 @pytest.mark.parametrize("label,order,species", _ORDERS)
 def test_compiled_kernels_match_reference(label, order, species):
-    """Compiled rhs/jacobian == the pyprimat.reactions reference (machine precision)."""
+    """Compiled rhs/jacobian == the primat.reactions reference (machine precision)."""
     net = phase_network(order, species)
     K = NetworkKernels(compile_network(net, len(species)), numba=False)
     rng = np.random.default_rng(0)
@@ -64,10 +64,10 @@ def test_compiled_kernels_match_reference(label, order, species):
 @pytest.mark.parametrize("label,order,species", _ORDERS)
 def test_formal_conservation_passes(label, order, species):
     """Every real network must pass the formal N/Z conservation check."""
-    from pyprimat.config import PyPRConfig
+    from primat.config import PRIMATConfig
     cnet = compile_network(phase_network(order, species), len(species))
-    N = [PyPRConfig().Nuclides[s][0] for s in species]
-    Z = [PyPRConfig().Nuclides[s][1] for s in species]
+    N = [PRIMATConfig().Nuclides[s][0] for s in species]
+    Z = [PRIMATConfig().Nuclides[s][1] for s in species]
     # order[0] (n__p) and any reaction whose compact name ends in "Bm"/"Bp"
     # (an analytic beta-decay/electron-capture reaction, e.g. "Be7__Li7_Bp")
     # carry a lepton charge that phase_network's stripped-down stoichiometry
@@ -91,10 +91,10 @@ def test_formal_conservation_catches_violation():
 @pytest.mark.parametrize("label,order,species", _ORDERS)
 def test_rhs_conserves_baryon_number(label, order, species):
     """sum_s A_s dY_s/dt = 0 for arbitrary abundances/rates (baryon number)."""
-    from pyprimat.config import PyPRConfig
+    from primat.config import PRIMATConfig
     net = phase_network(order, species)
     K = NetworkKernels(compile_network(net, len(species)), numba=False)
-    cfg = PyPRConfig()
+    cfg = PRIMATConfig()
     A = np.array([sum(cfg.Nuclides[s]) for s in species])   # A = N + Z
     rng = np.random.default_rng(2)
     Y = rng.random(len(species)) * 1e-2
@@ -116,12 +116,12 @@ _DRIVER_ERAS = [
 def test_driver_methods_match_reference(network_params, era, order_attr, species,
                                         rhs_m, jac_m):
     """The real ``UpdateNuclearRates`` methods reproduce the declarative
-    ``pyprimat.reactions`` reference for every era.
+    ``primat.reactions`` reference for every era.
     """
-    from pyprimat.config import PyPRConfig
-    from pyprimat.network_data import UpdateNuclearRates
+    from primat.config import PRIMATConfig
+    from primat.network_data import UpdateNuclearRates
     network = network_params["network"]
-    cfg = PyPRConfig({**network_params, "verbose": False})
+    cfg = PRIMATConfig({**network_params, "verbose": False})
     K = UpdateNuclearRates(cfg)
     order = getattr(K, order_attr)
     species_eff = K.species_large if era == "LT" and network != "small" else species
@@ -186,8 +186,8 @@ def test_stoichiometry_conserves_baryon_and_charge():
     charge here too so dZ is checked over the *whole* reaction, not just its
     nuclide part.
     """
-    from pyprimat.network_data import reaction_stoichiometry, _LEPTON_Z
-    nz = PyPRConfig().Nuclides
+    from primat.network_data import reaction_stoichiometry, _LEPTON_Z
+    nz = PRIMATConfig().Nuclides
     A = {s: nz[s][0] + nz[s][1] for s in nz}
     Z = {s: nz[s][1] for s in nz}
     for name in sorted(set(ORDER_LT) - {"n__p"}):
@@ -208,23 +208,23 @@ def test_stoichiometry_conserves_baryon_and_charge():
 
 def test_amax_invalid_values_rejected():
     """Config validation must reject non-positive or non-integer amax values."""
-    from pyprimat.config import PyPRConfig
+    from primat.config import PRIMATConfig
     for bad in (0, -1, 6.5, "8", None):
         if bad is None:
             # None is the valid "no filter" sentinel — must not raise
-            PyPRConfig({"network": "large", "amax": None})
+            PRIMATConfig({"network": "large", "amax": None})
             continue
         with pytest.raises((ValueError, TypeError)):
-            PyPRConfig({"network": "large", "amax": bad})
+            PRIMATConfig({"network": "large", "amax": bad})
 
 
 def test_amax_reduces_reaction_count():
     """A stricter amax must yield fewer reactions than a looser one."""
-    from pyprimat.network_data import load_network
-    from pyprimat.config import PyPRConfig
-    cfg_full = PyPRConfig({"network": "large"})
-    cfg_a20  = PyPRConfig({"network": "large", "amax": 20})
-    cfg_a12  = PyPRConfig({"network": "large", "amax": 12})
+    from primat.network_data import load_network
+    from primat.config import PRIMATConfig
+    cfg_full = PRIMATConfig({"network": "large"})
+    cfg_a20  = PRIMATConfig({"network": "large", "amax": 20})
+    cfg_a12  = PRIMATConfig({"network": "large", "amax": 12})
     n_full = len(load_network(cfg_full, era="LT").names)
     n_a20  = len(load_network(cfg_a20,  era="LT").names)
     n_a12  = len(load_network(cfg_a12,  era="LT").names)
@@ -234,11 +234,11 @@ def test_amax_reduces_reaction_count():
 
 def test_amax_nuclide_bound():
     """With amax=20, every nuclide in the filtered network has A ≤ 20."""
-    from pyprimat.network_data import load_network
-    from pyprimat.config import PyPRConfig
-    cfg = PyPRConfig({"network": "large", "amax": 20})
+    from primat.network_data import load_network
+    from primat.config import PRIMATConfig
+    cfg = PRIMATConfig({"network": "large", "amax": 20})
     net = load_network(cfg, era="LT")
-    nz  = PyPRConfig().Nuclides
+    nz  = PRIMATConfig().Nuclides
     for s in net.species:
         if s in nz:
             A = nz[s][0] + nz[s][1]
@@ -247,10 +247,10 @@ def test_amax_nuclide_bound():
 
 def test_amax_conservation_holds():
     """After amax filtering, baryon/charge conservation must still pass."""
-    from pyprimat.network_data import load_network
-    from pyprimat.config import PyPRConfig
-    from pyprimat.network_builder import check_conservation, compile_network
-    cfg = PyPRConfig({"network": "large", "amax": 20})
+    from primat.network_data import load_network
+    from primat.config import PRIMATConfig
+    from primat.network_builder import check_conservation, compile_network
+    cfg = PRIMATConfig({"network": "large", "amax": 20})
     net = load_network(cfg, era="LT")
     cnet = compile_network(net.network, len(net.species))
     check_conservation(cnet, net.N, net.Z,

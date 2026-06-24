@@ -12,7 +12,7 @@ These are the combinations actually exercised by the bulk of the test suite
 and the example runfiles, so shipping them avoids a (potentially multi-minute,
 vegas-based) thermal-correction recompute on a fresh checkout:
 
-1. Full physics, all corrections on (the ``PyPRConfig`` default): radiative,
+1. Full physics, all corrections on (the ``PRIMATConfig`` default): radiative,
    finite-mass, thermal and spectral-distortion corrections + QED pressure,
    with non-instantaneous decoupling (``incomplete_decoupling=True``).
 2. Same as (1) but ``QED_corrections=False`` -- the other half of the
@@ -20,7 +20,7 @@ vegas-based) thermal-correction recompute on a fresh checkout:
 3. ``incomplete_decoupling=False`` (instantaneous-decoupling limit),
    ``QED_corrections=True``. ``spectral_distortions`` must be ``False``
    here: it requires the NEVO spectral table, which only exists in
-   non-instantaneous-decoupling mode (``PyPRConfig.__init__`` raises
+   non-instantaneous-decoupling mode (``PRIMATConfig.__init__`` raises
    otherwise).
 4. Same as (3) but ``QED_corrections=False``.
 
@@ -53,16 +53,16 @@ import os
 import subprocess
 import time
 
-_pyprimat_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-if _pyprimat_path not in sys.path:
-    sys.path.insert(0, _pyprimat_path)
+_primat_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if _primat_path not in sys.path:
+    sys.path.insert(0, _primat_path)
 
-from pyprimat import PyPR
-from pyprimat.cache_utils import fingerprint_hash, weak_cache_dir
-from pyprimat.weak_rates.cache import (_weak_rate_fingerprint,
+from primat import PRIMAT
+from primat.cache_utils import fingerprint_hash, weak_cache_dir
+from primat.weak_rates.cache import (_weak_rate_fingerprint,
                                        _thermal_fingerprint)
 
-# Each entry only lists the flags that deviate from the PyPRConfig defaults
+# Each entry only lists the flags that deviate from the PRIMATConfig defaults
 # (radiative_corrections/finite_mass_corrections/thermal_corrections all
 # default to True). spectral_distortions is forced False whenever
 # incomplete_decoupling is False, since the two are incompatible.
@@ -80,7 +80,7 @@ _COMBOS = [
 def _expected_filenames(combos):
     """Filenames (no directory) the given combos should leave on disk.
 
-    For each combo we build the same PyPRConfig the generation loop uses (but
+    For each combo we build the same PRIMATConfig the generation loop uses (but
     without writing anything) and read off both fingerprint hashes, so this
     stays in lockstep with whatever the live fingerprint definition is.
 
@@ -93,7 +93,7 @@ def _expected_filenames(combos):
     for _, extra in combos:
         # Pure inspection: never touch the cache here (weak_rate_cache=False so
         # nothing is loaded, save_* False so nothing is written).
-        cfg = PyPR(params=dict(extra, verbose=False, weak_rate_cache=False,
+        cfg = PRIMAT(params=dict(extra, verbose=False, weak_rate_cache=False,
                                save_nTOp=False, save_nTOp_thermal=False)).cfg
         cache_dir = weak_cache_dir(cfg)
         expected.add("nTOp_" + fingerprint_hash(_weak_rate_fingerprint(cfg)) + ".txt")
@@ -110,7 +110,7 @@ def _tracked_cache_files(cache_dir):
     """
     try:
         out = subprocess.run(
-            ["git", "-C", _pyprimat_path, "ls-files", cache_dir],
+            ["git", "-C", _primat_path, "ls-files", cache_dir],
             check=True, capture_output=True, text=True).stdout
     except (subprocess.CalledProcessError, FileNotFoundError) as exc:
         print(f"  [prune skipped: git unavailable: {exc}]")
@@ -127,10 +127,10 @@ if __name__ == "__main__":
     for label, extra in _COMBOS:
         print(f"--- {label} ---")
         t0 = time.time()
-        # PyPR's constructor alone is enough: it computes the n<->p weak
+        # PRIMAT's constructor alone is enough: it computes the n<->p weak
         # rates (and, with the defaults below, writes them back to
         # rates/weak/) without needing a full BBN solve.
-        PyPR(params=dict(extra, verbose=False, save_nTOp=True,
+        PRIMAT(params=dict(extra, verbose=False, save_nTOp=True,
                           save_nTOp_thermal=True))
         print(f"    done in {time.time() - t0:.1f} s")
 

@@ -51,8 +51,8 @@ def test_Neff_close_to_standard(solved_small):
 @pytest.mark.solve
 def test_Born_mode_lowers_YP(solved_small):
     """Born-only n<->p rates (radiative/finite-mass corrections off) give lower YP."""
-    from pyprimat.main import PyPR
-    r_born = PyPR({"radiative_corrections": False,
+    from primat.main import PRIMAT
+    r_born = PRIMAT({"radiative_corrections": False,
                    "finite_mass_corrections": False,
                    "network": "small"})
     r_born.solve()
@@ -84,14 +84,14 @@ _REF_PARAMS = dict(numerical_precision=1e-10, sampling_temperature_per_decade=20
 
 @pytest.fixture(scope="session")
 def ref_small():
-    from pyprimat.main import PyPR
-    return PyPR({**_REF_PARAMS, "network": "small"}).PyPRresults()
+    from primat.main import PRIMAT
+    return PRIMAT({**_REF_PARAMS, "network": "small"}).primat_results()
 
 
 @pytest.fixture(scope="session")
 def ref_large():
-    from pyprimat.main import PyPR
-    return PyPR({**_REF_PARAMS, "network": "large", "amax": 8}).PyPRresults()
+    from primat.main import PRIMAT
+    return PRIMAT({**_REF_PARAMS, "network": "large", "amax": 8}).primat_results()
 
 
 @pytest.mark.reference
@@ -121,8 +121,8 @@ def test_reference_large_DoH(ref_large):
 @pytest.mark.solve
 def test_no_numba_small_matches_numba(solved_small):
     """Pure-Python (numba_installed=False) must agree with the JIT path to 1e-4."""
-    from pyprimat.main import PyPR
-    r_nn = PyPR({"numba_installed": False, "network": "small"}).PyPRresults()
+    from primat.main import PRIMAT
+    r_nn = PRIMAT({"numba_installed": False, "network": "small"}).primat_results()
     assert r_nn["YPBBN"] == pytest.approx(solved_small.results["YPBBN"], rel=1e-4)
     assert r_nn["DoH"]   == pytest.approx(solved_small.results["DoH"],   rel=1e-4)
 
@@ -131,8 +131,8 @@ def test_no_numba_small_matches_numba(solved_small):
 def test_no_numba_large_amax8_smoke():
     """Pure-Python large/amax=8 network solve completes and YP is physically
     reasonable (the old "medium" network's exact 68-reaction equivalent)."""
-    from pyprimat.main import PyPR
-    r = PyPR({"numba_installed": False, "network": "large", "amax": 8}).PyPRresults()
+    from primat.main import PRIMAT
+    r = PRIMAT({"numba_installed": False, "network": "large", "amax": 8}).primat_results()
     assert 0.24 < r["YPBBN"] < 0.25
     assert 2.0e-5 < r["DoH"] < 3.0e-5
 
@@ -146,8 +146,8 @@ def test_no_numba_large_amax8_smoke():
 def test_amax_filter_light_elements_match_large(solved_large):
     """With amax=20, heavy reactions (A>20) are dropped; light elements match
     the full large network."""
-    from pyprimat.main import PyPR
-    r = PyPR({"network": "large", "amax": 20}).PyPRresults()
+    from primat.main import PRIMAT
+    r = PRIMAT({"network": "large", "amax": 20}).primat_results()
     # Light elements should still match the full large-network result to
     # ~1e-3 relative.
     assert r["YPBBN"] == pytest.approx(solved_large.results["YPBBN"], rel=1e-3)
@@ -160,15 +160,15 @@ def test_small_amax2_collapses_to_deuterium_channel():
     n<->p weak rate + n_p__d_g (CUSTOMPOPUP.md §1.2's MT-branch amax-ordering
     fix): previously the MT-era intersection used the *unfiltered* bare names,
     so an amax-violating reaction could still run in the MT era."""
-    from pyprimat.main import PyPR
-    from pyprimat.config import PyPRConfig
-    from pyprimat.network_data import load_network
-    cfg = PyPRConfig({"network": "small", "amax": 2})
+    from primat.main import PRIMAT
+    from primat.config import PRIMATConfig
+    from primat.network_data import load_network
+    cfg = PRIMATConfig({"network": "small", "amax": 2})
     mt_names = load_network(cfg, era="MT").names
     lt_names = load_network(cfg, era="LT").names
     assert mt_names == ["n__p", "n_p__d_g"]
     assert lt_names == ["n__p", "n_p__d_g"]
 
-    r = PyPR({"network": "small", "amax": 2}).PyPRresults()
+    r = PRIMAT({"network": "small", "amax": 2}).primat_results()
     assert r["YPBBN"] == 0.0
     assert r["DoH"] > 0.0

@@ -18,7 +18,7 @@ import os
 import numpy as np
 import pytest
 
-_AC2024_DIR = os.path.join(os.path.dirname(__file__), "..", "pyprimat",
+_AC2024_DIR = os.path.join(os.path.dirname(__file__), "..", "primat",
                            "rates", "nuclear", "data")
 _needs_ac2024 = pytest.mark.skipif(
     not os.path.isdir(_AC2024_DIR),
@@ -29,10 +29,10 @@ _needs_ac2024 = pytest.mark.skipif(
 @_needs_ac2024
 def test_large_network_loads_and_conserves():
     """Loads 59 nuclides / ~424 reactions and passes the formal N/Z check."""
-    from pyprimat.config import PyPRConfig
-    from pyprimat.network_data import load_network
-    from pyprimat.network_builder import compile_network, check_conservation
-    cfg = PyPRConfig({"network": "large", "verbose": False})
+    from primat.config import PRIMATConfig
+    from primat.network_data import load_network
+    from primat.network_builder import compile_network, check_conservation
+    cfg = PRIMATConfig({"network": "large", "verbose": False})
     ln = load_network(cfg)
     assert ln.species[:2] == ["n", "p"]
     assert len(ln.species) >= 55
@@ -47,9 +47,9 @@ def test_large_network_loads_and_conserves():
 def test_large_rate_buffer_is_finite_and_bounded():
     """fill_buffer must return finite rates across the LT temperature range,
     despite the exp(gamma/T9) detailed-balance factors of endothermic reactions."""
-    from pyprimat.config import PyPRConfig
-    from pyprimat.network_data import load_network
-    ln = load_network(PyPRConfig({"network": "large", "verbose": False}))
+    from primat.config import PRIMATConfig
+    from primat.network_data import load_network
+    ln = load_network(PRIMATConfig({"network": "large", "verbose": False}))
     for T9 in (0.08, 0.05, 0.02, 0.012):
         r = ln.fill_buffer(T9 / 1e-9, lambda T: 1.0, lambda T: 0.5)
         assert np.all(np.isfinite(r))
@@ -63,18 +63,18 @@ def test_large_rate_buffer_is_finite_and_bounded():
 def test_large_solve_conserves_baryon_and_matches_amax8():
     """Full large-network solve: baryon number conserved, and the light-element
     finals agree with large/amax=8 (the heavy channels are tiny)."""
-    from pyprimat import PyPR
-    med = PyPR(params={"network": "large", "amax": 8, "verbose": False})
+    from primat import PRIMAT
+    med = PRIMAT(params={"network": "large", "amax": 8, "verbose": False})
     med.solve()
-    big = PyPR(params={"network": "large", "verbose": False})
+    big = PRIMAT(params={"network": "large", "verbose": False})
     big.solve()
 
     # Baryon number: sum_s A_s Y_s = 1 to high precision.
-    from pyprimat.config import PyPRConfig
-    A = {s: sum(PyPRConfig.Nuclides.get(s, [0, 0])) for s in big.nuclear.Y_final}
+    from primat.config import PRIMATConfig
+    A = {s: sum(PRIMATConfig.Nuclides.get(s, [0, 0])) for s in big.nuclear.Y_final}
     # Build A for every large-network species from its (N,Z) in nuclides.csv.
-    from pyprimat.network_data import load_network
-    ln = load_network(PyPRConfig({"network": "large", "verbose": False}))
+    from primat.network_data import load_network
+    ln = load_network(PRIMATConfig({"network": "large", "verbose": False}))
     Avec = {s: int(n) + int(z) for s, n, z in zip(ln.species, ln.N, ln.Z)}
     baryon = sum(Avec[s] * y for s, y in big.nuclear.Y_final.items())
     assert abs(baryon - 1.0) < 1e-6
@@ -99,11 +99,11 @@ def test_large_network_time_evolution_tsv(tmp_path):
     no per-reaction flux columns (those are small/large-amax8 only), and the
     final He4/D/Li7 rows agree with the large/amax=8 time series to the same
     tolerances as the final-abundance comparison above."""
-    from pyprimat import PyPR
+    from primat import PRIMAT
     import numpy as np
 
     out_path = tmp_path / "large_evolution.tsv"
-    big = PyPR(params={
+    big = PRIMAT(params={
         "network": "large", "verbose": False,
         "output_time_evolution": True, "output_file": str(out_path),
     })
@@ -125,7 +125,7 @@ def test_large_network_time_evolution_tsv(tmp_path):
     # fill is applied any more, see NuclearNetwork._write_time_evolution).
     assert np.isfinite(data).all()
 
-    med = PyPR(params={"network": "large", "amax": 8, "verbose": False})
+    med = PRIMAT(params={"network": "large", "amax": 8, "verbose": False})
     med.solve()
 
     # Compare the final-time row of the large-network TSV against the

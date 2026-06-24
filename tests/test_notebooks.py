@@ -9,7 +9,7 @@ Executes the two *fast* demonstration notebooks end-to-end with
 
 This is a regression guard against import-path bugs (the notebooks still
 imported the pre-reorganisation ``pypr`` package name)
-and against API drift in ``pyprimat.main.PyPR``: a renamed/removed attribute
+and against API drift in ``primat.main.PRIMAT``: a renamed/removed attribute
 that the notebooks rely on (``r.A``, ``r.abundance_names``, ``r[name](t)``,
 ...) makes one of these cells raise, and papermill re-raises that as a
 ``CellExecutionError`` here.

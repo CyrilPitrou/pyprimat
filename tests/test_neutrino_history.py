@@ -1,23 +1,23 @@
 """Tests for the pluggable neutrino-sector background.
 
-``pyprimat.neutrino_history.make_neutrino_history`` assembles a
+``primat.neutrino_history.make_neutrino_history`` assembles a
 ``NeutrinoHistory`` (temperatures, heating, spectral distortion, extra energy
-density) from a ``PyPRConfig``.  These tests pin the factory dispatch and the
+density) from a ``PRIMATConfig``.  These tests pin the factory dispatch and the
 protocol attributes without running a full BBN solve -- they only build the
 neutrino-sector object on top of an initialised plasma.
 """
 import numpy as np
 import pytest
 
-from pyprimat.config import PyPRConfig
-from pyprimat.plasma import Plasma
-from pyprimat.neutrino_history import (
+from primat.config import PRIMATConfig
+from primat.plasma import Plasma
+from primat.neutrino_history import (
     make_neutrino_history, NEVOTable, InstantaneousDecoupling, AnalyticDistortion,
 )
 
 
 def _history(params):
-    cfg = PyPRConfig(params)
+    cfg = PRIMATConfig(params)
     return cfg, make_neutrino_history(cfg, Plasma(cfg))
 
 
@@ -29,7 +29,7 @@ def _Tg_MeV(cfg):
 def test_default_is_nevo_table_no_distortion():
     """Default config (incomplete decoupling, no distortions) -> NEVOTable.
 
-    ``spectral_distortions=True`` is the ``PyPRConfig`` default, so it is
+    ``spectral_distortions=True`` is the ``PRIMATConfig`` default, so it is
     explicitly disabled here to isolate the "no distortion"
     case checked by this test (the distorted case is covered by
     ``test_nevo_spectral_distortion_builds_callable`` below).
@@ -53,7 +53,7 @@ def test_nevo_heating_nonzero_instantaneous_zero():
     N_nevo = np.array([float(nh_nevo.N_NEVO_of_Tg(T)) for T in Tgs])
     assert np.any(np.abs(N_nevo) > 0.)
 
-    # spectral_distortions=True (PyPRConfig default) requires
+    # spectral_distortions=True (PRIMATConfig default) requires
     # incomplete_decoupling=True; disable it for the instantaneous case.
     cfg_i, nh_inst = _history({"network": "small", "incomplete_decoupling": False,
                                 "spectral_distortions": False})
@@ -64,7 +64,7 @@ def test_nevo_heating_nonzero_instantaneous_zero():
 
 def test_instantaneous_three_flavours_share_temperature():
     """Instantaneous decoupling: all three flavours have the same temperature."""
-    # spectral_distortions=True (PyPRConfig default) requires
+    # spectral_distortions=True (PRIMATConfig default) requires
     # incomplete_decoupling=True; disable it for the instantaneous case.
     cfg, nh = _history({"network": "small", "incomplete_decoupling": False,
                          "spectral_distortions": False})
@@ -143,10 +143,10 @@ def test_external_scale_factor_a_of_T_matches_minimal_on_table_grid():
     NEVO-table x(T) lookup) must agree with the default entropy-conservation
     ODE solve to within ~1e-5,
     confirming a ~ x is a valid alternative background construction."""
-    from pyprimat.main import PyPR
+    from primat.main import PRIMAT
 
-    p_min = PyPR({"network": "small"})
-    p_ext = PyPR({"network": "small", "external_scale_factor": True})
+    p_min = PRIMAT({"network": "small"})
+    p_ext = PRIMAT({"network": "small", "external_scale_factor": True})
 
     # Probe over the table's covered T_gamma range (avoid the extrapolated
     # tails, which are exact by construction in both modes -- a ~ 1/T).
@@ -166,10 +166,10 @@ def test_external_scale_factor_matches_minimal():
     """A full BBN solve with external_scale_factor=True reproduces the default
     (minimal-mode) Neff, YPBBN and D/H to the precision expected from the
     a(T)/t(T) agreement above."""
-    from pyprimat.main import PyPR
+    from primat.main import PRIMAT
 
-    r_min = PyPR({"network": "small"}).PyPRresults()
-    r_ext = PyPR({"network": "small", "external_scale_factor": True}).PyPRresults()
+    r_min = PRIMAT({"network": "small"}).primat_results()
+    r_ext = PRIMAT({"network": "small", "external_scale_factor": True}).primat_results()
 
     assert r_ext["Neff"]  == pytest.approx(r_min["Neff"],  rel=1e-10)
     assert r_ext["YPBBN"] == pytest.approx(r_min["YPBBN"], rel=1e-5)

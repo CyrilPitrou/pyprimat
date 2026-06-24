@@ -20,7 +20,7 @@ _pyprimat_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if _pyprimat_path not in sys.path:
     sys.path.insert(0, _pyprimat_path)
 
-from pyprimat import PyPR
+from primat import PRIMAT
 
 # ---------------------------------------------------------------------------
 # Cosmological parameters
@@ -33,7 +33,7 @@ _base_opts = {
     "Omegabh2":                  omegabh2,
     "DeltaNeff":                 Nrelat,
     "numerical_precision":       1e-7,
-    # spectral_distortions: left at its PyPRConfig default (True).
+    # spectral_distortions: left at its PRIMATConfig default (True).
     # nuclear_qed_corrections is turned off here (the CLAUDE.md reference
     # table uses the True default), so these results are an internal
     # small-vs-large(amax=8)-vs-large comparison only -- not directly
@@ -58,8 +58,8 @@ for label, extra in networks:
     print("=" * 60)
     t0 = time.time()
     params = {**_base_opts, "network": "small", **extra}
-    run = PyPR(params=params)
-    results[label] = run.PyPRresults()
+    run = PRIMAT(params=params)
+    results[label] = run.primat_results()
     print(f"{label.capitalize()} network finished in {time.time()-t0:.1f} s\n")
 
 # ---------------------------------------------------------------------------

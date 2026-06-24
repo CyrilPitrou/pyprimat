@@ -4,10 +4,10 @@ Test-only reference RHS/Jacobian oracle for the nuclear network.
 
 ``network_rhs``/``network_jacobian`` are a deliberately independent,
 pure-Python re-implementation of the mass-action ODE that
-:class:`pyprimat.network_builder.NetworkKernels` evaluates with compiled
+:class:`primat.network_builder.NetworkKernels` evaluates with compiled
 (numba-able) kernels. They exist *only* to give ``tests/test_network_builder.py``
 an exact, easy-to-read oracle to check the production kernels against -- see
-FUTURE.md P1.3 (moved here, out of ``pyprimat/network_data.py``, since
+FUTURE.md P1.3 (moved here, out of ``primat/network_data.py``, since
 production code never calls them).
 """
 

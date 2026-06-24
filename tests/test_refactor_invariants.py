@@ -12,7 +12,7 @@ These pin down the behaviour that the refactor relies on for correctness:
 import numpy as np
 import pytest
 
-from pyprimat.config import PyPRConfig
+from primat.config import PRIMATConfig
 
 
 # ---------------------------------------------------------------------------
@@ -23,7 +23,7 @@ from pyprimat.config import PyPRConfig
 @pytest.mark.solve
 def test_mc_njobs_independence():
     """Same seeds must give identical samples for serial vs parallel runs."""
-    from pyprimat.main import mc_uncertainty
+    from primat.main import mc_uncertainty
     base = {"network": "small"}
     mc1 = mc_uncertainty(6, ["YPBBN", "DoH"], params=base, n_jobs=1, seed=0)
     mcP = mc_uncertainty(6, ["YPBBN", "DoH"], params=base, n_jobs=3, seed=0)
@@ -36,14 +36,14 @@ def test_mc_njobs_independence():
 # ---------------------------------------------------------------------------
 
 def test_eta0b_tracks_omegabh2_attribute():
-    cfg = PyPRConfig({"Omegabh2": 0.022425})
+    cfg = PRIMATConfig({"Omegabh2": 0.022425})
     e0 = cfg.eta0b
     cfg.Omegabh2 = 0.024
     assert cfg.eta0b == pytest.approx(e0 * 0.024 / 0.022425, rel=1e-12)
 
 
 def test_eta0b_tracks_omegabh2_setitem():
-    cfg = PyPRConfig({"Omegabh2": 0.022425})
+    cfg = PRIMATConfig({"Omegabh2": 0.022425})
     e0 = cfg.eta0b
     cfg["Omegabh2"] = 0.024
     assert cfg.eta0b == pytest.approx(e0 * 0.024 / 0.022425, rel=1e-12)
@@ -56,9 +56,9 @@ def test_gn_and_taun_come_from_defaults():
     natural-units Planck mass used by the Friedmann equation) is derived
     from it via ``CONST.GN_SI_to_MeV2``.
     """
-    from pyprimat.constants import CONST
+    from primat.constants import CONST
     gn_si = 1.234e-10
-    cfg = PyPRConfig({"GN": gn_si, "tau_n": 880.0})
+    cfg = PRIMATConfig({"GN": gn_si, "tau_n": 880.0})
     assert cfg.GN == gn_si
     assert cfg.tau_n == 880.0
     gn_natural = gn_si * CONST.GN_SI_to_MeV2
@@ -80,11 +80,11 @@ def test_extra_rho_is_additive_in_hubble():
     ``extra * 8*pi/(3*Mpl^2)``, independently of everything else
     `background.Hubble` computes.
     """
-    from pyprimat.main import PyPR
+    from primat.main import PRIMAT
     base = {"network": "small", "verbose": False}
-    p0 = PyPR(base)
+    p0 = PRIMAT(base)
     extra = 1.e-2  # MeV^4, an arbitrary but sizeable extra radiation density
-    p1 = PyPR(base, extra_rho=[lambda Tg: extra])
+    p1 = PRIMAT(base, extra_rho=[lambda Tg: extra])
 
     Tg = 1.0  # MeV
     H0 = p0.background.Hubble(Tg, Tg, Tg, Tg)
@@ -104,12 +104,12 @@ def test_ede_is_appended_to_extra_rho():
     with two callables — ``rho_CDM(T)`` and ``rho_Lambda`` — the no-EDE
     baseline has exactly 2 entries.  EDE adds one more, giving 3 total.
     """
-    from pyprimat.main import PyPR
-    p_no_ede = PyPR({"network": "small", "verbose": False})
+    from primat.main import PRIMAT
+    p_no_ede = PRIMAT({"network": "small", "verbose": False})
     # 2 ΛCDM entries (CDM + cosmological constant) always present
     assert len(p_no_ede.background.extra_rho) == 2
 
-    p_ede = PyPR({"network": "small", "verbose": False, "fEDE": 0.05})
+    p_ede = PRIMAT({"network": "small", "verbose": False, "fEDE": 0.05})
     # EDE appends one more callable on top of the 2 ΛCDM ones
     assert len(p_ede.background.extra_rho) == 3
 
@@ -122,8 +122,8 @@ def test_ede_is_appended_to_extra_rho():
 def test_tabulated_electron_thermo_matches_exact(T):
     """The cubic-interpolant table (always used) reproduces the exact quad
     integrals (``_*_exact``) to within the interpolation tolerance."""
-    from pyprimat.plasma import Plasma
-    p = Plasma(PyPRConfig())
+    from primat.plasma import Plasma
+    p = Plasma(PRIMATConfig())
     tab   = (p.rho_e(T), p.p_e(T), p.drho_e_dT(T), p.dp_e_dT(T))
     exact = (p._rho_e_exact(T), p._p_e_exact(T),
              p._drho_e_dT_exact(T), p._dp_e_dT_exact(T))
@@ -137,7 +137,7 @@ def test_tabulated_electron_thermo_matches_exact(T):
 
 def test_linear_rate_matches_interp1d():
     from scipy.interpolate import interp1d
-    from pyprimat.network_data import _LinearRate
+    from primat.network_data import _LinearRate
     rng = np.random.default_rng(0)
     x = np.sort(rng.uniform(0.001, 10.0, 50))
     y = rng.uniform(1e-3, 1e3, 50)
@@ -150,7 +150,7 @@ def test_linear_rate_matches_interp1d():
 
 
 def test_linear_rate_scalar_and_array():
-    from pyprimat.network_data import _LinearRate
+    from primat.network_data import _LinearRate
     f = _LinearRate(np.array([1.0, 2.0, 3.0]), np.array([10.0, 20.0, 30.0]))
     assert f(2.0) == pytest.approx(20.0)
     np.testing.assert_allclose(f(np.array([1.5, 2.5])), [15.0, 25.0])

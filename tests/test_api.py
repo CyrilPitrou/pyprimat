@@ -1,11 +1,11 @@
-"""Tests for the PyPR public API."""
+"""Tests for the PRIMAT public API."""
 import pytest
 import numpy as np
-from pyprimat.main import PyPR
+from primat.main import PRIMAT
 
 
 def test_A_N_Z_dicts():
-    r = PyPR()
+    r = PRIMAT()
     assert r.A["He4"] == 4
     assert r.Z["He4"] == 2
     assert r.N["He4"] == 2
@@ -96,7 +96,7 @@ def test_get_quantity_unknown_raises(solved_small):
 
 def test_lazy_solve_triggers_on_accessor():
     """Accessing a result without calling solve() should auto-trigger it."""
-    r = PyPR({"network": "small"})
+    r = PRIMAT({"network": "small"})
     assert r.results is None
     yp = r.YPBBN()
     assert r.results is not None
@@ -105,14 +105,14 @@ def test_lazy_solve_triggers_on_accessor():
 
 def test_solve_cached():
     """Calling solve() twice returns identical results (no re-computation)."""
-    r = PyPR({"network": "small"})
+    r = PRIMAT({"network": "small"})
     res1 = r.solve()
     res2 = r.solve()
     assert res1["YPBBN"] == res2["YPBBN"]
 
 
 def test_PyPRresults_returns_dict(solved_small):
-    res = solved_small.PyPRresults()
+    res = solved_small.primat_results()
     assert isinstance(res, dict)
     for key in ("YPBBN", "YPCMB", "DoH", "He3oH", "Li7oH", "Neff"):
         assert key in res

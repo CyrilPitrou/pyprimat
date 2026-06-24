@@ -48,7 +48,7 @@ import os
 import numpy as np
 import pytest
 
-_AC2024_DIR = os.path.join(os.path.dirname(__file__), "..", "pyprimat",
+_AC2024_DIR = os.path.join(os.path.dirname(__file__), "..", "primat",
                            "rates", "nuclear", "data")
 _needs_ac2024 = pytest.mark.skipif(
     not os.path.isdir(_AC2024_DIR),
@@ -85,10 +85,10 @@ def test_decay_reverse_bwd_cap_is_zero():
     of the decay channel.  The assertion uses 1e-10 s^-1 as the threshold;
     the largest observed value is ~ 6e-12 s^-1 (He6→Li6).
     """
-    from pyprimat.config import PyPRConfig
-    from pyprimat.network_data import load_network
+    from primat.config import PRIMATConfig
+    from primat.network_data import load_network
 
-    cfg = PyPRConfig({"network": "large", "verbose": False,
+    cfg = PRIMATConfig({"network": "large", "verbose": False,
                       "decay_reverse_rates": True})
     ln = load_network(cfg)
 
@@ -197,10 +197,10 @@ def test_decay_era_physics(solved_large):
         is approximately, not exactly, conserved per decay event; the bound
         is generous.)
     """
-    from pyprimat.network_data import load_network
-    from pyprimat.config import PyPRConfig
+    from primat.network_data import load_network
+    from primat.config import PRIMATConfig
 
-    cfg = PyPRConfig({"network": "large", "verbose": False})
+    cfg = PRIMATConfig({"network": "large", "verbose": False})
     nucl_data = load_network(cfg)
 
     nn = solved_large.nuclear

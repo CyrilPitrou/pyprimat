@@ -2,10 +2,10 @@
 import os
 import pytest
 import numpy as np
-from pyprimat.main import mc_uncertainty, MCResult, MCQuantityResult, _mc_run_batch
+from primat.main import mc_uncertainty, MCResult, MCQuantityResult, _mc_run_batch
 
 # Every test in this module runs at least one mc_uncertainty() loop, i.e.
-# several full PyPR().solve() calls -- squarely in the "solve" tier.
+# several full PRIMAT().solve() calls -- squarely in the "solve" tier.
 pytestmark = [pytest.mark.slow, pytest.mark.solve]
 
 _BASE = {"network": "small"}
@@ -192,8 +192,8 @@ def test_tau_n_normalization_false_disables_tau_n_effect():
 # custom_network support in mc_uncertainty / _mc_run_batch
 # ---------------------------------------------------------------------------
 
-import pyprimat
-_TABLES_DIR = os.path.join(os.path.dirname(pyprimat.__file__),
+import primat
+_TABLES_DIR = os.path.join(os.path.dirname(primat.__file__),
                             "rates", "nuclear", "tables", "d_d__He3_n")
 
 

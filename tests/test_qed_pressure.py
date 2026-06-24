@@ -1,6 +1,6 @@
 """
 Tests for the analytical QED plasma-pressure correction module
-(``pyprimat.qed_pressure``).
+(``primat.qed_pressure``).
 
 Physical context
 ----------------
@@ -20,7 +20,7 @@ These tests verify:
 import numpy as np
 import pytest
 
-from pyprimat.qed_pressure import (_I01, _I2m1, _dPa, _dPe3,
+from primat.qed_pressure import (_I01, _I2m1, _dPa, _dPe3,
                                 compute_qed_pressure_tables, save_qed_tables)
 
 

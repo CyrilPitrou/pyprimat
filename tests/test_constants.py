@@ -1,4 +1,4 @@
-"""Pin a few of pyprimat.constants.CONST's *derived* values.
+"""Pin a few of primat.constants.CONST's *derived* values.
 
 CONST.alphaem, CONST.GF and CONST.mZ are primary inputs (PDG values, set
 verbatim); CONST.sW2 (sin^2(theta_W)) and the effective electron/muon
@@ -12,7 +12,7 @@ here instead of showing up as an unexplained drift in Neff/YP.
 import numpy as np
 import pytest
 
-from pyprimat.constants import CONST
+from primat.constants import CONST
 
 
 def test_sW2_matches_onshell_relation():

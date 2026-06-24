@@ -2,10 +2,10 @@
 """
 profile_solve.py
 =================
-FUTURE.md P4: measure where a default PyPR run actually spends its time,
+FUTURE.md P4: measure where a default PRIMAT run actually spends its time,
 before attempting any speed optimisation.
 
-Runs ``PyPR(params).solve()`` once with ``verbose=True, debug=True`` so that
+Runs ``PRIMAT(params).solve()`` once with ``verbose=True, debug=True`` so that
 every stage already prints its own wall-clock time (HT/MT/LT solves in
 ``nuclear_network.py``, the a(T)/t(a) ODE solves and the n<->p weak-rate
 setup in ``background.py``).  Rather than re-instrumenting those stages a
@@ -49,11 +49,11 @@ _pyprimat_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if _pyprimat_path not in sys.path:
     sys.path.insert(0, _pyprimat_path)
 
-from pyprimat import PyPR
+from primat import PRIMAT
 
 
 # Stage label -> regex with one float-capturing group (seconds), matched
-# against the captured verbose+debug stdout of a single PyPR(...).solve() run.
+# against the captured verbose+debug stdout of a single PRIMAT(...).solve() run.
 _STAGE_PATTERNS = {
     "background: a(T) solve":     r"Finished a\(T\) solve in ([\d.]+) s",
     "background: t(a) solve":     r"Finished t\(a\) solve in ([\d.]+) s",
@@ -70,7 +70,7 @@ def _grab(pattern, log):
 
 
 def profile_once(params):
-    """Run one PyPR(params).solve(), return (stage_times, init_s, solve_s)."""
+    """Run one PRIMAT(params).solve(), return (stage_times, init_s, solve_s)."""
     params = dict(params)
     params["verbose"] = True
     params["debug"] = True
@@ -78,7 +78,7 @@ def profile_once(params):
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         t0 = time.perf_counter()
-        p = PyPR(params)
+        p = PRIMAT(params)
         t1 = time.perf_counter()
         p.solve()
         t2 = time.perf_counter()
@@ -130,7 +130,7 @@ def main():
         print("\ncProfile top 20 by cumulative time:\n")
         profiler = cProfile.Profile()
         profiler.enable()
-        p = PyPR(dict(params))
+        p = PRIMAT(dict(params))
         p.solve()
         profiler.disable()
         stats = pstats.Stats(profiler).sort_stats("cumulative")

@@ -11,7 +11,7 @@ where drate1/drate2 are Parthenope's full propagated lower/upper fractional
 deviations (statistical fp/fm *plus* the systematic floor and inflation factor).
 """
 
-# (pyprimat reaction name, Parthenope f-index, fragment file, output unit)
+# (primat reaction name, Parthenope f-index, fragment file, output unit)
 REACTIONS = [
     ("npTOdg",     12, "frag_r12.f", 21),
     ("dpTOHe3g",   20, "frag_r20.f", 22),

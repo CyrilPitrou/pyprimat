@@ -22,8 +22,8 @@ These tests verify:
 import numpy as np
 import pytest
 
-from pyprimat.network_data import load_network
-from pyprimat.config import PyPRConfig
+from primat.network_data import load_network
+from primat.config import PRIMATConfig
 
 
 # ---------------------------------------------------------------------------
@@ -32,8 +32,8 @@ from pyprimat.config import PyPRConfig
 
 def _load_both():
     """Load the standard small network and the parthenope custom network."""
-    cfg_std = PyPRConfig({"network": "small", "verbose": False})
-    cfg_ph  = PyPRConfig({"network": "small_parthenope", "verbose": False})
+    cfg_std = PRIMATConfig({"network": "small", "verbose": False})
+    cfg_ph  = PRIMATConfig({"network": "small_parthenope", "verbose": False})
     net_std = load_network(cfg_std, era="LT")
     net_ph  = load_network(cfg_ph,  era="LT")
     return net_std, net_ph
@@ -45,7 +45,7 @@ def _load_both():
 
 def test_small_parthenope_loads():
     """The parthenope network file parses without error."""
-    cfg = PyPRConfig({"network": "small_parthenope", "verbose": False})
+    cfg = PRIMATConfig({"network": "small_parthenope", "verbose": False})
     net = load_network(cfg, era="LT")
     assert len(net.names) > 0
 
@@ -95,9 +95,9 @@ def test_parthenope_conservation():
     Using a different rate table does not change the stoichiometry; the
     formal conservation check must pass for all reactions.
     """
-    from pyprimat.network_builder import check_conservation, compile_network
+    from primat.network_builder import check_conservation, compile_network
 
-    cfg = PyPRConfig({"network": "small_parthenope", "verbose": False})
+    cfg = PRIMATConfig({"network": "small_parthenope", "verbose": False})
     net = load_network(cfg, era="LT")
     cnet = compile_network(net.network, len(net.species))
 
@@ -115,9 +115,9 @@ def test_parthenope_conservation():
 @pytest.mark.solve
 def test_parthenope_solve_is_physical():
     """A full solve with parthenope rates gives physically reasonable YP and D/H."""
-    from pyprimat.main import PyPR
-    r = PyPR({"network": "small_parthenope",
-                   "verbose": False}).PyPRresults()
+    from primat.main import PRIMAT
+    r = PRIMAT({"network": "small_parthenope",
+                   "verbose": False}).primat_results()
     # Standard BBN values: YP ≈ 0.247, D/H ≈ 2.4e-5.  Allow wide tolerance
     # since the parthenope rates are legitimately different.
     assert 0.23 < r["YPBBN"] < 0.26, f"YP = {r['YPBBN']:.5f} is outside physical range"
@@ -152,8 +152,8 @@ def test_added_reaction_enters_network():
     network must extend the LT reaction list and give it a non-trivial
     detailed-balance reverse rate (it is purely nuclear, so abg != 0).
     """
-    from pyprimat.network_data import UpdateNuclearRates
-    cfg = PyPRConfig({"network": "small", "verbose": False})
+    from primat.network_data import UpdateNuclearRates
+    cfg = PRIMATConfig({"network": "small", "verbose": False})
     cn = {"added": {"t_t__He4_n_n": _flat_table_text()}}
     upd = UpdateNuclearRates(cfg, custom_network=cn)
     assert "t_t__He4_n_n" in upd._order_LT
@@ -170,8 +170,8 @@ def test_added_weak_reaction_is_forward_only():
     weak and -- like the shipped beta-decays -- left without a reverse rate,
     while still being recorded in ``weak_indices``.
     """
-    from pyprimat.network_data import UpdateNuclearRates
-    cfg = PyPRConfig({"network": "small", "verbose": False})
+    from primat.network_data import UpdateNuclearRates
+    cfg = PRIMATConfig({"network": "small", "verbose": False})
     cn = {"added": {"p_p__d_Bp": _flat_table_text()}}
     upd = UpdateNuclearRates(cfg, custom_network=cn)
     i = upd._order_LT.index("p_p__d_Bp")
@@ -181,8 +181,8 @@ def test_added_weak_reaction_is_forward_only():
 
 def test_added_reaction_non_conserving_rejected():
     """A reaction that violates baryon/charge conservation raises ValueError."""
-    from pyprimat.network_data import UpdateNuclearRates
-    cfg = PyPRConfig({"network": "small", "verbose": False})
+    from primat.network_data import UpdateNuclearRates
+    cfg = PRIMATConfig({"network": "small", "verbose": False})
     # p + p -> He4 conserves neither A (2 != 4) nor Z; must be rejected.
     cn = {"added": {"p_p__He4": _flat_table_text()}}
     with pytest.raises(ValueError):
@@ -193,9 +193,9 @@ def test_added_reaction_non_conserving_rejected():
 @pytest.mark.solve
 def test_added_reaction_solve_completes():
     """A full BBN solve with an added reaction completes and stays physical."""
-    from pyprimat.main import PyPR
+    from primat.main import PRIMAT
     cn = {"added": {"t_t__He4_n_n": _flat_table_text()}}
-    r = PyPR({"network": "small", "verbose": False},
-             custom_network=cn).PyPRresults()
+    r = PRIMAT({"network": "small", "verbose": False},
+             custom_network=cn).primat_results()
     assert 0.23 < r["YPBBN"] < 0.26
     assert 1e-5 < r["DoH"] < 5e-5

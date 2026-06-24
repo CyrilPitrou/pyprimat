@@ -4,7 +4,7 @@
 generate_qed_tables.py
 ======================
 Standalone script to recompute the QED plasma-pressure correction tables
-and write them to ``pyprimat/rates/plasma/``.
+and write them to ``primat/rates/plasma/``.
 
 These tables store δP(T), dδP/dT, and d²δP/dT² — the finite-temperature
 QED corrections to the EM plasma pressure that enter the background
@@ -12,7 +12,7 @@ evolution of the BBN code.  They were originally computed with
 PRIMAT-Main.m (Mathematica); this script provides the equivalent Python
 computation so the files can be regenerated without Mathematica.
 
-The computation uses :mod:`pyprimat.qed_pressure` which implements the
+The computation uses :mod:`primat.qed_pressure` which implements the
 analytic formulas from PRIMAT-Main.m:
 
     δP(T) = δP_a(T)  [O(α), leading]
@@ -32,7 +32,7 @@ Usage::
     # Also compute the O(e^4) two-loop exchange term (very slow):
     python generate_rates/generate_qed_tables.py --include-dPb
 
-The output files are written to ``pyprimat/rates/plasma/``:
+The output files are written to ``primat/rates/plasma/``:
   - ``QED_P_int.txt``     — δP columns: [T, δP_a, δP_{e3}]
   - ``QED_dP_intdT.txt``  — dδP/dT
   - ``QED_d2P_intdT2.txt`` — d²δP/dT²
@@ -58,12 +58,12 @@ import os
 import argparse
 import time
 
-# Ensure the repo root is on sys.path so that pyprimat is importable.
+# Ensure the repo root is on sys.path so that primat is importable.
 _repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
 
-from pyprimat.qed_pressure import compute_qed_pressure_tables, save_qed_tables
+from primat.qed_pressure import compute_qed_pressure_tables, save_qed_tables
 
 
 def main():
@@ -81,10 +81,10 @@ def main():
                              "correction δP_b (very slow: ~10 s per point).")
     parser.add_argument("--output-dir", default=None,
                         help="Output directory for QED_*.txt files.  "
-                             "Default: <repo_root>/pyprimat/rates/plasma/")
+                             "Default: <repo_root>/primat/rates/plasma/")
     args = parser.parse_args()
 
-    plasma_dir = args.output_dir or os.path.join(_repo_root, "pyprimat", "rates", "plasma")
+    plasma_dir = args.output_dir or os.path.join(_repo_root, "primat", "rates", "plasma")
     os.makedirs(plasma_dir, exist_ok=True)
 
     print(f"Computing QED plasma-pressure tables:")

@@ -25,10 +25,10 @@ _PARAMS = {"network": "large", "amax": 2, "verbose": False}
 def test_amax2_network_loads_and_conserves():
     """Loads the 3-nuclide (n, p, d) network restricted to A<=2 and passes the
     formal N/Z conservation check."""
-    from pyprimat.config import PyPRConfig
-    from pyprimat.network_data import load_network
-    from pyprimat.network_builder import compile_network, check_conservation
-    cfg = PyPRConfig(_PARAMS)
+    from primat.config import PRIMATConfig
+    from primat.network_data import load_network
+    from primat.network_builder import compile_network, check_conservation
+    cfg = PRIMATConfig(_PARAMS)
     ln = load_network(cfg)
     assert ln.species[:2] == ["n", "p"]
     assert "d" in ln.species or "H2" in ln.species
@@ -44,8 +44,8 @@ def test_amax2_solve_conserves_baryon_and_skips_heavier_nuclides():
     """Full large-network, amax=2 solve: baryon number conserved exactly, and
     no abundance beyond D/H is produced (no reaction channel feeds
     He3/He4/Li7/Be7)."""
-    from pyprimat import PyPR
-    p = PyPR(params=_PARAMS)
+    from primat import PRIMAT
+    p = PRIMAT(params=_PARAMS)
     r = p.solve()
     assert r["He3oH"] == 0.0
     assert r["YPBBN"] == 0.0

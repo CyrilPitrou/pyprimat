@@ -3,18 +3,18 @@ import os
 
 import pytest
 import numpy as np
-from pyprimat.config import PyPRConfig
-from pyprimat.plasma import Plasma
-from pyprimat.neutrino_history import InstantaneousDecoupling, AnalyticDistortion
-import pyprimat.weak_rates as wr
-import pyprimat.weak_rates.corrections as corrections
+from primat.config import PRIMATConfig
+from primat.plasma import Plasma
+from primat.neutrino_history import InstantaneousDecoupling, AnalyticDistortion
+import primat.weak_rates as wr
+import primat.weak_rates.corrections as corrections
 
 
 def test_corrections_all_names_exist():
     """Every name in corrections.__all__ must resolve to a real attribute.
 
-    ``from .corrections import *`` (pyprimat/weak_rates/__init__.py) raises
-    ``AttributeError`` at import time -- i.e. ``import pyprimat`` itself
+    ``from .corrections import *`` (primat/weak_rates/__init__.py) raises
+    ``AttributeError`` at import time -- i.e. ``import primat`` itself
     fails -- if ``__all__`` lists a name that was renamed/removed without
     updating ``__all__`` to match. Catches that class of mistake directly
     rather than relying on every refactor remembering to grep for it.
@@ -25,7 +25,7 @@ def test_corrections_all_names_exist():
 
 @pytest.fixture(scope="module")
 def cfg():
-    return PyPRConfig({"numba_installed": False})
+    return PRIMATConfig({"numba_installed": False})
 
 
 # ---------------------------------------------------------------------------
@@ -76,7 +76,7 @@ def test_ComputeFn_positive(cfg):
 
 def test_ComputeFn_Born_smaller_than_full(cfg):
     """Born-level Fn (no radiative/finite-mass corrections) should be smaller than the full Fn."""
-    cfg_born = PyPRConfig({"numba_installed": False,
+    cfg_born = PRIMATConfig({"numba_installed": False,
                            "radiative_corrections": False,
                            "finite_mass_corrections": False})
     Fn_full = wr.ComputeFn(cfg)
@@ -106,8 +106,8 @@ def test_returns_two_interpolants(rate_interpolants):
 
 def test_all_rates_positive(rate_interpolants):
     """Both rate interpolants should return positive values in their range."""
-    from pyprimat.config import PyPRConfig
-    MeV_to_K = PyPRConfig().MeV_to_Kelvin
+    from primat.config import PRIMATConfig
+    MeV_to_K = PRIMATConfig().MeV_to_Kelvin
     T_K = 3.0 * MeV_to_K
     for interp in rate_interpolants:
         assert interp(T_K) > 0
@@ -121,8 +121,8 @@ def test_forward_greater_than_backward(rate_interpolants):
     """
     nTOp_frwrd_HT = rate_interpolants[0]
     nTOp_bkwrd_HT = rate_interpolants[1]
-    from pyprimat.config import PyPRConfig
-    MeV_to_K = PyPRConfig().MeV_to_Kelvin
+    from primat.config import PRIMATConfig
+    MeV_to_K = PRIMATConfig().MeV_to_Kelvin
     for T_MeV in [1.0, 3.0, 10.0]:
         T_K = T_MeV * MeV_to_K
         assert nTOp_frwrd_HT(T_K) > nTOp_bkwrd_HT(T_K), (
@@ -137,8 +137,8 @@ def test_ratio_decreases_toward_one_at_high_T(rate_interpolants):
     """
     nTOp_frwrd_HT = rate_interpolants[0]
     nTOp_bkwrd_HT = rate_interpolants[1]
-    from pyprimat.config import PyPRConfig
-    MeV_to_K = PyPRConfig().MeV_to_Kelvin
+    from primat.config import PRIMATConfig
+    MeV_to_K = PRIMATConfig().MeV_to_Kelvin
     ratio_low  = nTOp_frwrd_HT(1.0  * MeV_to_K) / nTOp_bkwrd_HT(1.0  * MeV_to_K)
     ratio_high = nTOp_frwrd_HT(10.0 * MeV_to_K) / nTOp_bkwrd_HT(10.0 * MeV_to_K)
     assert ratio_high < ratio_low   # ratio decreases toward 1
@@ -148,8 +148,8 @@ def test_ratio_decreases_toward_one_at_high_T(rate_interpolants):
 def test_forward_rate_increases_with_T(rate_interpolants):
     """n→p rate should increase with T in the HT era (well above freeze-out)."""
     nTOp_frwrd_HT = rate_interpolants[0]
-    from pyprimat.config import PyPRConfig
-    MeV_to_K = PyPRConfig().MeV_to_Kelvin
+    from primat.config import PRIMATConfig
+    MeV_to_K = PRIMATConfig().MeV_to_Kelvin
     rate_low  = nTOp_frwrd_HT(1.0  * MeV_to_K)
     rate_high = nTOp_frwrd_HT(10.0 * MeV_to_K)
     assert rate_high > rate_low
@@ -185,7 +185,7 @@ def test_gauss_legendre_converged():
     """
     import numpy as np
 
-    cfg = PyPRConfig({"thermal_corrections": False})
+    cfg = PRIMATConfig({"thermal_corrections": False})
 
     # Representative photon-temperature grid [MeV] over the BBN range, with a
     # post-decoupling neutrino ratio (the exact ratio is irrelevant to a
@@ -225,8 +225,8 @@ def test_fingerprint_changes_with_munuOverTnu():
     reused for another.  This pins ``_BACKGROUND_FINGERPRINT_FIELDS``
     (weak_rates.py) to keep including ``munuOverTnu``.
     """
-    cfg0 = PyPRConfig({"munuOverTnu": 0.0})
-    cfg1 = PyPRConfig({"munuOverTnu": 0.1})
+    cfg0 = PRIMATConfig({"munuOverTnu": 0.0})
+    cfg1 = PRIMATConfig({"munuOverTnu": 0.1})
 
     fp0 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg0))
     fp1 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg1))
@@ -239,8 +239,8 @@ def test_fingerprint_changes_with_y_SZ():
     """
     common = {"spectral_distortions": True, "analytic_distortions": True,
               "incomplete_decoupling": False}
-    cfg0 = PyPRConfig({**common, "y_SZ": 0.0})
-    cfg1 = PyPRConfig({**common, "y_SZ": 0.05})
+    cfg0 = PRIMATConfig({**common, "y_SZ": 0.0})
+    cfg1 = PRIMATConfig({**common, "y_SZ": 0.05})
 
     fp0 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg0))
     fp1 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg1))
@@ -256,8 +256,8 @@ def test_fingerprint_changes_with_nevo_file():
     must invalidate the weak-rate cache, since the cached rates were
     integrated against whatever neutrino-temperature history that file
     encodes -- the cache cannot know two filenames happen to agree."""
-    cfg0 = PyPRConfig({"network": "small"})
-    cfg1 = PyPRConfig({"network": "small", "nevo_file": "NEVOPRIMAT_col_1_7.csv"})
+    cfg0 = PRIMATConfig({"network": "small"})
+    cfg1 = PRIMATConfig({"network": "small", "nevo_file": "NEVOPRIMAT_col_1_7.csv"})
 
     fp0 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg0))
     fp1 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg1))
@@ -266,10 +266,10 @@ def test_fingerprint_changes_with_nevo_file():
 
 def test_nevo_file_missing_raises_value_error():
     """A nevo_file override that doesn't exist under rates/NEVO/ raises a
-    clear ValueError at PyPRConfig construction time, not a confusing error
+    clear ValueError at PRIMATConfig construction time, not a confusing error
     deep inside neutrino_history when the table is first read."""
     with pytest.raises(ValueError, match="nevo_file.*not found"):
-        PyPRConfig({"nevo_file": "does_not_exist.csv"})
+        PRIMATConfig({"nevo_file": "does_not_exist.csv"})
 
 
 @pytest.mark.slow
@@ -280,9 +280,9 @@ def test_nevo_file_with_custom_copy_reproduces_default(tmp_path):
     content, different path) -- while still registering as a fingerprint
     cache miss (test_fingerprint_changes_with_nevo_file above)."""
     import shutil
-    from pyprimat.main import PyPR
+    from primat.main import PRIMAT
 
-    cfg_default = PyPRConfig({"network": "small"})
+    cfg_default = PRIMATConfig({"network": "small"})
     src = os.path.join(cfg_default.data_dir, "rates", "NEVO",
                         "NEVOPRIMAT_col_1_7.csv")
     dst = os.path.join(cfg_default.data_dir, "rates", "NEVO",
@@ -317,13 +317,13 @@ def test_nevo_file_with_custom_copy_reproduces_default(tmp_path):
         # nTOp_thermal_<hash>.txt for the *default* fingerprint on every test
         # run, and (for the custom-fingerprint run) leave a stray new cache
         # file behind. Disable both so this test only reads, never writes.
-        r_default = PyPR({"network": "small", "verbose": False,
+        r_default = PRIMAT({"network": "small", "verbose": False,
                            "weak_rate_cache": False,
-                           "save_nTOp": False, "save_nTOp_thermal": False}).PyPRresults()
-        r_custom = PyPR({"network": "small", "verbose": False,
+                           "save_nTOp": False, "save_nTOp_thermal": False}).primat_results()
+        r_custom = PRIMAT({"network": "small", "verbose": False,
                           "weak_rate_cache": False,
                           "save_nTOp": False, "save_nTOp_thermal": False,
-                          "nevo_file": "NEVOPRIMAT_col_1_7_test_copy.csv"}).PyPRresults()
+                          "nevo_file": "NEVOPRIMAT_col_1_7_test_copy.csv"}).primat_results()
     finally:
         os.remove(dst)
 
@@ -338,9 +338,9 @@ def test_nevo_file_with_custom_copy_reproduces_default(tmp_path):
 
 def test_nevo_file_prefix_missing_raises_value_error():
     """A nevo_file_prefix whose derived default files don't exist under
-    rates/NEVO/ raises a clear ValueError at PyPRConfig construction time."""
+    rates/NEVO/ raises a clear ValueError at PRIMATConfig construction time."""
     with pytest.raises(ValueError, match="nevo_file_prefix.*not found"):
-        PyPRConfig({"nevo_file_prefix": "DOES_NOT_EXIST"})
+        PRIMATConfig({"nevo_file_prefix": "DOES_NOT_EXIST"})
 
 
 @pytest.mark.slow
@@ -358,9 +358,9 @@ def test_nevo_file_prefix_reproduces_default(tmp_path):
     reasoning and the resulting rel=1e-4 tolerance (~1e-6 vegas noise level,
     generous margin)."""
     import shutil
-    from pyprimat.main import PyPR
+    from primat.main import PRIMAT
 
-    cfg_default = PyPRConfig({"network": "small"})
+    cfg_default = PRIMATConfig({"network": "small"})
     nevo_dir = os.path.join(cfg_default.data_dir, "rates", "NEVO")
     pairs = [
         ("NEVOPRIMAT_col_1_7.csv", "MYPREFIX_col_1_7.csv"),
@@ -370,8 +370,8 @@ def test_nevo_file_prefix_reproduces_default(tmp_path):
         shutil.copy(os.path.join(nevo_dir, src_name),
                      os.path.join(nevo_dir, dst_name))
     try:
-        cfg0 = PyPRConfig({"network": "small"})
-        cfg1 = PyPRConfig({"network": "small", "nevo_file_prefix": "MYPREFIX"})
+        cfg0 = PRIMATConfig({"network": "small"})
+        cfg1 = PRIMATConfig({"network": "small", "nevo_file_prefix": "MYPREFIX"})
         fp0 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg0))
         fp1 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg1))
         assert fp0 != fp1
@@ -379,13 +379,13 @@ def test_nevo_file_prefix_reproduces_default(tmp_path):
         # See the matching comment in test_nevo_file_with_custom_copy_reproduces_default:
         # save_nTOp=False/save_nTOp_thermal=False keep this test read-only
         # w.r.t. the tracked rates/weak/ cache files.
-        r_default = PyPR({"network": "small", "verbose": False,
+        r_default = PRIMAT({"network": "small", "verbose": False,
                            "weak_rate_cache": False,
-                           "save_nTOp": False, "save_nTOp_thermal": False}).PyPRresults()
-        r_custom  = PyPR({"network": "small", "verbose": False,
+                           "save_nTOp": False, "save_nTOp_thermal": False}).primat_results()
+        r_custom  = PRIMAT({"network": "small", "verbose": False,
                            "weak_rate_cache": False,
                            "save_nTOp": False, "save_nTOp_thermal": False,
-                           "nevo_file_prefix": "MYPREFIX"}).PyPRresults()
+                           "nevo_file_prefix": "MYPREFIX"}).primat_results()
     finally:
         for _, dst_name in pairs:
             os.remove(os.path.join(nevo_dir, dst_name))
@@ -408,8 +408,8 @@ def test_fingerprint_unaffected_by_external_scale_factor():
     external_scale_factor for exactly this reason (see the module's "v1"
     format-version note), so the weak-rate cache fingerprint -- unlike the
     physical a(T)/t(T) history -- must NOT change."""
-    cfg0 = PyPRConfig({"network": "small"})
-    cfg1 = PyPRConfig({"network": "small", "external_scale_factor": True})
+    cfg0 = PRIMATConfig({"network": "small"})
+    cfg1 = PRIMATConfig({"network": "small", "external_scale_factor": True})
     fp0 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg0))
     fp1 = wr.fingerprint_hash(wr._weak_rate_fingerprint(cfg1))
     assert fp0 == fp1
@@ -419,7 +419,7 @@ def test_external_scale_factor_requires_incomplete_decoupling():
     """external_scale_factor reads a(T) from NEVOTable.x_of_Tg, which is only
     built when incomplete_decoupling=True."""
     with pytest.raises(ValueError, match="external_scale_factor.*incomplete_decoupling"):
-        PyPRConfig({"external_scale_factor": True, "incomplete_decoupling": False,
+        PRIMATConfig({"external_scale_factor": True, "incomplete_decoupling": False,
                      "spectral_distortions": False})
 
 
@@ -445,13 +445,13 @@ def test_recomputed_rates_match_cached():
     the other freshly integrated (quadratic interpolation of a freshly built
     grid) -- so they should agree to well within a percent.
     """
-    from pyprimat.main import PyPR
-    from pyprimat.config import PyPRConfig
+    from primat.main import PRIMAT
+    from primat.config import PRIMATConfig
 
-    r_cached = PyPR({"network": "small"})                        # loads rates/weak/*.txt
-    r_fresh  = PyPR({"network": "small", "weak_rate_cache": False})  # forces ComputeWeakRates
+    r_cached = PRIMAT({"network": "small"})                        # loads rates/weak/*.txt
+    r_fresh  = PRIMAT({"network": "small", "weak_rate_cache": False})  # forces ComputeWeakRates
 
-    MeV_to_K = PyPRConfig().MeV_to_Kelvin
+    MeV_to_K = PRIMATConfig().MeV_to_Kelvin
     for T_MeV in [0.5, 1.0, 3.0, 10.0]:
         T_K = T_MeV * MeV_to_K
         for cached, fresh in ((r_cached.background.weak_nTOp_frwrd_raw, r_fresh.background.weak_nTOp_frwrd_raw),
@@ -462,7 +462,7 @@ def test_recomputed_rates_match_cached():
 @pytest.mark.slow
 def test_analytic_distortion_weak_rates_stay_fast():
     """Guard against the SD-FM np.vectorize regression that made
-    analytic_distortions=True PyPR builds take ~17 s instead of ~1-2 s.
+    analytic_distortions=True PRIMAT builds take ~17 s instead of ~1-2 s.
 
     Root cause (now fixed): the SD-FM correction
     (weak_rates.corrections._L_SD_FMCCR/_NoCCR, active whenever
@@ -479,7 +479,7 @@ def test_analytic_distortion_weak_rates_stay_fast():
     y_SZ/y_gray are continuous MCMC-scanned knobs), so every single
     "Run BBN" with this flag combination pays this cost -- it must stay fast.
 
-    Builds a small-network PyPR once per case (first call absorbs any
+    Builds a small-network PRIMAT once per case (first call absorbs any
     one-time numba JIT compilation, so it isn't charged to the timing below)
     then times a second, JIT-warm build; asserts it stays within a generous
     multiple of the plain-default build time -- loose enough to tolerate
@@ -487,7 +487,7 @@ def test_analytic_distortion_weak_rates_stay_fast():
     ~10x np.vectorize blow-up.
     """
     import time
-    from pyprimat import PyPR
+    from primat import PRIMAT
 
     baseline_params = {"network": "small"}
     slow_cases = [
@@ -499,9 +499,9 @@ def test_analytic_distortion_weak_rates_stay_fast():
     ]
 
     def _timed_build(params):
-        PyPR(params=dict(params))  # warm-up: absorb one-time numba JIT compilation
+        PRIMAT(params=dict(params))  # warm-up: absorb one-time numba JIT compilation
         t0 = time.perf_counter()
-        PyPR(params=dict(params))
+        PRIMAT(params=dict(params))
         return time.perf_counter() - t0
 
     baseline = _timed_build(baseline_params)
@@ -518,7 +518,7 @@ def test_setup_fd_impls_rewraps_on_numba_installed_change():
     """Regression test: _setup_fd_impls must re-wrap when numba_installed flips.
 
     It used to latch on a one-shot boolean (``_fd_impls_initialized``), so a
-    second call -- e.g. from a second PyPRConfig with the opposite
+    second call -- e.g. from a second PRIMATConfig with the opposite
     numba_installed value -- was a silent no-op: whichever variant (jitted or
     plain Python) got set up *first* in the process stuck around forever,
     regardless of what later callers asked for. _setup_fd_impls now tracks
@@ -558,7 +558,7 @@ def test_setup_fd_impls_rewraps_on_numba_installed_change():
 
 def _analytic_history(params):
     """Build an AnalyticDistortion neutrino history for the SD-FM tests."""
-    cfg = PyPRConfig(dict(params, incomplete_decoupling=False,
+    cfg = PRIMATConfig(dict(params, incomplete_decoupling=False,
                            spectral_distortions=True, analytic_distortions=True))
     base = InstantaneousDecoupling(cfg, Plasma(cfg))
     return cfg, AnalyticDistortion(base)

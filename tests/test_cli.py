@@ -1,8 +1,8 @@
 """
-Tests for the ``pyprimat`` console-script CLI.
+Tests for the ``primat`` console-script CLI.
 
-``pyprimat.cli.main()`` is invoked in-process (no subprocess) with an
-explicit ``argv`` list, which is exactly what the ``pyprimat`` console
+``primat.cli.main()`` is invoked in-process (no subprocess) with an
+explicit ``argv`` list, which is exactly what the ``primat`` console
 script does at startup.  Each invocation runs one full small-network solve
 (~1.2 s), so these tests are marked ``slow``/``solve`` like the other
 single-solve tests in the "solve" tier.
@@ -12,7 +12,7 @@ import re
 
 import pytest
 
-from pyprimat.cli import main
+from primat.cli import main
 from tests.reference_values import (
     DOH_ABS_TOL,
     DOH_REFERENCE,
@@ -58,7 +58,7 @@ def test_cli_json_matches_default_summary(capsys):
 
 
 def test_cli_omegabh2_override_changes_doh(capsys):
-    """--Omegabh2 is forwarded to PyPRConfig and changes the result."""
+    """--Omegabh2 is forwarded to PRIMATConfig and changes the result."""
     rc = main(["--Omegabh2", "0.024", "--json"])
     assert rc == 0
     results = json.loads(capsys.readouterr().out)
@@ -84,6 +84,6 @@ def test_cli_network_accepts_any_network_file(capsys):
 
 
 def test_cli_network_rejects_unknown_name():
-    """An unknown --network name surfaces PyPRConfig's ValueError."""
+    """An unknown --network name surfaces PRIMATConfig's ValueError."""
     with pytest.raises(ValueError, match="network must be"):
         main(["--network", "no_such_network"])

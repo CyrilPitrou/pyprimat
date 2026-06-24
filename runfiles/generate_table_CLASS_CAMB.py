@@ -12,7 +12,7 @@ Strategy for efficiency
 For each DeltaN value the n<->p weak-rate tables are computed once (the seed run
 below uses save_nTOp=True, so the result is written to
 rates/weak/nTOp_{frwrd,bkwrd}.txt with a fingerprint header keyed on, among other
-things, DeltaNeff -- see pyprimat.weak_rates).  All subsequent runs for that same
+things, DeltaNeff -- see primat.weak_rates).  All subsequent runs for that same
 DeltaN have a matching fingerprint and so load the cached tables instead of
 recomputing them, meaning only the nuclear-network ODE is re-integrated.  tau_n
 variation affects only the weak-rate normalisation, which is re-evaluated for
@@ -63,8 +63,8 @@ repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if repo_root not in sys.path:
     sys.path.insert(0, repo_root)
 
-from pyprimat.main import PyPR
-from pyprimat.config import DEFAULT_PARAMS, PyPRConfig
+from primat.main import PRIMAT
+from primat.config import DEFAULT_PARAMS, PRIMATConfig
 
 # ---------------------------------------------------------------------------
 # Grid definition
@@ -99,7 +99,7 @@ N_JOBS    = -1     # joblib workers; -1 = all cores.  Lower this (e.g. 4) if the
                    # OS OOM killer stops the run -- fewer workers => less memory.
 
 # Precompute the conversion factor eta10 = 1e10 * eta_0 / (Omega_b h^2)
-_cfg0 = PyPRConfig()
+_cfg0 = PRIMATConfig()
 OMBH2_TO_ETA10 = 1e10 * _cfg0.Omegabh2_to_eta0b
 print(f"eta10 / (Omega_b h^2) = {OMBH2_TO_ETA10:.6f}")
 
@@ -108,7 +108,7 @@ ALL_P_KEYS = [k for k in DEFAULT_PARAMS if k.startswith('p_')]
 RATE_KEYS  = ALL_P_KEYS[:12]
 print(f"Rate keys ({len(RATE_KEYS)}): {RATE_KEYS}")
 
-# Options shared by every PyPR call (weak-rate tables are loaded from disk:
+# Options shared by every PRIMAT call (weak-rate tables are loaded from disk:
 # the per-DeltaN seed run below writes a fingerprint that these calls match)
 BASE_OPTS = {
     'verbose':      False,
@@ -218,7 +218,7 @@ def _run_central(Ombh2, DeltaN):
             'Omegabh2': float(Ombh2),
             'DeltaNeff': float(DeltaN),
         }
-        inst = PyPR(params=params)
+        inst = PRIMAT(params=params)
         inst.solve()
         return (
             inst.get_quantity('YPBBN'),
@@ -246,7 +246,7 @@ def _run_mc_sample(Ombh2, DeltaN, p_vals, tau_n_val):
         }
         for k, v in zip(RATE_KEYS, p_vals):
             params[k] = float(v)
-        inst = PyPR(params=params)
+        inst = PRIMAT(params=params)
         inst.solve()
         return inst.get_quantity('YPBBN'), inst.get_quantity('DoH')
     except Exception:
@@ -299,7 +299,7 @@ for i_dN, DeltaN in enumerate(DeltaN_grid):
         'Omegabh2': 0.022425,
         'DeltaNeff': float(DeltaN),
     }
-    _ = PyPR(params=_seed_params)   # side-effect: saves rates/weak/*.txt
+    _ = PRIMAT(params=_seed_params)   # side-effect: saves rates/weak/*.txt
     print(f"  [weak {time.time()-t0:.0f}s]", end='', flush=True)
 
     # ------------------------------------------------------------------

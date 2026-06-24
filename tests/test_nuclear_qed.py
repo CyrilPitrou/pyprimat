@@ -20,8 +20,8 @@ T9-dependent factor derived in Pitrou & Pospelov 2020.  These tests verify:
 import numpy as np
 import pytest
 
-from pyprimat.config import PyPRConfig
-from pyprimat.network_data import _qed_nuclear_rescale, load_network
+from primat.config import PRIMATConfig
+from primat.network_data import _qed_nuclear_rescale, load_network
 
 
 # ---------------------------------------------------------------------------
@@ -135,8 +135,8 @@ class TestQEDCorrectionInNetwork:
     @pytest.fixture(scope="class")
     def nets(self):
         """Base (uncorrected) and QED-corrected small networks."""
-        cfg_base = PyPRConfig({"network": "small", "nuclear_qed_corrections": False})
-        cfg_qed  = PyPRConfig({"network": "small", "nuclear_qed_corrections": True})
+        cfg_base = PRIMATConfig({"network": "small", "nuclear_qed_corrections": False})
+        cfg_qed  = PRIMATConfig({"network": "small", "nuclear_qed_corrections": True})
         return (load_network(cfg_base, era="LT"),
                 load_network(cfg_qed,  era="LT"))
 
@@ -175,7 +175,7 @@ class TestQEDCorrectionInNetwork:
         times exp(log(expsigma)).
         """
         net_base, net_qed = nets
-        cfg_qed = PyPRConfig({"network": "small", "nuclear_qed_corrections": True,
+        cfg_qed = PRIMATConfig({"network": "small", "nuclear_qed_corrections": True,
                               "p_n_p__d_g": 1.0})
         net_qed.apply_variations(cfg_qed)
         i = net_qed.names.index("n_p__d_g") - 1
@@ -198,11 +198,11 @@ def test_solve_qed_corrections_shift_DoH():
     the shift is not pinned here (it depends on the net balance of reactions),
     but the result must differ from the uncorrected run.
     """
-    from pyprimat import PyPR
+    from primat import PRIMAT
 
-    res_base = PyPR({"network": "small", "nuclear_qed_corrections": False,
+    res_base = PRIMAT({"network": "small", "nuclear_qed_corrections": False,
                           "verbose": False}).solve()
-    res_qed  = PyPR({"network": "small", "nuclear_qed_corrections": True,
+    res_qed  = PRIMAT({"network": "small", "nuclear_qed_corrections": True,
                           "verbose": False}).solve()
 
     dh_base = res_base["DoH"]

@@ -1,6 +1,6 @@
 """
 Tests for the GUI's "Manage networks" dialog and the "Create custom network"
-dialog it gates (``pyprimat.gui.params_form``).
+dialog it gates (``primat.gui.params_form``).
 
 These drive the actual popup workflow end to end with Streamlit's ``AppTest``
 harness (no browser needed), mimicking the user flows a person would actually
@@ -65,9 +65,9 @@ from streamlit.testing.v1 import AppTest
 
 pytestmark = [pytest.mark.slow, pytest.mark.solve, pytest.mark.gui]
 
-APP_PATH = "pyprimat/gui/app.py"
+APP_PATH = "primat/gui/app.py"
 
-_AC2024_DIR = os.path.join(os.path.dirname(__file__), "..", "pyprimat",
+_AC2024_DIR = os.path.join(os.path.dirname(__file__), "..", "primat",
                            "rates", "nuclear", "data")
 _needs_ac2024 = pytest.mark.skipif(
     not os.path.isdir(_AC2024_DIR),
@@ -261,7 +261,7 @@ def test_amax_filtered_reactions_are_actually_removed_on_create():
     _click_create_this_network(at)
     assert not at.exception
 
-    from pyprimat.network_data import reaction_category
+    from primat.network_data import reaction_category
     saved = at.session_state["_known_custom_networks"]["custom"]
     custom_network = saved["custom_network"]
     # This is the actual regression this guards: reactions the dialog never
@@ -451,7 +451,7 @@ def test_close_stages_selection_for_the_sidebar():
     custom network" selectbox once and then closed, hits the same AppTest
     stale-widget quirk documented in the module docstring, just for a
     selectbox rather than a number_input)."""
-    from pyprimat.gui import custom_rates, params_form
+    from primat.gui import custom_rates, params_form
 
     kept_names = ["n_p__d_g", "d_p__He3_g"]
     custom_network = custom_rates.kept_to_custom_network(
@@ -483,7 +483,7 @@ def test_pending_network_selection_runs_bbn_with_the_custom_network():
     than by also opening "Manage networks" first) purely to dodge the AppTest
     stale-widget quirk that a further ``.run()`` after it has rendered and
     closed would otherwise hit (see the module docstring)."""
-    from pyprimat.gui import custom_rates, params_form
+    from primat.gui import custom_rates, params_form
 
     small_kept = ["n_p__d_g", "d_p__He3_g", "d_d__He3_n", "d_d__t_p", "t_p__a_g",
                   "t_d__a_n", "t_a__Li7_g", "He3_n__t_p", "He3_d__a_p",
@@ -518,7 +518,7 @@ def test_amax_auto_unchecked_on_close_but_stays_clickable():
     greyed out), since amax does genuinely filter a custom network's own
     kept-list too (load_network applies it to whatever ``reaction_names``
     it is given, custom or not)."""
-    from pyprimat.gui import custom_rates, params_form
+    from primat.gui import custom_rates, params_form
 
     kept_names = ["n_p__d_g", "d_p__He3_g"]
     custom_network = custom_rates.kept_to_custom_network(
@@ -549,7 +549,7 @@ def test_amax_auto_unchecked_on_direct_sidebar_switch_to_custom_network():
     dropdown straight to an already-known custom network (no "Manage
     networks" dialog involved) -- the transition is detected purely from
     the network value actually changing, not from a specific button."""
-    from pyprimat.gui import custom_rates, params_form
+    from primat.gui import custom_rates, params_form
 
     kept_names = ["n_p__d_g", "d_p__He3_g"]
     custom_network = custom_rates.kept_to_custom_network(
@@ -576,7 +576,7 @@ def test_amax_auto_unchecked_on_direct_sidebar_switch_to_custom_network():
 # ---------------------------------------------------------------------------
 
 def test_remove_button_only_offered_for_custom_networks():
-    from pyprimat.gui import custom_rates, params_form
+    from primat.gui import custom_rates, params_form
 
     kept_names = ["n_p__d_g", "d_p__He3_g"]
     custom_network = custom_rates.kept_to_custom_network(
@@ -602,7 +602,7 @@ def test_remove_button_only_offered_for_custom_networks():
 
 
 def test_rename_a_custom_network():
-    from pyprimat.gui import custom_rates, params_form
+    from primat.gui import custom_rates, params_form
 
     kept_names = ["n_p__d_g", "d_p__He3_g"]
     custom_network = custom_rates.kept_to_custom_network(
@@ -635,7 +635,7 @@ def test_rename_a_custom_network():
 
 
 def test_rename_to_a_reserved_name_is_blocked():
-    from pyprimat.gui import custom_rates, params_form
+    from primat.gui import custom_rates, params_form
 
     kept_names = ["n_p__d_g", "d_p__He3_g"]
     custom_network = custom_rates.kept_to_custom_network(
@@ -679,7 +679,7 @@ def test_download_zip_contains_a_table_for_every_kept_reaction():
     import io
     import zipfile
 
-    from pyprimat.gui import custom_rates, params_form
+    from primat.gui import custom_rates, params_form
 
     at = AppTest.from_file(APP_PATH)
     at.run(timeout=60)
@@ -732,7 +732,7 @@ def test_load_zip_edit_export_roundtrip():
     import io
     import zipfile
 
-    from pyprimat.gui import custom_rates, params_form
+    from primat.gui import custom_rates, params_form
 
     cfg = params_form._cfg()
     small_kept = ["n_p__d_g", "d_p__He3_g", "d_d__He3_n", "d_d__t_p", "t_p__a_g",
@@ -783,7 +783,7 @@ def test_loading_a_reserved_network_name_is_blocked():
     an amax filter applied, then re-loaded, would otherwise silently make
     every future pick of "small" from the sidebar solve the amax-filtered
     reaction list instead of the true 12-reaction small network."""
-    from pyprimat.gui import custom_rates, params_form
+    from primat.gui import custom_rates, params_form
 
     cfg = params_form._cfg()
     kept_names = ["n_p__d_g", "d_p__He3_g"]
@@ -865,11 +865,11 @@ def test_unmodified_network_roundtrip_keeps_original_source_labels():
     """
     import io
 
-    from pyprimat.config import PyPRConfig
-    from pyprimat.network_data import UpdateNuclearRates
-    from pyprimat.gui import custom_rates
+    from primat.config import PRIMATConfig
+    from primat.network_data import UpdateNuclearRates
+    from primat.gui import custom_rates
 
-    cfg = PyPRConfig({"network": "large", "amax": 8})
+    cfg = PRIMATConfig({"network": "large", "amax": 8})
     original = UpdateNuclearRates(cfg).describe_reactions()
     names = [name for name, _eq, _src, _file in original]
     source_by_name = {name: src for name, _eq, src, _file in original}
@@ -902,7 +902,7 @@ def test_unmodified_network_roundtrip_keeps_original_source_labels():
 def test_reopening_a_round_tripped_network_keeps_shipped_filenames():
     import io
 
-    from pyprimat.gui import custom_rates, params_form
+    from primat.gui import custom_rates, params_form
 
     cfg = params_form._cfg()
     kept_names = ["n_p__d_g", "d_p__He3_g", "d_d__He3_n"]

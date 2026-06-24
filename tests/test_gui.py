@@ -1,19 +1,19 @@
 """
-Tests for the optional Streamlit GUI (``pyprimat.gui``).
+Tests for the optional Streamlit GUI (``primat.gui``).
 
-The GUI is the third way (alongside a Python script and the ``pyprimat``
+The GUI is the third way (alongside a Python script and the ``primat``
 console-script CLI, ``tests/test_cli.py``) of driving the same
-"params dict -> PyPR -> results dict" contract.  These tests:
+"params dict -> PRIMAT -> results dict" contract.  These tests:
 
 * check that the optional ``gui`` extra (streamlit/plotly) does not leak
-  into the mandatory import of ``pyprimat`` (``test_wheel_smoke.py`` already
+  into the mandatory import of ``primat`` (``test_wheel_smoke.py`` already
   covers that the package *data* ships correctly; this covers that the
   *import graph* stays separate);
-* drive ``pyprimat/gui/app.py`` end-to-end with Streamlit's ``AppTest``
+* drive ``primat/gui/app.py`` end-to-end with Streamlit's ``AppTest``
   harness (no browser needed) and check that a default small-network run
   reproduces the exact values pinned in ``test_cli.py`` -- i.e. the GUI
-  calls ``PyPR`` identically to the CLI;
-* check that an invalid flag combination (caught by ``PyPRConfig``) is
+  calls ``PRIMAT`` identically to the CLI;
+* check that an invalid flag combination (caught by ``PRIMATConfig``) is
   surfaced as a clean ``st.error`` rather than a traceback.
 
 Each ``AppTest`` run that clicks "Run BBN" performs one full small-network
@@ -30,14 +30,14 @@ pytest.importorskip("plotly")
 
 from streamlit.testing.v1 import AppTest
 
-from pyprimat.gui import params_form
+from primat.gui import params_form
 
 pytestmark = [pytest.mark.slow, pytest.mark.solve, pytest.mark.gui]
 
-APP_PATH = "pyprimat/gui/app.py"
+APP_PATH = "primat/gui/app.py"
 
 # network="large" needs the generated AC2024 rate/data CSVs (tests/test_large_network.py).
-_AC2024_DIR = os.path.join(os.path.dirname(__file__), "..", "pyprimat",
+_AC2024_DIR = os.path.join(os.path.dirname(__file__), "..", "primat",
                            "rates", "nuclear", "data")
 _needs_ac2024 = pytest.mark.skipif(
     not os.path.isdir(_AC2024_DIR),
@@ -69,25 +69,25 @@ def _download_button(at, label):
 # ---------------------------------------------------------------------------
 
 def test_pyprimat_import_does_not_pull_in_gui():
-    """``import pyprimat`` must not import ``pyprimat.gui`` (or streamlit).
+    """``import primat`` must not import ``primat.gui`` (or streamlit).
 
-    ``pyprimat.gui`` is shipped inside the package so
-    that ``pip install ".[gui]"`` provides the ``pyprimat-gui`` console
+    ``primat.gui`` is shipped inside the package so
+    that ``pip install ".[gui]"`` provides the ``primat-gui`` console
     script, but ``streamlit``/``plotly`` are optional: a plain
-    ``pip install pyprimat`` (no extra) must still let
-    ``from pyprimat import PyPR`` work. Guard against ``pyprimat/__init__.py``
+    ``pip install primat`` (no extra) must still let
+    ``from primat import PRIMAT`` work. Guard against ``primat/__init__.py``
     ever growing an eager ``from . import gui`` or similar.
     """
-    # pyprimat (and its gui subpackage) are already imported by the time this
+    # primat (and its gui subpackage) are already imported by the time this
     # test module runs -- check the *module source* instead of re-importing,
     # which is robust regardless of import order within the test session.
-    import pyprimat
-    assert "pyprimat.gui" not in getattr(pyprimat, "__all__", [])
-    with open(pyprimat.__file__) as f:
+    import primat
+    assert "primat.gui" not in getattr(primat, "__all__", [])
+    with open(primat.__file__) as f:
         source = f.read()
     assert "gui" not in source, (
-        "pyprimat/__init__.py must not reference the gui subpackage, so "
-        "`import pyprimat` keeps working without the optional gui extra"
+        "primat/__init__.py must not reference the gui subpackage, so "
+        "`import primat` keeps working without the optional gui extra"
     )
 
 
@@ -117,7 +117,7 @@ def test_network_label_appends_reaction_count():
     (CUSTOMPOPUP.md dropped the old fixed-size 'deuterium' network)."""
     assert params_form._network_label("small") == "small (12)"
     n_large = len(params_form.load_reaction_names(
-        params_form.PyPRConfig({"network": "large"}), "large"))
+        params_form.PRIMATConfig({"network": "large"}), "large"))
     assert params_form._network_label("large") == f"large ({n_large})"
 
 
@@ -164,8 +164,8 @@ def _markdown_table_rows(md_value):
 def test_default_run_matches_cli_reference():
     """Default (small-network) GUI run reproduces the CLI's in-process result.
 
-    Both the GUI (`pyprimat.gui.app._solve`) and the `pyprimat` console
-    script (`pyprimat.cli.main`) call `PyPR(params=params).PyPRresults()`
+    Both the GUI (`primat.gui.app._solve`) and the `primat` console
+    script (`primat.cli.main`) call `PRIMAT(params=params).primat_results()`
     with the same defaults, so they must agree to full precision -- this is
     the verification step 3 ("reference run parity"). Rather than pinning a
     second copy of the literal numbers (which then drifts independently of
@@ -173,16 +173,16 @@ def test_default_run_matches_cli_reference():
     in-process and compares GUI == CLI directly: it tests parity (its
     stated purpose) and can never go stale from a routine default tweak.
     """
-    from pyprimat.main import PyPR
-    from pyprimat.network_data import nuclide_latex
+    from primat.main import PRIMAT
+    from primat.network_data import nuclide_latex
 
     at = AppTest.from_file(APP_PATH)
     at.run(timeout=120)
     _run_bbn(at)
     assert not at.exception
 
-    cli_run = PyPR(params={})
-    cli_results = cli_run.PyPRresults()
+    cli_run = PRIMAT(params={})
+    cli_results = cli_run.primat_results()
 
     # "Standard ratios" Markdown table (render_results_panel).
     [ratios_md] = [
@@ -313,7 +313,7 @@ def test_quick_mc_uncertainty_with_customised_network():
     running BBN" test) and to avoid that module's documented AppTest
     stale-widget quirk when a dialog closes and a further ``.run()`` follows.
     """
-    from pyprimat.gui import custom_rates, params_form
+    from primat.gui import custom_rates, params_form
 
     small_kept = ["n_p__d_g", "d_p__He3_g", "d_d__He3_n", "d_d__t_p", "t_p__a_g",
                   "t_d__a_n", "t_a__Li7_g", "He3_n__t_p", "He3_d__a_p",
@@ -350,7 +350,7 @@ def test_quick_mc_uncertainty_with_customised_network():
 
 def test_spectral_distortions_forces_incomplete_decoupling_on():
     """spectral_distortions=True + incomplete_decoupling=False (with the
-    default analytic_distortions=False) is rejected by `PyPRConfig.__init__`
+    default analytic_distortions=False) is rejected by `PRIMATConfig.__init__`
     (config.py): the full NEVO spectrum table -- needed for spectral
     distortions when analytic_distortions=False -- only exists in
     non-instantaneous-decoupling mode. Rather than let the user hit that

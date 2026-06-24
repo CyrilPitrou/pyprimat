@@ -4,8 +4,8 @@ PyPRIMAT_run.py
 ===============
 Standard run script for PyPRIMAT.
 
-All run-time options are passed as a plain dict to ``PyPR``.
-No ``PyPR_init.py`` singleton is needed or used.
+All run-time options are passed as a plain dict to ``PRIMAT``.
+No ``primat_init.py`` singleton is needed or used.
 
 Usage::
 
@@ -16,12 +16,12 @@ import sys
 import os
 import time
 
-# Ensure the PyPR package is importable regardless of working directory
+# Ensure the PRIMAT package is importable regardless of working directory
 _pyprimat_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if _pyprimat_path not in sys.path:
     sys.path.insert(0, _pyprimat_path)
 
-from pyprimat import PyPR
+from primat import PRIMAT
 
 # ---------------------------------------------------------------------------
 # Cosmological parameters
@@ -55,8 +55,8 @@ MyOptions = {
 # ---------------------------------------------------------------------------
 start_time = time.time()
 
-PyPRrun = PyPR(params=MyOptions)
-res = PyPRrun.PyPRresults()
+primat_run = PRIMAT(params=MyOptions)
+res = primat_run.primat_results()
 
 print(" ")
 print(" Neff = ",             res['Neff'])
@@ -75,8 +75,8 @@ if MyOptions.get("network", "small") != "small":
     print(" Final nuclide mass-fraction abundances Y_i:")
     print(f"  {'Nuclide':<10}  {'Y_i':>14}")
     print("  " + "-" * 26)
-    for name in PyPRrun.abundance_names:
-        print(f"  {name:<10}  {PyPRrun.nuclear.Y_final[name]:14.6e}")
+    for name in primat_run.abundance_names:
+        print(f"  {name:<10}  {primat_run.nuclear.Y_final[name]:14.6e}")
     print(" ")
 
 print("--- running time: %s seconds ---" % (time.time() - start_time))

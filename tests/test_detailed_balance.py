@@ -2,12 +2,12 @@
 import os
 import csv
 import pytest
-from pyprimat.config import PyPRConfig
-from pyprimat.network_data import compute_detailed_balance_coefficients, reaction_species
+from primat.config import PRIMATConfig
+from primat.network_data import compute_detailed_balance_coefficients, reaction_species
 
 def test_detailed_balance_consistency():
     """Verify that compute_detailed_balance_coefficients reproduces the values in detailed_balance.csv."""
-    cfg = PyPRConfig()
+    cfg = PRIMATConfig()
     db_csv_path = os.path.join(cfg.data_dir, "rates", "nuclear", "data", "detailed_balance.csv")
     
     with open(db_csv_path, 'r') as f:
