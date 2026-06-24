@@ -16,7 +16,10 @@
  * `cfg.output_background_evolution` path) -- background.c does not yet
  * port `Background.write_time_evolution`, see background.h's top comment.
  * `cfg.output_time_evolution`/`output_final_file` *are* honoured (delegated
- * to nuclear_network.h's existing writers).
+ * to nuclear_network.h's existing writers for the disk side; `cfg.output_time_evolution`
+ * also populates `CPRResults`'s `evol_*` in-memory arrays directly --
+ * PRIMAT.md S7.3/S7.6 -- so `primat/_primat_c/_wrapper.c` can hand the same
+ * `EvolutionResult` shape back to Python with no disk I/O).
  *
  * Reference: Pitrou, Coc, Uzan & Vangioni, Phys. Rep. 2018 (arXiv:1806.11095).
  */
@@ -59,6 +62,19 @@ typedef struct {
     char (*nuclide_names)[16];
     double *Y_final;
     size_t n_nuclides;
+
+    /* ---- Unified time-evolution arrays (PRIMAT.md S7.2/S7.3), populated
+     * iff cfg->output_time_evolution. Mirrors Python's in-memory
+     * EvolutionResult so primat/_primat_c/_wrapper.c can hand the same
+     * shape back to primat/backend.py with no disk I/O. evol_Y is
+     * n_evolution * n_nuclides, row-major, in nuclide_names column order
+     * (reuses the field above -- same species list as Y_final). Owned;
+     * freed by cprimat_results_free. has_evolution=0 means not populated
+     * (n_evolution/evol_* are then 0/NULL). ---- */
+    int has_evolution;
+    size_t n_evolution;
+    double *evol_t, *evol_a, *evol_T_gamma, *evol_Tnue, *evol_Tnumu, *evol_Tnutau;
+    double *evol_Y;
 } CPRResults;
 
 /* Runs one full PyPR(params).solve()-equivalent BBN computation: builds

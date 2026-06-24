@@ -160,6 +160,19 @@ double cpr_bg_t_of_a(const CPRBackground *bg, double a);
 double cpr_bg_Hubble(const CPRBackground *bg, double Tg, double Tnue, double Tnumu,
                       double Tnutau);
 
+/* Per-flavour neutrino temperature [MeV] at cosmic time t [s] -- mirrors
+ * Background.Tnu_of_t (background.py). For CPR_BG_STANDARD, linearly
+ * interpolates/extrapolates bg->Tnue_vec/Tnumu_vec/Tnutau_vec over
+ * bg->t_vec, exactly like Python's StandardBackground.Tnu_of_t
+ * (interp1d(..., kind='linear', fill_value='extrapolate')); writes Tnue/
+ * Tnumu/Tnutau (via the output pointers) and returns 1. For CPR_BG_CUSTOM,
+ * which tracks no time-indexed neutrino sector, writes nothing and
+ * returns 0 -- mirroring
+ * Python's base Background.Tnu_of_t returning None there (callers fill
+ * NaN, see cpr_nuclear_network_sample_time_evolution). */
+int cpr_bg_Tnu_of_t(const CPRBackground *bg, double t, double *Tnue, double *Tnumu,
+                     double *Tnutau);
+
 /* ---- Derived cosmology (optional in Python; both kinds implement it
  * here, writing into Tg_final/rho_nu_tot_final). Returns 0 (always
  * available for both ported kinds; Background's own "None" default has no

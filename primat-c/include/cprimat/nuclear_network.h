@@ -99,12 +99,33 @@ double cpr_nuclear_network_Y_of_t(const CPRNuclearNetwork *nn, const char *name,
  * failure. */
 int cpr_nuclear_network_write_final_result(const CPRNuclearNetwork *nn, char **errmsg);
 
-/* Writes the T/t/Y<species>/weak-rate time-evolution TSV to cfg->output_file
- * (port of _write_time_evolution; per-reaction flux columns are not
- * ported, see this header's top comment). `n_points` is the number of
- * log-spaced output rows (mirrors cfg->output_n_points). Returns 0 on
- * success, nonzero with *errmsg set (caller frees) on a file-write
- * failure. */
+/* Samples the unified time-evolution schema (PRIMAT.md S7.2/S7.3:
+ * t_s/a/T_gamma_MeV/T_nue_MeV/T_numu_MeV/T_nutau_MeV/Y_<nuclide>) at
+ * `n_points` log-spaced rows in cosmic time between T_start_cosmo and
+ * nn->t_end (mirrors Python's _write_time_evolution's t_out grid). Writes
+ * into caller-allocated buffers, all of length n_points except `Y_out`
+ * (length n_points * nn->n_species, row-major, one row per time step in
+ * nn->abundance_names order). `a_out`/`Tnue_out`/`Tnumu_out`/`Tnutau_out`
+ * are filled with NaN wherever the active background has no scale-factor/
+ * neutrino-sector tracking, exactly like Python's EvolutionResult does for
+ * a minimal/custom background. Shared by
+ * cpr_nuclear_network_write_time_evolution (TSV) and the Python-extension
+ * bridge (_wrapper.c, in-memory output_time_evolution=True) so the two
+ * never drift -- see PRIMAT.md S7.6. */
+void cpr_nuclear_network_sample_time_evolution(const CPRNuclearNetwork *nn, int n_points,
+                                                  double *t_out, double *T_out, double *a_out,
+                                                  double *Tnue_out, double *Tnumu_out,
+                                                  double *Tnutau_out, double *Y_out);
+
+/* Writes the unified time-evolution TSV (PRIMAT.md S7.2, header-compatible
+ * with primat.evolution.dump_evolution's output -- see PRIMAT.md S7.6) to
+ * cfg->output_file, via cpr_nuclear_network_sample_time_evolution.
+ * `n_points` is the number of log-spaced output rows (mirrors
+ * cfg->output_n_points). Per-reaction flux columns are not ported, see
+ * this header's top comment. A NULL/empty cfg->output_file is the
+ * in-memory-only escape hatch (mirrors Python's output_file=None): no-op,
+ * returns 0. Returns 0 on success, nonzero with *errmsg set (caller frees)
+ * on a file-write failure. */
 int cpr_nuclear_network_write_time_evolution(const CPRNuclearNetwork *nn, int n_points,
                                                 char **errmsg);
 

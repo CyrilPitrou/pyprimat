@@ -119,6 +119,28 @@ void cpr_assemble_results(CPRResults *results, const CPRConfig *cfg,
         memcpy(results->nuclide_names[i], nn->abundance_names[i], 16);
         results->Y_final[i] = nn->Y_final[i];
     }
+
+    /* ---- Unified time-evolution arrays (PRIMAT.md S7.3/S7.6), populated
+     * in-memory regardless of cfg->output_file -- the disk TSV written by
+     * cpr_nuclear_network_solve (gated the same way) is a separate, derived
+     * convenience built from the same sampler. ---- */
+    if (cfg->output_time_evolution) {
+        size_t n = (size_t)cfg->output_n_points;
+        results->has_evolution = 1;
+        results->n_evolution = n;
+        results->evol_t      = malloc(n * sizeof(double));
+        results->evol_a      = malloc(n * sizeof(double));
+        results->evol_T_gamma = malloc(n * sizeof(double));
+        results->evol_Tnue   = malloc(n * sizeof(double));
+        results->evol_Tnumu  = malloc(n * sizeof(double));
+        results->evol_Tnutau = malloc(n * sizeof(double));
+        results->evol_Y      = malloc(n * nn->n_species * sizeof(double));
+        cpr_nuclear_network_sample_time_evolution(nn, cfg->output_n_points,
+                                                    results->evol_t, results->evol_T_gamma,
+                                                    results->evol_a, results->evol_Tnue,
+                                                    results->evol_Tnumu, results->evol_Tnutau,
+                                                    results->evol_Y);
+    }
 }
 
 int cprimat_run(const CPRConfig *cfg, CPRResults *results, char **errmsg)
@@ -176,6 +198,14 @@ void cprimat_results_free(CPRResults *results)
     results->nuclide_names = NULL;
     results->Y_final = NULL;
     results->n_nuclides = 0;
+
+    free(results->evol_t); free(results->evol_a); free(results->evol_T_gamma);
+    free(results->evol_Tnue); free(results->evol_Tnumu); free(results->evol_Tnutau);
+    free(results->evol_Y);
+    results->evol_t = results->evol_a = results->evol_T_gamma = NULL;
+    results->evol_Tnue = results->evol_Tnumu = results->evol_Tnutau = results->evol_Y = NULL;
+    results->has_evolution = 0;
+    results->n_evolution = 0;
 }
 
 double cpr_results_get_quantity(const CPRResults *r, const char *name, int *found)

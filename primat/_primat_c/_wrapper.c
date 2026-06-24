@@ -69,10 +69,75 @@ static int py_to_cprparam(PyObject *value, CPRParam *out, char **owned)
     return 1;
 }
 
+/* Builds a Python list of floats from a caller-owned double array of
+ * length n. Returns NULL (with a Python exception set) on allocation
+ * failure. */
+static PyObject *doubles_to_list(const double *arr, size_t n)
+{
+    PyObject *list = PyList_New((Py_ssize_t)n);
+    if (!list)
+        return NULL;
+    for (size_t i = 0; i < n; i++) {
+        PyObject *o = PyFloat_FromDouble(arr[i]);
+        if (!o) { Py_DECREF(list); return NULL; }
+        PyList_SET_ITEM(list, (Py_ssize_t)i, o);
+    }
+    return list;
+}
+
+/* Builds the "evolution" sub-dict (PRIMAT.md S7.2/S7.3): plain Python
+ * lists (not numpy arrays -- this extension carries no numpy C-API
+ * dependency), converted to an EvolutionResult Python-side by
+ * primat/backend.py via np.asarray. "Y" is itself a sub-dict keyed by
+ * nuclide name, column-sliced out of r->evol_Y's row-major layout, mirroring
+ * primat.evolution.EvolutionResult.Y. Returns NULL (with a Python
+ * exception set) on failure. */
+static PyObject *evolution_to_dict(const CPRResults *r)
+{
+    PyObject *eo = PyDict_New();
+    if (!eo)
+        return NULL;
+
+#define SETLIST(key, arr) \
+    do { \
+        PyObject *o = doubles_to_list((arr), r->n_evolution); \
+        if (!o || PyDict_SetItemString(eo, key, o) < 0) { Py_XDECREF(o); Py_DECREF(eo); return NULL; } \
+        Py_DECREF(o); \
+    } while (0)
+
+    SETLIST("t", r->evol_t);
+    SETLIST("a", r->evol_a);
+    SETLIST("T_gamma", r->evol_T_gamma);
+    SETLIST("T_nue", r->evol_Tnue);
+    SETLIST("T_numu", r->evol_Tnumu);
+    SETLIST("T_nutau", r->evol_Tnutau);
+#undef SETLIST
+
+    PyObject *Y = PyDict_New();
+    if (!Y) { Py_DECREF(eo); return NULL; }
+    double *col = malloc(r->n_evolution * sizeof(double));
+    if (!col) { Py_DECREF(Y); Py_DECREF(eo); PyErr_NoMemory(); return NULL; }
+    for (size_t s = 0; s < r->n_nuclides; s++) {
+        for (size_t i = 0; i < r->n_evolution; i++)
+            col[i] = r->evol_Y[i * r->n_nuclides + s];
+        PyObject *o = doubles_to_list(col, r->n_evolution);
+        if (!o || PyDict_SetItemString(Y, r->nuclide_names[s], o) < 0) {
+            Py_XDECREF(o); free(col); Py_DECREF(Y); Py_DECREF(eo); return NULL;
+        }
+        Py_DECREF(o);
+    }
+    free(col);
+    if (PyDict_SetItemString(eo, "Y", Y) < 0) { Py_DECREF(Y); Py_DECREF(eo); return NULL; }
+    Py_DECREF(Y);
+
+    return eo;
+}
+
 /* Builds a Python dict mirroring PRIMAT.solve()'s result dict (main.py),
  * plus a "Y_final" sub-dict of every tracked nuclide's final mass
  * fraction (mirrors NuclearNetwork.Y_final, used by get_quantity's
- * nuclide-name fallback). */
+ * nuclide-name fallback), and an "evolution" sub-dict (PRIMAT.md S7.3)
+ * when cfg.output_time_evolution requested it. */
 static PyObject *results_to_dict(const CPRResults *r)
 {
     PyObject *d = PyDict_New();
@@ -117,6 +182,16 @@ static PyObject *results_to_dict(const CPRResults *r)
         return NULL;
     }
     Py_DECREF(yfinal);
+
+    if (r->has_evolution) {
+        PyObject *eo = evolution_to_dict(r);
+        if (!eo || PyDict_SetItemString(d, "evolution", eo) < 0) {
+            Py_XDECREF(eo);
+            Py_DECREF(d);
+            return NULL;
+        }
+        Py_DECREF(eo);
+    }
 
     return d;
 }

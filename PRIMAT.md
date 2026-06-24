@@ -541,6 +541,16 @@ solve tolerance at matching time stamps via interpolation, exactly like
 as an explicit `CPLAN.md` §13 deliverable note on the existing Phase 6/7
 deliverable, not a new phase.
 
+**Status: implemented.** `cpr_nuclear_network_sample_time_evolution`
+(`primat-c/src/nuclear_network.c`) is the shared in-memory sampler, used by
+both `cpr_assemble_results` (`primat-c/src/api.c`, populates `CPRResults`'s
+`evol_*` arrays returned to Python via `primat/_primat_c/_wrapper.c` and
+`primat/backend.py`) and `cpr_nuclear_network_write_time_evolution` (the
+standalone-CLI TSV writer, column-header-compatible with
+`dump_evolution`/`load_evolution`). `force_backend="c"` with
+`output_time_evolution=True` no longer raises; see
+`tests/test_backend_parity.py`'s `test_evolution_cross_backend_agreement`.
+
 ---
 
 ## 8. Keeping C and Python in parity (CLAUDE.md + CPLAN.md scope changes)

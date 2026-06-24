@@ -428,8 +428,10 @@ int cpr_nuclear_network_write_final_result(const CPRNuclearNetwork *nn, char **e
     return 0;
 }
 
-int cpr_nuclear_network_write_time_evolution(const CPRNuclearNetwork *nn, int n_points,
-                                                char **errmsg)
+void cpr_nuclear_network_sample_time_evolution(const CPRNuclearNetwork *nn, int n_points,
+                                                  double *t_out, double *T_out, double *a_out,
+                                                  double *Tnue_out, double *Tnumu_out,
+                                                  double *Tnutau_out, double *Y_out)
 {
     const CPRConfig *cfg = nn->cfg;
     CPRBackground *bg = nn->background;
@@ -437,14 +439,50 @@ int cpr_nuclear_network_write_time_evolution(const CPRNuclearNetwork *nn, int n_
     double t_cosmo = cpr_bg_t_of_T(bg, cfg->T_start_cosmo_MeV);
     double t_end = nn->t_end;
     size_t n = (size_t)n_points;
-    double *t_out = malloc(n * sizeof(double));
     double logTlo = log10(t_cosmo), logThi = log10(t_end);
+
     for (size_t i = 0; i < n; i++) {
         double frac = (n == 1) ? 0.0 : (double)i / (double)(n - 1);
-        t_out[i] = pow(10.0, logTlo + frac * (logThi - logTlo));
-    }
+        double t = pow(10.0, logTlo + frac * (logThi - logTlo));
+        t_out[i] = t;
+        T_out[i] = cpr_bg_T_of_t(bg, t);
+        a_out[i] = bg->has_scale_factor ? cpr_bg_a_of_t(bg, t) : NAN;
 
-    const char *rel = cfg->output_file;
+        double Tnue, Tnumu, Tnutau;
+        if (cpr_bg_Tnu_of_t(bg, t, &Tnue, &Tnumu, &Tnutau)) {
+            Tnue_out[i] = Tnue; Tnumu_out[i] = Tnumu; Tnutau_out[i] = Tnutau;
+        } else {
+            Tnue_out[i] = Tnumu_out[i] = Tnutau_out[i] = NAN;
+        }
+
+        for (size_t s = 0; s < nn->n_species; s++)
+            Y_out[i * nn->n_species + s] = cpr_nuclear_network_Y_of_t(nn, nn->abundance_names[s], t);
+    }
+}
+
+int cpr_nuclear_network_write_time_evolution(const CPRNuclearNetwork *nn, int n_points,
+                                                char **errmsg)
+{
+    /* cfg->output_file == NULL/"" is the in-memory-only escape hatch
+     * (mirrors Python's NuclearNetwork._write_time_evolution skipping disk
+     * I/O when cfg.output_file is None, e.g. primat-gui/run_bbn's
+     * in-memory-only callers via CPRResults's evol_* arrays, populated by
+     * cpr_assemble_results regardless of this flag). */
+    if (!nn->cfg->output_file || !nn->cfg->output_file[0])
+        return 0;
+
+    size_t n = (size_t)n_points;
+    double *t_out = malloc(n * sizeof(double));
+    double *T_out = malloc(n * sizeof(double));
+    double *a_out = malloc(n * sizeof(double));
+    double *Tnue_out = malloc(n * sizeof(double));
+    double *Tnumu_out = malloc(n * sizeof(double));
+    double *Tnutau_out = malloc(n * sizeof(double));
+    double *Y_out = malloc(n * nn->n_species * sizeof(double));
+    cpr_nuclear_network_sample_time_evolution(nn, n_points, t_out, T_out, a_out,
+                                                Tnue_out, Tnumu_out, Tnutau_out, Y_out);
+
+    const char *rel = nn->cfg->output_file;
     char path[4300];
     snprintf(path, sizeof(path), "%s", rel);
     char dir[4300];
@@ -454,33 +492,34 @@ int cpr_nuclear_network_write_time_evolution(const CPRNuclearNetwork *nn, int n_
 
     FILE *f = fopen(path, "w");
     if (!f) {
-        free(t_out);
+        free(t_out); free(T_out); free(a_out);
+        free(Tnue_out); free(Tnumu_out); free(Tnutau_out); free(Y_out);
         char buf[4400];
         snprintf(buf, sizeof(buf), "cpr_nuclear_network_write_time_evolution: cannot open %s", path);
         *errmsg = strdup(buf);
         return 1;
     }
 
-    fprintf(f, "T\tt");
-    for (size_t s = 0; s < nn->n_species; s++) fprintf(f, "\tY%s", nn->abundance_names[s]);
-    fprintf(f, "\tn_to_p_weak_rate\tp_to_n_weak_rate\n");
-
-    /* Per-reaction flux columns (cfg->output_rates_time_evolution,
+    /* Unified schema (PRIMAT.md S7.2), header-compatible with
+     * primat.evolution.dump_evolution/load_evolution: no leading "#",
+     * tab-separated, t_s/a/T_*_MeV core block then one Y_<nuclide> column
+     * per tracked species. Per-reaction flux columns (cfg->output_rates_time_evolution,
      * network="small" only) are not ported -- see this module's header
-     * top comment; every row below carries only the always-present
-     * columns. */
+     * top comment. */
+    fprintf(f, "t_s\ta\tT_gamma_MeV\tT_nue_MeV\tT_numu_MeV\tT_nutau_MeV");
+    for (size_t s = 0; s < nn->n_species; s++) fprintf(f, "\tY_%s", nn->abundance_names[s]);
+    fprintf(f, "\n");
+
     for (size_t i = 0; i < n; i++) {
-        double t = t_out[i];
-        double T_MeV = cpr_bg_T_of_t(bg, t);
-        double T_K = T_MeV * cpr_MeV_to_Kelvin();
-        fprintf(f, "%.8e\t%.8e", T_MeV, t);
+        fprintf(f, "%.8e\t%.8e\t%.8e\t%.8e\t%.8e\t%.8e",
+                t_out[i], a_out[i], T_out[i], Tnue_out[i], Tnumu_out[i], Tnutau_out[i]);
         for (size_t s = 0; s < nn->n_species; s++)
-            fprintf(f, "\t%.8e", cpr_nuclear_network_Y_of_t(nn, nn->abundance_names[s], t));
-        fprintf(f, "\t%.8e\t%.8e\n",
-                cpr_bg_weak_nTOp_frwrd(bg, T_K), cpr_bg_weak_nTOp_bkwrd(bg, T_K));
+            fprintf(f, "\t%.8e", Y_out[i * nn->n_species + s]);
+        fprintf(f, "\n");
     }
     fclose(f);
-    free(t_out);
+    free(t_out); free(T_out); free(a_out);
+    free(Tnue_out); free(Tnumu_out); free(Tnutau_out); free(Y_out);
     printf("[output] Time-evolution data (%zu rows) written to %s\n", n, path);
     return 0;
 }

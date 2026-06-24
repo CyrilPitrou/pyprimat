@@ -764,6 +764,17 @@ double cpr_bg_t_of_a(const CPRBackground *bg, double a)
     return cpr_interp_linear(bg->a_vec, bg->t_vec, bg->n_bg, a, CPR_EXTRAP_CONSTANT);
 }
 
+int cpr_bg_Tnu_of_t(const CPRBackground *bg, double t, double *Tnue, double *Tnumu,
+                     double *Tnutau)
+{
+    if (bg->kind != CPR_BG_STANDARD)
+        return 0;
+    *Tnue   = cpr_interp_linear(bg->t_vec, bg->Tnue_vec,   bg->n_bg, t, CPR_EXTRAP_LINEAR);
+    *Tnumu  = cpr_interp_linear(bg->t_vec, bg->Tnumu_vec,  bg->n_bg, t, CPR_EXTRAP_LINEAR);
+    *Tnutau = cpr_interp_linear(bg->t_vec, bg->Tnutau_vec, bg->n_bg, t, CPR_EXTRAP_LINEAR);
+    return 1;
+}
+
 double cpr_bg_rhoB_BBN(const CPRBackground *bg, double t)
 {
     const CPRConfig *cfg = bg->cfg;

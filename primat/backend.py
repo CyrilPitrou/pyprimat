@@ -18,14 +18,14 @@ own "out of scope" notes):
 * ``extra_rho``, ``custom_network``, ``background=`` (the Python-only
   ``PRIMAT.__init__`` constructor extensions) -- always force the Python
   backend.
-* ``output_time_evolution=True`` -- forces the Python backend under
-  ``force_backend="auto"``/``None``; raises under ``force_backend="c"``. The
-  unified ``EvolutionResult``/``run.evolution`` (``primat.evolution``,
-  ``PRIMAT.md`` S7.3) is Python-only so far: the C extension's
-  ``cprimat_run`` does not yet return per-step arrays to Python (it still
-  writes its own *legacy*, non-unified TSV to ``cfg.output_file`` when this
-  flag is set, which a caller expecting the unified schema would
-  misinterpret) -- a known Phase D follow-up, not yet ported.
+
+``output_time_evolution=True`` *is* supported on both backends (PRIMAT.md
+S7.3/S7.6): the C extension's ``cprimat_run`` populates ``CPRResults``'s
+``evol_*`` in-memory arrays (``primat-c/include/cprimat/api.h``) and
+``primat/_primat_c/_wrapper.c`` hands them back as an ``"evolution"`` dict
+key (plain Python lists, no numpy C-API dependency in the extension); this
+module assembles the same :class:`primat.evolution.EvolutionResult` shape
+the Python backend produces, with no disk I/O on either backend's part.
 
 ``rates_dir``/``user_rates_dir`` (the ``rates/`` overlay, see CLAUDE.md's
 "Rates directory resolution" section) *are* supported on both backends as of
@@ -106,8 +106,7 @@ def run_bbn(params=None, force_backend=None, extra_rho=None,
     PRIMATConfig(params)
 
     python_only_feature = (extra_rho is not None or custom_network is not None
-                            or background is not None
-                            or params.get("output_time_evolution"))
+                            or background is not None)
 
     if force_backend == "python":
         return _python_solve(params, extra_rho, custom_network, background)
@@ -125,16 +124,31 @@ def run_bbn(params=None, force_backend=None, extra_rho=None,
                 "custom_network/background (Python-only features, no C-side "
                 "equivalent)."
             )
-        if params.get("output_time_evolution"):
-            raise ValueError(
-                "force_backend='c' is incompatible with output_time_evolution=True "
-                "(the unified EvolutionResult has no C-side equivalent yet, "
-                "see module docstring)."
-            )
-        return _c_ext.run_bbn(params, _PACKAGE_DIR)
+        return _assemble_c_result(_c_ext.run_bbn(params, _PACKAGE_DIR))
 
     # force_backend in (None, "auto"): use the C backend opportunistically,
     # falling back to Python for anything it cannot express.
     if HAS_C_BACKEND and not python_only_feature:
-        return _c_ext.run_bbn(params, _PACKAGE_DIR)
+        return _assemble_c_result(_c_ext.run_bbn(params, _PACKAGE_DIR))
     return _python_solve(params, extra_rho, custom_network, background)
+
+
+def _assemble_c_result(result):
+    """Replaces the C extension's plain-list ``"evolution"`` dict (see
+    ``primat/_primat_c/_wrapper.c``'s ``evolution_to_dict``) with the same
+    :class:`primat.evolution.EvolutionResult` the Python backend attaches
+    under ``result["evolution"]`` -- so callers can switch backends
+    transparently (``PRIMAT.md`` S7.3). No-op if ``output_time_evolution``
+    wasn't requested (no ``"evolution"`` key at all)."""
+    evo = result.get("evolution")
+    if evo is None:
+        return result
+    import numpy as np
+    from .evolution import EvolutionResult
+    result["evolution"] = EvolutionResult(
+        t=np.asarray(evo["t"]), a=np.asarray(evo["a"]), T_gamma=np.asarray(evo["T_gamma"]),
+        T_nu={"e": np.asarray(evo["T_nue"]), "mu": np.asarray(evo["T_numu"]),
+              "tau": np.asarray(evo["T_nutau"])},
+        Y={name: np.asarray(arr) for name, arr in evo["Y"].items()},
+    )
+    return result
