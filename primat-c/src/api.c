@@ -7,11 +7,54 @@
 #include "cprimat/background.h"
 #include "cprimat/network_data.h"
 #include "cprimat/nuclear_network.h"
+#include "cprimat/log.h"
 
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+/* Mirrors main.py's _banner(): no version number resolution dance needed
+ * here (CPRIMAT_VERSION is a compile-time macro, see config.h's top
+ * comment on keeping it in sync with pyproject.toml). */
+static void print_banner(void)
+{
+    printf(
+"\n"
+"\xe2\x94\x8f\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x93\n"
+"\xe2\x94\x83                                               \xe2\x94\x83\n"
+"\xe2\x94\x83         \xe2\x96\x91\xe2\x96\x88\xe2\x96\x80\xe2\x96\x88\xe2\x96\x91\xe2\x96\x88\xe2\x96\x80\xe2\x96\x84\xe2\x96\x91\xe2\x96\x80\xe2\x96\x88\xe2\x96\x80\xe2\x96\x91\xe2\x96\x88\xe2\x96\x84\xe2\x96\x88\xe2\x96\x91\xe2\x96\x88\xe2\x96\x80\xe2\x96\x88\xe2\x96\x91\xe2\x96\x80\xe2\x96\x88\xe2\x96\x80              \xe2\x94\x83\n"
+"\xe2\x94\x83         \xe2\x96\x91\xe2\x96\x88\xe2\x96\x80\xe2\x96\x80\xe2\x96\x91\xe2\x96\x88\xe2\x96\x80\xe2\x96\x84\xe2\x96\x91\xe2\x96\x91\xe2\x96\x88\xe2\x96\x91\xe2\x96\x91\xe2\x96\x88\xe2\x96\x91\xe2\x96\x88\xe2\x96\x91\xe2\x96\x88\xe2\x96\x80\xe2\x96\x88\xe2\x96\x91\xe2\x96\x91\xe2\x96\x88\xe2\x96\x91              \xe2\x94\x83\n"
+"\xe2\x94\x83         \xe2\x96\x91\xe2\x96\x80\xe2\x96\x91\xe2\x96\x91\xe2\x96\x91\xe2\x96\x80\xe2\x96\x91\xe2\x96\x80\xe2\x96\x91\xe2\x96\x80\xe2\x96\x80\xe2\x96\x80\xe2\x96\x91\xe2\x96\x80\xe2\x96\x91\xe2\x96\x80\xe2\x96\x91\xe2\x96\x80\xe2\x96\x91\xe2\x96\x80\xe2\x96\x91\xe2\x96\x91\xe2\x96\x80\xe2\x96\x91              \xe2\x94\x83\n"
+"\xe2\x94\x83                                               \xe2\x94\x83\n"
+"\xe2\x94\x83    Welcome to PRIMAT (C backend) v%-8s          \xe2\x94\x83\n"
+"\xe2\x94\x83                                               \xe2\x94\x83\n"
+"\xe2\x94\x97\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x81\xe2\x94\x9b\n"
+"\n", CPRIMAT_VERSION);
+}
+
+/* Mirrors main.py's _options_recap(): one line per item, same content and
+ * tag wording (modulo the -c suffix) as the Python side, so a verbose run
+ * of either backend on the same config is diffable tag-for-tag. */
+static void print_options_recap(const CPRConfig *cfg)
+{
+    char amax_buf[16];
+    if (cfg->amax < 0) snprintf(amax_buf, sizeof(amax_buf), "None");
+    else snprintf(amax_buf, sizeof(amax_buf), "%d", cfg->amax);
+
+    cpr_log(cfg, "opts", "backend              = c");
+    cpr_log(cfg, "opts", "network              = %s (amax=%s)", cfg->network, amax_buf);
+    cpr_log(cfg, "opts", "numerical_precision  = %.3g", cfg->numerical_precision);
+    cpr_log(cfg, "opts", "radiative_corrections    = %s", cfg->radiative_corrections ? "True" : "False");
+    cpr_log(cfg, "opts", "finite_mass_corrections  = %s", cfg->finite_mass_corrections ? "True" : "False");
+    cpr_log(cfg, "opts", "thermal_corrections      = %s", cfg->thermal_corrections ? "True" : "False");
+    cpr_log(cfg, "opts", "spectral_distortions     = %s", cfg->spectral_distortions ? "True" : "False");
+    cpr_log(cfg, "opts", "tau_n_normalization      = %s", cfg->tau_n_normalization ? "True" : "False");
+    cpr_log(cfg, "opts", "tau_n                = %.4g s", cfg->tau_n);
+    cpr_log(cfg, "opts", "Omegabh2             = %.8g (eta0b=%.6g)",
+             cpr_config_get_Omegabh2(cfg), cfg->eta0b);
+    cpr_log(cfg, "opts", "DeltaNeff            = %.8g", cfg->DeltaNeff);
+}
 
 /* Mirrors main.py's local `_ratio` helper: 0/0 -> nan (nothing produced,
  * nothing expected), x/0 -> inf (something produced, nothing to divide by;
@@ -143,16 +186,36 @@ void cpr_assemble_results(CPRResults *results, const CPRConfig *cfg,
     }
 }
 
-int cprimat_run(const CPRConfig *cfg, CPRResults *results, char **errmsg)
+int cprimat_run(const CPRConfig *cfg, const CPRCustomNetwork *custom,
+                  CPRResults *results, char **errmsg)
 {
+    if (cfg->verbose) {
+        print_banner();
+        print_options_recap(cfg);
+    }
+
     CPRPlasma pl;
     if (cpr_plasma_init(&pl, cfg, errmsg))
         return 1;
 
     CPRNuclearRates nr;
-    if (cpr_nuclear_rates_init(&nr, cfg, errmsg)) {
+    if (cpr_nuclear_rates_init(&nr, cfg, custom, errmsg)) {
         cpr_plasma_free(&pl);
         return 1;
+    }
+    cpr_log(cfg, "rates", "MT network: %zu reactions over %zu nuclides.",
+             nr.mt_net.n_reac - 1, nr.mt_net.n_species);
+    cpr_log(cfg, "rates", "LT network: %zu reactions over %zu nuclides.",
+             nr.lt_net.n_reac - 1, nr.lt_net.n_species);
+    if (cfg->verbose) {
+        char buf[8192];
+        size_t off = 0;
+        for (size_t i = 0; i < nr.lt_net.n_species && off < sizeof(buf) - 32; i++) {
+            int n = snprintf(buf + off, sizeof(buf) - off, "%s%s",
+                              i ? ", " : "", nr.lt_net.species[i]);
+            if (n > 0) off += (size_t)n;
+        }
+        cpr_log(cfg, "rates", "LT nuclides: %s", buf);
     }
     /* Mirrors NuclearNetwork.solve()'s own nucl.apply_variations(cfg) call
      * (p_<rxn>/NP_delta_<rxn> rate-variation knobs); cpr_nuclear_network_solve's

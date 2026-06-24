@@ -35,15 +35,15 @@ _NUC_NAMES_FULL  = ["n", "p", "H2", "H3", "He3", "He4", "Li7", "Be7",
                     "He6", "Li8", "Li6", "B8"]
 
 _BANNER_TEMPLATE = """
-┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃                                                 ┃
-┃   ░█▀█░█░█░█▀█░█▀▄░▀█▀░█▄█░█▀█░▀█▀              ┃
-┃   ░█▀▀░░█░░█▀▀░█▀▄░░█░░█░█░█▀█░░█░              ┃
-┃   ░▀░░░░▀░░▀░░░▀░▀░▀▀▀░▀░▀░▀░▀░░▀░              ┃
-┃                                                 ┃
-┃    Welcome to PyPRIMAT v{version} — Cyril Pitrou    ┃
-┃                                                 ┃
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃                                               ┃
+┃         ░█▀█░█▀▄░▀█▀░█▄█░█▀█░▀█▀              ┃
+┃         ░█▀▀░█▀▄░░█░░█░█░█▀█░░█░              ┃
+┃         ░▀░░░▀░▀░▀▀▀░▀░▀░▀░▀░░▀░              ┃
+┃                                               ┃
+┃    Welcome to PRIMAT v{version} — Cyril Pitrou    ┃
+┃                                               ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 """
 
 
@@ -58,6 +58,29 @@ def _banner():
     """
     from . import __version__
     return _BANNER_TEMPLATE.format(version=__version__)
+
+
+def _options_recap(cfg, backend):
+    """Render the verbose-mode "options recap" block (one line per item):
+    backend, network/amax, numerical_precision, the five weak-rate flags,
+    tau_n, Omegabh2/eta0b, and DeltaNeff. Printed right after the banner so
+    a verbose run's header fully pins down the physics configuration before
+    any solving starts.
+    """
+    lines = [
+        f"[opts-py] backend              = {backend}",
+        f"[opts-py] network              = {cfg.network!r} (amax={cfg.amax})",
+        f"[opts-py] numerical_precision  = {cfg.numerical_precision:.3g}",
+        f"[opts-py] radiative_corrections    = {cfg.radiative_corrections}",
+        f"[opts-py] finite_mass_corrections  = {cfg.finite_mass_corrections}",
+        f"[opts-py] thermal_corrections      = {cfg.thermal_corrections}",
+        f"[opts-py] spectral_distortions     = {cfg.spectral_distortions}",
+        f"[opts-py] tau_n_normalization      = {cfg.tau_n_normalization}",
+        f"[opts-py] tau_n                = {cfg.tau_n:.4g} s",
+        f"[opts-py] Omegabh2             = {cfg.Omegabh2:.8g} (eta0b={cfg.eta0b:.6g})",
+        f"[opts-py] DeltaNeff            = {cfg.DeltaNeff:.8g}",
+    ]
+    return "\n".join(lines)
 
 
 class PRIMAT:
@@ -174,6 +197,7 @@ class PRIMAT:
 
         if cfg.verbose:
             print(_banner())
+            print(_options_recap(cfg, backend="python"))
             for msg in cfg._init_messages:
                 print(msg)
             self._t0 = time.time()
@@ -224,7 +248,7 @@ class PRIMAT:
         self.results = None
 
         if cfg.verbose:
-            print(f"[init]  Initialisation complete in {time.time()-self._t0:.1f} s")
+            print(f"[init-py]  Initialisation complete in {time.time()-self._t0:.1f} s")
 
     # ======================================================================
     # solve(): integrate nuclear network ODEs
@@ -527,12 +551,21 @@ class MCResult:
     custom_network : dict or None
         The "Customise Reactions" override used to compute this result (see
         :class:`PRIMAT`'s docstring), stored for the same reuse-guard comparison.
+    backend : str or None
+        Which backend produced this result (``"python"`` or ``"c"``), stored
+        so a ``prev`` reuse-guard never mixes sample streams from the two
+        RNGs (NumPy's ``default_rng`` vs. the C side's pthread/xoshiro256**
+        -- see ``primat/backend.py``'s module docstring): a result is only
+        reused as ``prev`` when its ``backend`` matches the backend about to
+        compute the extension, in addition to the seed/quantities/params/
+        custom_network checks above.
     """
-    def __init__(self, data, seed=None, params=None, custom_network=None):
+    def __init__(self, data, seed=None, params=None, custom_network=None, backend=None):
         self._data = data   # dict: str -> MCQuantityResult
         self.seed = seed
         self.params = params
         self.custom_network = custom_network
+        self.backend = backend
 
     def __getitem__(self, quantity):
         return self._data[quantity]
@@ -701,10 +734,12 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
         (``seed + n_prev .. seed + num_mc - 1``) are actually solved.  This
         makes it cheap to refine an estimate -- e.g. going from 30 to 50
         samples only runs the 20 new ones.  ``prev`` is silently ignored (full
-        recompute) if its ``seed``, quantities, ``params`` or
-        ``custom_network`` differ from this call; if ``num_mc`` is *smaller*
-        than ``len(prev)``, the result is just ``prev`` truncated to
-        ``num_mc`` samples (nothing is solved).
+        recompute) if its ``seed``, quantities, ``params``, ``custom_network``
+        or ``backend`` (this function only reuses a ``prev`` whose ``backend``
+        is ``"python"`` or unset -- a C-backend result has incompatible RNG
+        samples, see ``primat.backend.run_mc``) differ from this call; if
+        ``num_mc`` is *smaller* than ``len(prev)``, the result is just
+        ``prev`` truncated to ``num_mc`` samples (nothing is solved).
     custom_network : dict, optional
         "Customise Reactions" override, forwarded to every ``PRIMAT`` instance
         built here (see :class:`PRIMAT`'s docstring for the
@@ -767,6 +802,7 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
     # samples).  ``list(prev)`` iterates the quantity names in their stored
     # order (MCResult wraps an insertion-ordered dict).
     reuse = (prev is not None
+             and getattr(prev, 'backend', None) in (None, 'python')
              and getattr(prev, 'seed', None) == seed
              and list(prev) == quantities
              and getattr(prev, 'params', None) == base_params
@@ -800,4 +836,4 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
     return MCResult({
         q: MCQuantityResult(centrals[j], samples[:, j])
         for j, q in enumerate(quantities)
-    }, seed=seed, params=base_params, custom_network=custom_network)
+    }, seed=seed, params=base_params, custom_network=custom_network, backend='python')

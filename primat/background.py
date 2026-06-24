@@ -351,7 +351,12 @@ class StandardBackground(Background):
         super().__init__(cfg, plasma, extra_rho)
         self._setup_LCDM()
         self._setup_EDE()
+        if cfg.verbose:
+            print("[bg-py] Solving cosmological background a(t,T) ...")
+            _t_bg0 = time.time()
         self._setup_background_and_cosmo()
+        if cfg.verbose:
+            print(f"[bg-py] Background a(t,T) ready in {time.time()-_t_bg0:.2f} s")
         self._replace_LCDM_with_exact()   # swap CDM approx → exact a_of_T
         self._setup_derived_cosmo()
         self._setup_weak_rates()
@@ -542,7 +547,7 @@ class StandardBackground(Background):
         ratio      = a_eq / a_eq_ref
 
         if cfg.verbose:
-            print(f"[ΛCDM] matter-radiation equality: a_eq = {a_eq:.4g} "
+            print(f"[bg-py] matter-radiation equality: a_eq = {a_eq:.4g} "
                   f"(Ω_r h²={Omegarh2:.4g}, Ω_m h²={Omegamh2:.4g}; "
                   f"expected ~1/3400 = {a_eq_ref:.3g}, ratio = {ratio:.3f})")
 

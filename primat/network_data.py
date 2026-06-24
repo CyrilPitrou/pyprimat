@@ -1946,7 +1946,7 @@ class UpdateNuclearRates:
             cache, see :mod:`primat.weak_rates`).
         """
         if cfg.verbose:
-            print(f"[rates] Building {cfg.network!r} network from text lists.")
+            print(f"[rates-py] Building {cfg.network!r} network from text lists.")
 
         removed = set(custom_network.get("removed", [])) if custom_network else set()
         custom_tables = {}
@@ -2007,10 +2007,11 @@ class UpdateNuclearRates:
         }
 
         if cfg.verbose:
-            print(f"[rates] MT network: {len(self._mt_net.names)-1} reactions over "
+            print(f"[rates-py] MT network: {len(self._mt_net.names)-1} reactions over "
                   f"{len(self._mt_net.species)} nuclides.")
-            print(f"[rates] LT network: {len(self._lt_net.names)-1} reactions over "
+            print(f"[rates-py] LT network: {len(self._lt_net.names)-1} reactions over "
                   f"{len(self._lt_net.species)} nuclides.")
+            print(f"[rates-py] LT nuclides: {', '.join(self._lt_net.species)}")
             self.print_reactions()
 
     def describe_reactions(self):

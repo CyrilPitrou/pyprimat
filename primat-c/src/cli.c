@@ -45,23 +45,6 @@ static int list_or_clear_weak_cache(const char *data_dir, int clear)
     return n;
 }
 
-/* Prints the resolved config back out, mirroring what `pyprimat --json`
- * would show before a solve (Phase 0 has no solver yet -- see cli.h). */
-static void print_config_summary(const CPRConfig *cfg)
-{
-    printf("network              = %s\n", cfg->network);
-    printf("amax                 = %s", cfg->amax < 0 ? "None\n" : "");
-    if (cfg->amax >= 0) printf("%d\n", cfg->amax);
-    printf("Omegabh2             = %.8g\n", cpr_config_get_Omegabh2(cfg));
-    printf("DeltaNeff            = %.8g\n", cfg->DeltaNeff);
-    printf("numerical_precision  = %.3g\n", cfg->numerical_precision);
-    printf("incomplete_decoupling= %s\n", cfg->incomplete_decoupling ? "true" : "false");
-    printf("QED_corrections      = %s\n", cfg->QED_corrections ? "true" : "false");
-    printf("spectral_distortions = %s\n", cfg->spectral_distortions ? "true" : "false");
-    printf("eta0b                = %.8g\n", cfg->eta0b);
-    printf("nuclides loaded      = %zu\n", cfg->nuclides.n);
-}
-
 static void usage(const char *prog)
 {
     printf("usage: %s [--Omegabh2 VALUE] [--DeltaNeff VALUE] [--network NAME]\n"
@@ -192,11 +175,8 @@ int cpr_cli_main(int argc, char **argv)
         return 1;
     }
 
-    if (cfg.verbose)
-        print_config_summary(&cfg);
-
     CPRResults results;
-    if (cprimat_run(&cfg, &results, &err)) {
+    if (cprimat_run(&cfg, NULL, &results, &err)) {
         fprintf(stderr, "error: %s\n", err);
         free(err);
         cpr_config_free(&cfg);

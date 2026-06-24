@@ -234,10 +234,12 @@ def RecomputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
     nonthermal = None
     if not forced_recompute and cfg.weak_rate_cache and os.path.exists(path):
         nonthermal = InterpolateWeakRates(cfg)
+        if cfg.verbose:
+            print("[weak-py] background n<->p weak rates: loaded from cache.")
 
     if nonthermal is None:
         if cfg.verbose and not forced_recompute and cfg.weak_rate_cache:
-            print("[weak]     Recomputing n<->p weak rates (no cache for this configuration).")
+            print("[weak-py] Recomputing n<->p weak rates (no cache for this configuration).")
         T_all, frwrd, bkwrd = ComputeWeakRates(Tvec, cfg, dFDneu_func=dFDneu_func,
                                                 dFDneu_moments=dFDneu_moments)
 

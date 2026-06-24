@@ -7,11 +7,13 @@
 #include "cprimat/constants.h"
 #include "cprimat/spline.h"
 #include "cprimat/ode_rk.h"
+#include "cprimat/log.h"
 
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 /* Riemann zeta(3) (Apery's constant) -- see constants.c's identical
  * literal for cpr_n0CMB(); duplicated here (rather than exposed from
@@ -498,7 +500,12 @@ int cpr_bg_init_standard(CPRBackground *bg, const CPRConfig *cfg, const CPRPlasm
     if (cpr_neutrino_history_init(&bg->nh, cfg, plasma, errmsg)) return 1;
     bg->nh_owned = 1;
 
+    cpr_log(cfg, "bg", "Solving cosmological background a(t,T) ...");
+    clock_t _t_bg0 = clock();
     if (setup_background_and_cosmo(bg, errmsg)) return 1;
+    cpr_log(cfg, "bg", "Background a(t,T) ready in %.2f s",
+             (double)(clock() - _t_bg0) / CLOCKS_PER_SEC);
+
     if (setup_weak_rates_standard(bg, errmsg)) return 1;
 
     return 0;

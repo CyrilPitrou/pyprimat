@@ -1161,7 +1161,8 @@ def _L_CCRTh_interpolants(ctx):
                     + _L_Thermal_2_3(T, sgnq))
 
         #if cfg.verbose:
-        print("[weak]   Re-evaluating n <--> p thermal corrections. This may take a while ...")
+        print(f"[weak-py] Re-evaluating n <--> p thermal corrections "
+              f"({'vegas' if _have_vegas else 'scipy.dblquad'}). This may take a while ...")
 
         # Grid floor is the fixed clamp _T_CCRTH_MIN, not cfg.T_end: every
         # point below it evaluates to exactly 0 anyway (see
@@ -1180,11 +1181,13 @@ def _L_CCRTh_interpolants(ctx):
                                           col_header="T[K] L_nTOpCCRTh L_pTOnCCRTh")
 
         if cfg.verbose:
-            print("n <--> p thermal corrections computed")
+            print("[weak-py] n <--> p thermal corrections computed")
 
         T_th, L_nTh, L_pTh = _T_th, L_nTh_data, L_pTh_data
 
     else:
+        if cfg.verbose:
+            print("[weak-py] n <--> p thermal corrections loaded from cache.")
         tab   = np.loadtxt(_th_path)
         T_th  = tab[:, 0]
         L_nTh = tab[:, 1]

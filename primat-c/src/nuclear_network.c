@@ -8,12 +8,14 @@
 #include "cprimat/network_builder.h"
 #include "cprimat/ode_rk.h"
 #include "cprimat/ode_bdf.h"
+#include "cprimat/log.h"
 
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 
 /* Riemann zeta(3) (Apery's constant) -- see constants.c's identical
  * literal; duplicated here (not exposed via constants.h) since it is
@@ -237,11 +239,15 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
     HTCtx ht_ctx = { background };
     CPRRKOpts rk_opts = cpr_ode_rk_default_opts();
     rk_opts.rtol = cfg->numerical_precision; rk_opts.atol = 1.0e-10;
+    cpr_log(cfg, "nucl", "Solving neutron decoupling at high temperature era");
+    clock_t _t_ht0 = clock();
     if (cpr_ode_rk45(ht_rhs, &ht_ctx, t_start, t_weak, Y_ht, 2, rk_opts,
                       recorder_cb, &rec_ht, errmsg)) {
         recorder_free(&rec_ht);
         return 1;
     }
+    cpr_log(cfg, "nucl", "[HT] Finished in %.2f s",
+             (double)(clock() - _t_ht0) / CLOCKS_PER_SEC);
     double Yn_HT_f = Y_ht[0], Yp_HT_f = Y_ht[1];
 
     /* ------------------------------------------------------------------
@@ -261,11 +267,15 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
     MTLTCtx mt_ctx = { background, nucl };
     CPRBDFOpts bdf_opts = cpr_ode_bdf_default_opts();
     bdf_opts.rtol = cfg->numerical_precision; bdf_opts.atol = 1.0e-15;
+    cpr_log(cfg, "nucl", "Solving nuclear network at mid temperature era");
+    clock_t _t_mt0 = clock();
     if (cpr_ode_bdf(mt_rhs, mt_jac, &mt_ctx, t_weak, t_nucl, Yi_MT, n_mt, bdf_opts,
                      recorder_cb, &rec_mt, errmsg)) {
         free(Yi_MT); recorder_free(&rec_ht); recorder_free(&rec_mt);
         return 1;
     }
+    cpr_log(cfg, "nucl", "[MT] Finished (%s network, %zu nuclides) in %.2f s",
+             cfg->network, n_mt, (double)(clock() - _t_mt0) / CLOCKS_PER_SEC);
 
     /* ------------------------------------------------------------------
      * LT era: the chosen network (small/large, optionally amax-restricted),
@@ -285,12 +295,16 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
     CPRBDFOpts bdf_opts_lt = cpr_ode_bdf_default_opts();
     bdf_opts_lt.rtol = 10.0 * cfg->numerical_precision;
     bdf_opts_lt.atol = cpr_config_is_large(cfg) ? cfg->atol_large_LT : 1.0e-20;
+    cpr_log(cfg, "nucl", "Solving nuclear network at low temperature era");
+    clock_t _t_lt0 = clock();
     if (cpr_ode_bdf(lt_rhs, lt_jac, &lt_ctx, t_nucl, t_end, Yi_LT, n_lt, bdf_opts_lt,
                      recorder_cb, &rec_lt, errmsg)) {
         free(Yi_MT); free(Yi_LT);
         recorder_free(&rec_ht); recorder_free(&rec_mt); recorder_free(&rec_lt);
         return 1;
     }
+    cpr_log(cfg, "nucl", "[LT] Finished (%s network, %zu nuclides) in %.2f s",
+             cfg->network, n_lt, (double)(clock() - _t_lt0) / CLOCKS_PER_SEC);
 
     /* ---- Final abundances: the LT species list is the canonical name
      * list for any network (mirrors solve()'s self.abundance_names = species_L). ---- */

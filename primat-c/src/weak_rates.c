@@ -12,6 +12,7 @@
 #include "cprimat/table_io.h"
 #include "cprimat/spline.h"
 #include "cprimat/quad.h"
+#include "cprimat/log.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -1136,6 +1137,7 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
     }
 
     if (have_cache) {
+        cpr_log(cfg, "weak", "background n<->p weak rates: loaded from cache.");
         CPRTable tab;
         if (cpr_table_read(path, 3, &tab, errmsg)) {
             free(fp_hash); free(Tg_K); free(ratio);
@@ -1150,6 +1152,8 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
         memcpy(wr->bkwrd, tab.cols[2], wr->n * sizeof(double));
         cpr_table_free(&tab);
     } else {
+        if (!forced_recompute && cfg->weak_rate_cache)
+            cpr_log(cfg, "weak", "Recomputing n<->p weak rates (no cache for this configuration).");
         int n_pts = n_points_per_decade(cfg->sampling_nTOp_per_decade, T_end, T_start);
         wr->n = (size_t)n_pts;
         wr->T = malloc(wr->n * sizeof(double));
@@ -1208,6 +1212,7 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
         FILE *f = fopen(th_path, "r");
         if (f) {
             fclose(f);
+            cpr_log(cfg, "weak", "n <--> p thermal corrections loaded from cache.");
             CPRTable tab;
             if (cpr_table_read(th_path, 3, &tab, errmsg)) {
                 free(Tg_K); free(ratio);
@@ -1228,8 +1233,8 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
              * the multi-minute-class computation the Python docstring warns
              * about, hence the same "may take a while" notice. */
             fprintf(stderr,
-                    "[weak]   Re-evaluating n <--> p thermal corrections. "
-                    "This may take a while ...\n");
+                    "[weak-c] Re-evaluating n <--> p thermal corrections "
+                    "(deterministic adaptive quadrature). This may take a while ...\n");
             int n_th_pts = n_points_per_decade(cfg->sampling_nTOp_thermal_per_decade,
                                                  CCRTH_T_MIN, T_start);
             wr->n_th = (size_t)n_th_pts;
@@ -1256,6 +1261,7 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
                 cpr_cache_write(th_path, th_fields, n_th_fp,
                                  "T[K] L_nTOpCCRTh L_pTOnCCRTh", th_cols, 3, wr->n_th);
             }
+            cpr_log(cfg, "weak", "n <--> p thermal corrections computed");
         }
 
         /* The cached CCRTh table is in the same raw units as ComputeWeakRates's
