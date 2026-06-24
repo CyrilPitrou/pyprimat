@@ -5,13 +5,28 @@ for the cosmological background (photon/neutrino temperatures, scale factor)
 and a nuclear reaction network to predict primordial abundances of H, D,
 He3, He4, Li7, and heavier nuclides.
 
-`primat` ships two interchangeable backends: a pure-Python implementation
-(`primat/`, the one this README documents) and a standalone C99 port
-(`primat-c/`, built independently via `make`) intended for speed-critical use
-(MCMC loops, large-scale parameter scans). The two backends are kept
-numerically in sync and are converging on a shared CLI/output-format
-contract; wiring the C engine into the `primat` Python package as a
-selectable `--backend` is in progress (see `PRIMAT.md`).
+`primat` ships two interchangeable backends: a fast C engine (`primat-c/`,
+the default whenever its compiled extension is available) and a pure-Python
+implementation (`primat/`, used as a fallback and for development/
+extensibility — e.g. custom networks via the GUI, or any feature not yet
+ported to C such as `output_time_evolution`/`custom_network`/`background=`).
+`pip install primat` pulls a pre-built wheel with the C backend already
+compiled on supported platforms — most users need nothing else; where no
+wheel is available, `pip` silently falls back to the pure-Python backend
+with no loss of functionality, just speed. The two backends are kept
+numerically in sync (see `CLAUDE.md`'s "Keeping primat-c and primat in
+sync") and agree on the same result-dict/output-format contract, so callers
+can switch backends transparently — see
+[Selecting a backend](#selecting-a-backend) below.
+
+For development, clone the repo and install in editable mode
+(`pip install -e .`); this builds the C extension in place if a C
+toolchain is available, and lets you edit `primat/rates/` directly without
+reinstalling (see [Rates overlay](#rates-overlay-custom-networkstables-without-editing-the-install)
+for adding your own rate tables/networks without touching the installed
+package at all). To build/extend the standalone `primat-c` C-only binary
+(no Python involved), run `cd primat-c && make` — see `primat-c/examples/`
+for `.ini` run templates.
 
 ## Three ways to use primat
 
@@ -128,6 +143,7 @@ Li6/Li7    = 1.418945e-05
 | `--network {small,small_parthenope,large}` | Nuclear reaction network (default: small) |
 | `--amax A` | Drop reactions involving any nuclide with mass number > A (integer >= 1); applies to any `--network` |
 | `--numerical_precision RTOL` | `solve_ivp` relative tolerance (default: 1e-7) |
+| `--backend {auto,c,python}` | Force a backend (default: `auto`, see [Selecting a backend](#selecting-a-backend)) |
 | `--json` | Print the full results dict as JSON instead of the short summary |
 | `--verbose` | Enable primat's internal progress messages (timings, cache hits, ...) |
 
@@ -135,6 +151,30 @@ Only flags you pass are forwarded to `PRIMAT`; anything else falls back to
 `primat.config.DEFAULT_PARAMS`. For options not exposed as flags, write a
 short script that builds a `params` dict and calls `PRIMAT` directly (see
 [Quick start](#quick-start)).
+
+## Selecting a backend
+
+`primat.backend.run_bbn` is the dispatch entry point between the two
+backends (also wired into the `primat` CLI's `--backend` flag, see below):
+
+```python
+from primat.backend import run_bbn
+
+result = run_bbn({"network": "small"}, force_backend="c")       # force the C backend
+result = run_bbn({"network": "small"}, force_backend="python")  # force the pure-Python backend
+result = run_bbn({"network": "small"})                          # "auto" (default): C if available, else Python
+```
+
+`force_backend` accepts `None`/`"auto"` (the default — uses the C backend
+opportunistically, falling back to Python only when needed), `"c"`, or
+`"python"`. A handful of Python-only features
+(`extra_rho`/`custom_network`/`background=` at the `PRIMAT(...)` level, and
+`output_time_evolution=True`) have no C-backend equivalent yet:
+`force_backend="auto"`/`None` silently falls back to Python whenever one of
+these is requested; `force_backend="c"` raises instead of silently ignoring
+them. Calling `PRIMAT(params).solve()` directly (as in
+[Quick start](#quick-start)) always uses the pure-Python implementation —
+go through `run_bbn` to get the C backend.
 
 ## Graphical interface (GUI)
 
@@ -153,7 +193,11 @@ streamlit run primat/gui/app.py
 python -m primat.gui.launcher
 ```
 
-The app mirrors a single CLI/script run:
+The app mirrors a single CLI/script run, always via the pure-Python backend
+(it relies on `output_time_evolution=True` and the custom-network machinery
+for its abundance-evolution plot and "Create custom network" popup, both
+Python-only features — see [Selecting a backend](#selecting-a-backend) — so
+there is no backend selector in the sidebar):
 
 - **Sidebar** — a parameter form grouped into *Cosmology*, *Nuclear
   reactions* (network/amax + the "Import/Create custom network" popups) and
@@ -292,16 +336,25 @@ note) for `network="large"`.
 ## Architecture
 
 ```
-primat/                    Core package
+primat/                    Core Python package (import as `from primat import PRIMAT`)
   config.py              PRIMATConfig: all physical constants + run-time flags
-  main.py                PRIMAT: top-level driver
-  plasma.py              Plasma thermodynamics (QED corrections, neutrino bath)
+  main.py                PRIMAT: thin facade over background + nuclear (solve(), get_quantity(), ...)
+  backend.py             HAS_C_BACKEND probe + run_bbn() dispatch (C extension vs. pure Python)
+  background.py          Background: a<->t<->T, rho_B(t), n<->p weak rates, Neff/Omega_nu
+  nuclear_network.py     NuclearNetwork: HT/MT/LT nuclear ODE integration
+  plasma.py               Plasma thermodynamics (QED corrections, neutrino bath)
   qed_pressure.py        Analytical QED plasma-pressure corrections
   network_data.py        Nuclear network related functions
   network_builder.py     Generic stoichiometry-driven RHS/Jacobian (numba kernels)
-  weak_rates.py          n ↔ p weak rate computation
+  weak_rates/             n <-> p weak rate computation (integrands, corrections, cache, api)
+  neutrino_history.py    NEVO non-instantaneous decoupling table loading/interpolation
+  evolution.py            Unified time-evolution TSV schema: EvolutionResult, load_evolution()
+  cli.py                  `primat` console-script entry point (--backend {auto,c,python})
+  gui/                    `primat-gui` Streamlit app (optional `gui` extra)
+  rates/                  Shipped default rates tree (overlaid by rates_dir/user_rates_dir)
+  _primat_c/               Compiled C-extension bridge wrapping primat-c
 
-rates/
+rates/                     (inside primat/rates/, see above)
   plasma/                QED corrections pressure tables
   nuclear/
     tables/              Per-reaction rate tables, one folder per reaction:
@@ -316,8 +369,10 @@ generate_rates/    Offline one-off generator (run only to refresh the
                            python generate_rates/convert_ac2024_rates.py
 
 primat-c/          Standalone C99 port of the same solver (independent `make`
-                         build, see primat-c/Makefile), kept numerically in
-                         sync with this Python implementation
+                         build, see primat-c/Makefile), also reachable from
+                         Python as the default fast backend through the
+                         compiled extension above, kept numerically in sync
+                         with this Python implementation (see CLAUDE.md)
 ```
 
 ### Networks

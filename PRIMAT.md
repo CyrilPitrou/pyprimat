@@ -417,7 +417,13 @@ Today, `pyprimat`'s `output_time_evolution=True` writes a Python-only TSV
 per-nuclide `Y(t)`, and (for `small`/`small_parthenope`) per-reaction flux
 columns. This section pins down a shared schema so a notebook can plot
 nuclide evolution from *either* backend's output without caring which one
-ran.
+ran, **and** makes the in-memory result the primary artifact — disk output
+is a derived convenience, not how the data gets from solver to caller. This
+matters concretely for `primat-gui`: a hosted Streamlit deployment must not
+depend on writing where the *client* can see it, and ideally shouldn't need
+a server-side tempfile round-trip either (see §7.5 — the GUI currently does
+exactly that round-trip, in `primat/gui/app.py`, as a stopgap pending this
+section's design).
 
 ### 7.2 Schema (`primat/evolution.py` documents it; both backends implement it)
 
@@ -439,7 +445,7 @@ one row per solver output step:
 - File naming: `<run_id>_evolution.tsv`, written next to wherever the
   caller's existing output-location convention already points.
 
-### 7.3 Loader: `primat.evolution.load_evolution(path) -> EvolutionResult`
+### 7.3 `EvolutionResult` is the primary artifact, populated by `solve()` itself
 
 ```python
 @dataclass
@@ -449,31 +455,91 @@ class EvolutionResult:
     T_gamma: np.ndarray       # MeV
     T_nu: dict[str, np.ndarray]   # {"e": ..., "mu": ..., "tau": ...}
     Y: dict[str, np.ndarray]      # {"n": ..., "p": ..., "H2": ..., ...}
-
-def load_evolution(path) -> EvolutionResult:
-    """Parses the shared TSV schema (§7.2 of PRIMAT.md) written by either
-    the Python or C backend, returning the same structure regardless of
-    which backend produced the file."""
 ```
 
-Concrete answer to "speed of C, flexibility of Python for plots": run with
-the C backend (`PRIMAT(cfg, backend="c")`, `output_time_evolution=True`),
-then `load_evolution(...)` the resulting TSV in the same notebook for
-`matplotlib`/`plotly` work — no Python solve needed just to get plottable
-arrays.
+When `output_time_evolution=True`, **both backends populate an
+`EvolutionResult` in memory as part of the normal `solve()` call** — e.g.
+attached as `run.evolution` on the object `PRIMAT(...).solve()` returns (or
+an equivalent dict key) — with *no* disk I/O required to get it:
 
-### 7.4 C-side requirement this adds to `CPLAN.md`
+- **Python backend**: `nuclear_network.py`'s current `_write_time_evolution`
+  is split into (a) accumulating the per-step arrays into an
+  `EvolutionResult` (already implicit in what it iterates over to write
+  rows) and (b) the TSV serialization itself (§7.4), which becomes a
+  separate, optional step applied to (a)'s output.
+- **C backend**: per PRIMAT.md §5.1, `cprimat_run()`'s `CPRResults` struct
+  gains the optional arrays (`t[]`, `a[]`, `T_gamma[]`, per-nuclide `Y[][]`),
+  populated only when `output_time_evolution=True` and handed back through
+  `primat/_primat_c/_wrapper.c` as numpy arrays directly, assembled
+  Python-side into the same `EvolutionResult` shape the Python backend
+  produces — no temporary file anywhere in this path.
+
+This is what makes "speed of C, flexibility of Python for plots" require no
+disk I/O at all: `run = PRIMAT(cfg, backend="c"); run.solve();
+run.evolution` already gives plottable `matplotlib`/`plotly` arrays.
+
+### 7.4 Disk output is derived: `primat.evolution.dump_evolution`/`load_evolution`
+
+```python
+def dump_evolution(result: EvolutionResult, path: str | None = None) -> str:
+    """Serializes `result` to the shared TSV schema (§7.2). Always returns
+    the TSV text; additionally writes it to `path` if given. Called by:
+    CLI/runfile drivers that asked for `output_file=...` on top of
+    `output_time_evolution=True` (disk I/O happens at the call site, not
+    inside the solver); and primat-gui's download buttons, which call this
+    lazily on `run.evolution` to produce the file text for
+    `st.download_button(data=...)` -- never via a tempfile (see §7.5)."""
+
+def load_evolution(path) -> EvolutionResult:
+    """Parses the shared TSV schema (§7.2) written by either backend's
+    dump_evolution, returning the same structure as solve()'s in-memory
+    `run.evolution` -- for the case of reloading a previously-saved run
+    without re-solving."""
+```
+
+`nuclear_network.py`/`background.py` (and the C solve loop) are responsible
+only for *populating* `EvolutionResult`; all TSV-format concerns (writing
+*and* parsing) are centralized in `evolution.py`. `output_file=...` keeps
+working as a convenience that internally calls `dump_evolution(result,
+output_file)` right after `solve()`, not as something the solver itself
+opens a file for.
+
+### 7.5 GUI: drop the tempfile round-trip
+
+`primat/gui/app.py`'s `_solve()` currently writes `output_time_evolution`/
+`output_background_evolution` to two `tempfile.mkstemp()` paths, reads them
+back into strings, then `os.remove()`s them (lines ~135-176) — a stopgap
+that predates this design. Once §7.3/§7.4 land:
+
+- `_solve()` no longer passes `output_file=`/`output_background_file=` or
+  touches `tempfile` at all; it just reads `run.evolution` (and the
+  background-evolution equivalent) directly off the solved `run` object for
+  `panels.render_evolution_panel`.
+- `panels.py`'s existing download buttons (`render_downloads_panel`,
+  ~line 381) call `dump_evolution(run.evolution)`/the background equivalent
+  *lazily*, at click time, to produce the `data=...` string for
+  `st.download_button` — so a server-side temp file is never created at all,
+  not even transiently. This also answers "does this work in a hosted GUI":
+  yes, because nothing is written anywhere outside process memory until the
+  user explicitly asks to download, and even then it's a buffer handed
+  straight to Streamlit, never a path on the server's filesystem.
+
+### 7.6 C-side requirement this adds to `CPLAN.md`
 
 `nuclear_network.c`'s HT/MT/LT solve loop (Phase 6/7 in `CPLAN.md` §13)
 must record the same per-step state (`t`, `a`, `T_gamma`, the three `T_nu`,
-per-nuclide `Y`) into an in-memory growable array, written out by a
-`write_evolution_tsv()` whose output is **column-header-compatible** with
-the Python writer (not row-for-row identical, since adaptive solvers don't
-take the same steps — but parseable by the same loader, and physically
-agreeing to solve tolerance at matching time stamps via interpolation,
-exactly like `tests/test_custom_background.py`'s existing comparison
-pattern). Add this as an explicit `CPLAN.md` §13 deliverable note on the
-existing Phase 6/7 deliverable, not a new phase.
+per-nuclide `Y`) into an in-memory growable array, returned to Python as
+the `CPRResults` arrays described in §7.3 (not written to disk by the C
+side itself). A `write_evolution_tsv()` analogous to Python's serializer is
+only needed for the **standalone, non-Python** `primat-c` CLI binary (which
+has no Python-side `dump_evolution` to call), and must be
+**column-header-compatible** with `dump_evolution`'s output (not
+row-for-row identical, since adaptive solvers don't take the same steps —
+but parseable by the same `load_evolution`, and physically agreeing to
+solve tolerance at matching time stamps via interpolation, exactly like
+`tests/test_custom_background.py`'s existing comparison pattern). Add this
+as an explicit `CPLAN.md` §13 deliverable note on the existing Phase 6/7
+deliverable, not a new phase.
 
 ---
 

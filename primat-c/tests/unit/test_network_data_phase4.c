@@ -33,7 +33,7 @@ int main(void)
     char *err = NULL;
 
     CPRConfig cfg;
-    if (cpr_config_init_defaults(&cfg, "../pyprimat", &err)) {
+    if (cpr_config_init_defaults(&cfg, "../primat", &err)) {
         printf("FAIL config init: %s\n", err);
         return 1;
     }
@@ -123,6 +123,65 @@ int main(void)
     cpr_nuclear_rates_free(&large);
 
     cpr_config_free(&cfg);
+
+    /* ---- rates_dir/user_rates_dir overlay (mirrors PyPRConfig's
+     * resolve_rates_path/test_config.py): cpr_config_resolve_rates_path
+     * tries rates_dir, then user_rates_dir, then the shipped default; and
+     * a user_rates_dir-supplied network file is loadable end-to-end through
+     * cpr_nuclear_rates_init exactly like a shipped one. ---- */
+    {
+        char *oerr = NULL;
+        CPRConfig ocfg;
+        if (cpr_config_init_defaults(&ocfg, "../primat", &oerr)) {
+            printf("FAIL overlay config init: %s\n", oerr);
+            return 1;
+        }
+
+        char path[4300];
+
+        /* No overlay set: resolves to the shipped default. */
+        cpr_config_resolve_rates_path(&ocfg, "nuclear/networks/small.txt", path, sizeof(path));
+        CHECK(strstr(path, "../primat/rates/nuclear/networks/small.txt") != NULL,
+              "resolve_rates_path falls back to the shipped default when no overlay is set");
+
+        /* Build a throwaway user_rates_dir containing only a custom
+         * 2-reaction network file (referencing two shipped rate tables by
+         * name, so this stays an *additive* overlay, not a full takeover --
+         * mirrors CLAUDE.md's "true additive overlay" note). */
+        system("rm -rf build/test_user_rates_dir && mkdir -p build/test_user_rates_dir/nuclear/networks");
+        FILE *nf = fopen("build/test_user_rates_dir/nuclear/networks/overlaynet.txt", "w");
+        CHECK(nf != NULL, "overlay: created temp user_rates_dir network file");
+        if (nf) {
+            fprintf(nf, "n_p__d_g\nd_d__He3_n\n");
+            fclose(nf);
+        }
+
+        free(ocfg.user_rates_dir);
+        ocfg.user_rates_dir = strdup("build/test_user_rates_dir");
+
+        cpr_config_resolve_rates_path(&ocfg, "nuclear/networks/overlaynet.txt", path, sizeof(path));
+        CHECK(strstr(path, "test_user_rates_dir/nuclear/networks/overlaynet.txt") != NULL,
+              "resolve_rates_path prefers user_rates_dir when the file exists there");
+        /* A name only present in the shipped tree still resolves there,
+         * since user_rates_dir is additive, not a full takeover. */
+        cpr_config_resolve_rates_path(&ocfg, "nuclear/networks/small.txt", path, sizeof(path));
+        CHECK(strstr(path, "../primat/rates/nuclear/networks/small.txt") != NULL,
+              "resolve_rates_path still finds shipped files not present in user_rates_dir");
+
+        free(ocfg.network);
+        ocfg.network = strdup("overlaynet");
+        CPRNuclearRates overlay_net;
+        if (cpr_nuclear_rates_init(&overlay_net, &ocfg, &oerr)) {
+            printf("FAIL cpr_nuclear_rates_init(overlaynet): %s\n", oerr);
+            return 1;
+        }
+        CHECK(overlay_net.lt_net.n_reac == 3,
+              "overlay: user_rates_dir-supplied network loads end-to-end (n__p + 2 reactions)");
+        cpr_nuclear_rates_free(&overlay_net);
+
+        cpr_config_free(&ocfg);
+        system("rm -rf build/test_user_rates_dir");
+    }
 
     if (failures) {
         printf("%d failure(s)\n", failures);

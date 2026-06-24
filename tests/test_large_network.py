@@ -115,7 +115,7 @@ def test_large_network_time_evolution_tsv(tmp_path):
 
     # One Y<species> column per large-network nuclide; no reaction-flux
     # columns (output_rates_time_evolution defaults to False).
-    y_cols = ["Y" + s for s in big.nuclear.abundance_names]
+    y_cols = ["Y_" + s for s in big.nuclear.abundance_names]
     assert all(c in header for c in y_cols)
     assert len(y_cols) == len(big.nuclear.abundance_names)
     assert not any(h.endswith("_frwrd") for h in header)
@@ -136,6 +136,6 @@ def test_large_network_time_evolution_tsv(tmp_path):
     # Be7 into Li7 over the full integration window, so large Li7 is ~4x
     # large/amax=8 Li7 by design (see CLAUDE.md "Per-nuclide final abundances").
     for s in ("He4", "H2"):
-        col = header.index("Y" + s)
+        col = header.index("Y_" + s)
         y_final_tsv = data[-1, col]
         assert abs(y_final_tsv - med.nuclear.Y_final[s]) / abs(med.nuclear.Y_final[s]) < 2e-3

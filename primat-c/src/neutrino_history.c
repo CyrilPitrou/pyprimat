@@ -221,6 +221,16 @@ int cpr_neutrino_history_init(CPRNeutrinoHistory *nh, const CPRConfig *cfg,
         nh->kind = CPR_NU_INSTANTANEOUS;
         build_instantaneous(nh, cfg);
     }
+
+    /* Analytic y/gray-type distortion (neutrino_history.AnalyticDistortion):
+     * PRIMATConfig guarantees cfg->analytic_distortions pairs with
+     * incomplete_decoupling=False, i.e. kind==CPR_NU_INSTANTANEOUS here. */
+    nh->has_analytic_distortion = cfg->analytic_distortions ? 1 : 0;
+    if (nh->has_analytic_distortion) {
+        nh->xi_nu = cfg->munuOverTnu;
+        nh->y_sz  = cfg->y_SZ;
+        nh->y_gray = cfg->y_gray;
+    }
     return 0;
 }
 
@@ -327,10 +337,295 @@ static double dFDneu_raw(const CPRNeutrinoHistory *nh, double en, double x, doub
     return (en < 0.0) ? -delta_f : delta_f;
 }
 
+/* ---------------------------------------------------------------------
+ * Analytic y/gray-type distortion (neutrino_history.AnalyticDistortion).
+ *
+ * Every formula below is transcribed VERBATIM (no re-derivation) from
+ * primat/neutrino_history.py's AnalyticDistortion._build_analytic_
+ * distortion -- in particular _dFDneu_analytic/dFDneu_func (the value, for
+ * cpr_nu_dFDneu) and the eight _M_{n}_p{k}_y/_M_{n}_p{k}_gray/_raw_M{n}p{k}
+ * closures plus _make_moment's antisymmetric en<0 dispatch (for
+ * cpr_nu_dFDneu_moment). The six derivative moments (e2p1/e3p1/e4p1/e2p2/
+ * e3p2/e4p2) are themselves the auto-generated output of
+ * scratch/derive_sd_fm_distortions.py (sympy cse()+combiner), self-checked
+ * there against finite differences -- ported mechanically, term for term,
+ * rather than re-derived; do not "simplify" these without re-checking
+ * against that script.
+ * ------------------------------------------------------------------- */
+
+/* Safe logistic Fermi-Dirac, shared with the NEVO-table path's EXP_CUT. */
+static double fd_safe(double arg)
+{
+    static const double EXP_CUT = 3e2;
+    if (arg > EXP_CUT) return 0.0;
+    return 1.0 / (exp(fmin(arg, EXP_CUT)) + 1.0);
+}
+
+/* AnalyticDistortion._dFDneu_analytic (en >= 0 form; caller handles the
+ * en<0 Pauli-blocking dispatch). xi = sgnq*xi_nu is passed in pre-signed. */
+static double dfdneu_analytic_forward(const CPRNeutrinoHistory *nh, double en, double znu, double xi)
+{
+    double y = en * znu;
+    double dist = 0.0;
+    if (nh->y_sz != 0.0) {
+        double f = fd_safe(y - xi);
+        dist += nh->y_sz * f * (1.0 - f) * (4.0 - y * (1.0 - 2.0 * f));
+    }
+    if (nh->y_gray != 0.0) {
+        double g = nh->y_gray;
+        dist += -fd_safe(y) + fd_safe(y / (1.0 + g)) / pow(1.0 + g, 3.0);
+    }
+    return dist;
+}
+
+/* AnalyticDistortion.dFDneu_func: antisymmetric en>=0/en<0 dispatch. */
+static double dfdneu_analytic(const CPRNeutrinoHistory *nh, double en, double znu, double sgnq)
+{
+    if (en >= 0.0)
+        return dfdneu_analytic_forward(nh, en, znu, sgnq * nh->xi_nu);
+    return -dfdneu_analytic_forward(nh, -en, znu, -sgnq * nh->xi_nu);
+}
+
+/* ---- _M_2_p1 ---- */
+static double M_2_p1_y(const CPRNeutrinoHistory *nh, double en, double znu, double xi)
+{
+    (void)nh;
+    double x0 = en * znu;
+    double x1 = fd_safe(x0 - xi);
+    double x2 = en * en * znu * znu;
+    double x3 = x1 * x1;
+    return -en * x1 * (-21.0 * x0 * x1 + 14.0 * x0 * x3 + 7.0 * x0 + 6.0 * x1 * x1 * x1 * x2
+                        + 7.0 * x1 * x2 + 8.0 * x1 - 12.0 * x2 * x3 - x2 - 8.0);
+}
+static double M_2_p1_gray(const CPRNeutrinoHistory *nh, double en, double znu)
+{
+    double x0 = nh->y_gray + 1.0;
+    double x1 = x0 * x0 * x0 * x0;
+    double x2 = en * znu;
+    double x3 = fd_safe(x2);
+    double x4 = fd_safe(x2 / x0);
+    return -en * (2.0 * x0 * (x0 * x0 * x0 * x3 - x4)
+                   + x2 * (x1 * x3 * (x3 - 1.0) - x4 * (x4 - 1.0))) / x1;
+}
+static double raw_M2p1(const CPRNeutrinoHistory *nh, double en, double znu, double xi)
+{
+    return nh->y_sz * M_2_p1_y(nh, en, znu, xi) + M_2_p1_gray(nh, en, znu);
+}
+
+/* ---- _M_3_p1 ---- */
+static double M_3_p1_y(const CPRNeutrinoHistory *nh, double en, double znu, double xi)
+{
+    (void)nh;
+    double x0 = en * en;
+    double x1 = en * znu;
+    double x2 = fd_safe(x1 - xi);
+    double x3 = x0 * znu * znu;
+    double x4 = x2 * x2;
+    return -x0 * x2 * (-24.0 * x1 * x2 + 16.0 * x1 * x4 + 8.0 * x1 + 6.0 * x2 * x2 * x2 * x3
+                        + 7.0 * x2 * x3 + 12.0 * x2 - 12.0 * x3 * x4 - x3 - 12.0);
+}
+static double M_3_p1_gray(const CPRNeutrinoHistory *nh, double en, double znu)
+{
+    double x0 = nh->y_gray + 1.0;
+    double x1 = x0 * x0 * x0 * x0;
+    double x2 = en * znu;
+    double x3 = fd_safe(x2);
+    double x4 = fd_safe(x2 / x0);
+    return -en * en * (3.0 * x0 * (x0 * x0 * x0 * x3 - x4)
+                         + x2 * (x1 * x3 * (x3 - 1.0) - x4 * (x4 - 1.0))) / x1;
+}
+static double raw_M3p1(const CPRNeutrinoHistory *nh, double en, double znu, double xi)
+{
+    return nh->y_sz * M_3_p1_y(nh, en, znu, xi) + M_3_p1_gray(nh, en, znu);
+}
+
+/* ---- _M_4_p1 ---- */
+static double M_4_p1_y(const CPRNeutrinoHistory *nh, double en, double znu, double xi)
+{
+    (void)nh;
+    double x0 = en * znu;
+    double x1 = fd_safe(x0 - xi);
+    double x2 = en * en * znu * znu;
+    double x3 = x1 * x1;
+    return -en * en * en * x1 * (-27.0 * x0 * x1 + 18.0 * x0 * x3 + 9.0 * x0
+                                   + 6.0 * x1 * x1 * x1 * x2 + 7.0 * x1 * x2 + 16.0 * x1
+                                   - 12.0 * x2 * x3 - x2 - 16.0);
+}
+static double M_4_p1_gray(const CPRNeutrinoHistory *nh, double en, double znu)
+{
+    double x0 = nh->y_gray + 1.0;
+    double x1 = x0 * x0 * x0 * x0;
+    double x2 = en * znu;
+    double x3 = fd_safe(x2);
+    double x4 = fd_safe(x2 / x0);
+    return -en * en * en * (4.0 * x0 * (x0 * x0 * x0 * x3 - x4)
+                              + x2 * (x1 * x3 * (x3 - 1.0) - x4 * (x4 - 1.0))) / x1;
+}
+static double raw_M4p1(const CPRNeutrinoHistory *nh, double en, double znu, double xi)
+{
+    return nh->y_sz * M_4_p1_y(nh, en, znu, xi) + M_4_p1_gray(nh, en, znu);
+}
+
+/* ---- _M_2_p2 ---- */
+static double M_2_p2_y(const CPRNeutrinoHistory *nh, double en, double znu, double xi)
+{
+    (void)nh;
+    double x0 = en * znu;
+    double x1 = fd_safe(x0 - xi);
+    double x2 = en * en * en * znu * znu * znu;
+    double x3 = en * en * znu * znu;
+    double x4 = x1 * x1;
+    double x5 = 60.0 * x1 * x1 * x1;
+    return -x1 * (-66.0 * x0 * x1 + 44.0 * x0 * x4 + 22.0 * x0 + 24.0 * x1 * x1 * x1 * x1 * x2
+                   - 15.0 * x1 * x2 + 70.0 * x1 * x3 + 8.0 * x1 + 50.0 * x2 * x4 - x2 * x5
+                   + x2 - 120.0 * x3 * x4 + x3 * x5 - 10.0 * x3 - 8.0);
+}
+static double M_2_p2_gray(const CPRNeutrinoHistory *nh, double en, double znu)
+{
+    double x0 = nh->y_gray + 1.0;
+    double x1 = x0 * x0 * x0 * x0 * x0;
+    double x2 = en * znu;
+    double x3 = fd_safe(x2);
+    double x4 = 2.0 * x3;
+    double x5 = fd_safe(x2 / x0);
+    double x6 = x3 * (x3 - 1.0);
+    double x7 = x5 - 1.0;
+    return (en * en * znu * znu * (-x1 * x6 * (x4 - 1.0) + x5 * x5 * x7 + x5 * x7 * x7)
+            + 2.0 * x0 * x0 * x5 - 4.0 * x0 * x2 * (x0 * x0 * x0 * x0 * x6 - x5 * x7) - x1 * x4) / x1;
+}
+static double raw_M2p2(const CPRNeutrinoHistory *nh, double en, double znu, double xi)
+{
+    return nh->y_sz * M_2_p2_y(nh, en, znu, xi) + M_2_p2_gray(nh, en, znu);
+}
+
+/* ---- _M_3_p2 ---- */
+static double M_3_p2_y(const CPRNeutrinoHistory *nh, double en, double znu, double xi)
+{
+    (void)nh;
+    double x0 = en * znu;
+    double x1 = fd_safe(x0 - xi);
+    double x2 = en * en * en * znu * znu * znu;
+    double x3 = en * en * znu * znu;
+    double x4 = x1 * x1;
+    double x5 = x1 * x1 * x1;
+    return -en * x1 * (-108.0 * x0 * x1 + 72.0 * x0 * x4 + 36.0 * x0 + 24.0 * x1 * x1 * x1 * x1 * x2
+                        - 15.0 * x1 * x2 + 84.0 * x1 * x3 + 24.0 * x1 + 50.0 * x2 * x4
+                        - 60.0 * x2 * x5 + x2 - 144.0 * x3 * x4 + 72.0 * x3 * x5 - 12.0 * x3 - 24.0);
+}
+static double M_3_p2_gray(const CPRNeutrinoHistory *nh, double en, double znu)
+{
+    double x0 = nh->y_gray + 1.0;
+    double x1 = x0 * x0 * x0 * x0 * x0;
+    double x2 = en * znu;
+    double x3 = fd_safe(x2);
+    double x4 = fd_safe(x2 / x0);
+    double x5 = x3 * (x3 - 1.0);
+    double x6 = x4 - 1.0;
+    return -en * (-en * en * znu * znu * (-x1 * x5 * (2.0 * x3 - 1.0) + x4 * x4 * x6 + x4 * x6 * x6)
+                   + 6.0 * x0 * x0 * (x0 * x0 * x0 * x3 - x4)
+                   + 6.0 * x0 * x2 * (x0 * x0 * x0 * x0 * x5 - x4 * x6)) / x1;
+}
+static double raw_M3p2(const CPRNeutrinoHistory *nh, double en, double znu, double xi)
+{
+    return nh->y_sz * M_3_p2_y(nh, en, znu, xi) + M_3_p2_gray(nh, en, znu);
+}
+
+/* ---- _M_4_p2 ---- */
+static double M_4_p2_y(const CPRNeutrinoHistory *nh, double en, double znu, double xi)
+{
+    (void)nh;
+    double x0 = en * en;
+    double x1 = en * znu;
+    double x2 = fd_safe(x1 - xi);
+    double x3 = en * en * en * znu * znu * znu;
+    double x4 = x0 * znu * znu;
+    double x5 = x2 * x2;
+    double x6 = x2 * x2 * x2;
+    return -x0 * x2 * (-156.0 * x1 * x2 + 104.0 * x1 * x5 + 52.0 * x1 + 24.0 * x2 * x2 * x2 * x2 * x3
+                        - 15.0 * x2 * x3 + 98.0 * x2 * x4 + 48.0 * x2 + 50.0 * x3 * x5
+                        - 60.0 * x3 * x6 + x3 - 168.0 * x4 * x5 + 84.0 * x4 * x6 - 14.0 * x4 - 48.0);
+}
+static double M_4_p2_gray(const CPRNeutrinoHistory *nh, double en, double znu)
+{
+    double x0 = en * en;
+    double x1 = nh->y_gray + 1.0;
+    double x2 = x1 * x1 * x1 * x1 * x1;
+    double x3 = en * znu;
+    double x4 = fd_safe(x3);
+    double x5 = fd_safe(x3 / x1);
+    double x6 = x4 * (x4 - 1.0);
+    double x7 = x5 - 1.0;
+    return -x0 * (-x0 * znu * znu * (-x2 * x6 * (2.0 * x4 - 1.0) + x5 * x5 * x7 + x5 * x7 * x7)
+                   + 12.0 * x1 * x1 * (x1 * x1 * x1 * x4 - x5)
+                   + 8.0 * x1 * x3 * (x1 * x1 * x1 * x1 * x6 - x5 * x7)) / x2;
+}
+static double raw_M4p2(const CPRNeutrinoHistory *nh, double en, double znu, double xi)
+{
+    return nh->y_sz * M_4_p2_y(nh, en, znu, xi) + M_4_p2_gray(nh, en, znu);
+}
+
+/* _make_moment's antisymmetric en<0 dispatch: sign(n,1)=(-1)^n,
+ * sign(n,2)=-(-1)^n. */
+static double dispatch_moment(const CPRNeutrinoHistory *nh, double en, double znu, double sgnq,
+                                double (*raw)(const CPRNeutrinoHistory *, double, double, double),
+                                double sign)
+{
+    if (en >= 0.0) return raw(nh, en, znu, sgnq * nh->xi_nu);
+    return sign * raw(nh, -en, znu, -sgnq * nh->xi_nu);
+}
+
+double cpr_nu_dFDneu_moment(const CPRNeutrinoHistory *nh, CPRDFDneuMomentKind kind,
+                              double en, double x, double znu, double sgnq)
+{
+    (void)x; /* unused in analytic mode, interface parity only */
+    if (!nh->has_analytic_distortion) return 0.0;
+    switch (kind) {
+    case CPR_DFD_E2P0: return en * en * dfdneu_analytic(nh, en, znu, sgnq);
+    case CPR_DFD_E3P0: return en * en * en * dfdneu_analytic(nh, en, znu, sgnq);
+    case CPR_DFD_E2P1: return dispatch_moment(nh, en, znu, sgnq, raw_M2p1, +1.0);   /* sign(2,1)=+1 */
+    case CPR_DFD_E3P1: return dispatch_moment(nh, en, znu, sgnq, raw_M3p1, -1.0);   /* sign(3,1)=-1 */
+    case CPR_DFD_E4P1: return dispatch_moment(nh, en, znu, sgnq, raw_M4p1, +1.0);   /* sign(4,1)=+1 */
+    case CPR_DFD_E2P2: return dispatch_moment(nh, en, znu, sgnq, raw_M2p2, -1.0);   /* sign(2,2)=-1 */
+    case CPR_DFD_E3P2: return dispatch_moment(nh, en, znu, sgnq, raw_M3p2, +1.0);   /* sign(3,2)=+1 */
+    case CPR_DFD_E4P2: return dispatch_moment(nh, en, znu, sgnq, raw_M4p2, -1.0);   /* sign(4,2)=-1 */
+    default: return 0.0;
+    }
+}
+
 double cpr_nu_dFDneu(const CPRNeutrinoHistory *nh, double en, double x, double znu, double sgnq)
 {
-    (void)sgnq; /* the NEVO-table distortion does not depend on sgnq (unlike
-                 * the analytic mu/y decorator, out of scope here) */
+    if (nh->has_analytic_distortion)
+        return dfdneu_analytic(nh, en, znu, sgnq);
+    (void)sgnq; /* the NEVO-table distortion does not depend on sgnq */
     if (!nh->has_distortion) return 0.0;
     return dFDneu_raw(nh, en, x, znu);
+}
+
+/* ---------------------------------------------------------------------
+ * AnalyticDistortion.rho_nu_SD / _rho_nu_SD_from_int: extra neutrino
+ * energy density from the y/gray distortion, transcribed verbatim from
+ * neutrino_history.py (see this file's "Analytic y/gray-type distortion"
+ * block above for the porting convention).
+ *
+ * Inty3SZ(xi) = 7 pi^4/15 + 2 pi^2 xi^2 + xi^4   (SZ/Compton-type moment)
+ * Inty3_FD    = 7 pi^4/120                        (zero-mu FD moment)
+ * extra_int   = y_sz * Inty3SZ(xi) + 2 * y_gray * Inty3_FD
+ * rho_nu_SD   = N_nu * (Tnu^4 / (2 pi^2)) * extra_int,  N_nu = 3
+ * (the factor 2 on Inty3_FD sums neutrino+antineutrino gray contributions,
+ * identical shapes since the gray distortion has no xi dependence; Inty3SZ
+ * already is the summed form -- see neutrino_history.py's _rho_nu_SD
+ * docstring).
+ * ------------------------------------------------------------------- */
+#define CPR_N_NU 3.0
+static const double CPR_INTY3_FD = 7.0 * M_PI * M_PI * M_PI * M_PI / 120.0;
+
+double cpr_nu_rho_nu_SD(const CPRNeutrinoHistory *nh, double Tnu_avg)
+{
+    if (!nh->has_analytic_distortion) return 0.0;
+    double xi = nh->xi_nu;
+    double Inty3_sz = 7.0 * M_PI * M_PI * M_PI * M_PI / 15.0
+                       + 2.0 * M_PI * M_PI * xi * xi + xi * xi * xi * xi;
+    double extra_int = nh->y_sz * Inty3_sz + 2.0 * nh->y_gray * CPR_INTY3_FD;
+    double Tnu4 = Tnu_avg * Tnu_avg * Tnu_avg * Tnu_avg;
+    return CPR_N_NU * (Tnu4 / (2.0 * M_PI * M_PI)) * extra_int;
 }

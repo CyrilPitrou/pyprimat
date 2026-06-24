@@ -31,6 +31,7 @@ expansion history) and hand an instance to a future
 ``PRIMAT(..., background=...)`` hook.
 """
 
+import io
 import os
 import time
 from collections import OrderedDict
@@ -194,6 +195,19 @@ class Background(object):
     # Derived cosmology (optional)
     # ======================================================================
 
+    def Tnu_of_t(self, t):
+        """Per-flavour neutrino temperature [MeV] at cosmic time ``t`` [s]
+        (array-safe), or ``None`` if this background tracks no neutrino
+        sector (the minimal background).
+
+        A concrete subclass that tracks a neutrino sector returns
+        ``{"e": Tnue, "mu": Tnumu, "tau": Tnutau}`` -- used by
+        :meth:`_background_columns`/:meth:`time_evolution_text` and by
+        :class:`primat.nuclear_network.NuclearNetwork`'s unified
+        ``EvolutionResult`` (``PRIMAT.md`` S7.2/S7.3).
+        """
+        return None
+
     def rho_nu_total_final(self):
         """Final-time neutrino sector summary, or ``None``.
 
@@ -258,22 +272,15 @@ class Background(object):
         """
         return OrderedDict([("T", self.T_of_t(t_out)), ("t", t_out)])
 
-    def write_time_evolution(self, path, n_points):
-        """Write the background time evolution to ``path`` as a TSV.
+    def time_evolution_text(self, n_points):
+        """Return this background's time-evolution TSV as text, with no
+        disk I/O.
 
-        The output grid is ``n_points`` log-spaced cosmic times ``t`` from
-        ``t_of_T(T_start_cosmo)`` to ``t_of_T(T_end)`` (the same span as the
-        nuclear-network time-evolution output, see
-        :mod:`primat.nuclear_network`).  Columns are whatever
-        :meth:`_background_columns` returns for this background -- at least
-        ``T`` [MeV] and ``t`` [s]; :class:`StandardBackground` adds ``a``,
-        ``H``, the three flavour neutrino temperatures, the NEVO heating
-        function (if available), and the plasma/neutrino/extra/total energy
-        densities [MeV^4].
-
-        Enabled by ``cfg.output_background_evolution=True``; the destination
-        is ``cfg.output_background_file`` (relative paths resolve against the
-        current working directory, like ``cfg.output_file``).
+        Same output grid and columns as :meth:`write_time_evolution`
+        (``n_points`` log-spaced cosmic times from ``t_of_T(T_start_cosmo)``
+        to ``t_of_T(T_end)``) -- factored out so a caller that wants the
+        data in memory (e.g. ``primat-gui``'s download buttons, see
+        ``PRIMAT.md`` S7.5) never needs a temporary file.
         """
         cfg = self.cfg
         T_start_cosmo = cfg.T_start_cosmo / cfg.MeV_to_Kelvin   # [MeV]
@@ -284,17 +291,39 @@ class Background(object):
 
         cols = self._background_columns(t_out)
 
+        buf = io.StringIO()
+        out_data = np.column_stack(list(cols.values()))
+        out_header = "\t".join(cols.keys())
+        np.savetxt(buf, out_data, delimiter='\t', header=out_header, comments='')
+        return buf.getvalue()
+
+    def write_time_evolution(self, path, n_points):
+        """Write the background time evolution to ``path`` as a TSV.
+
+        Columns are whatever :meth:`_background_columns` returns for this
+        background -- at least ``T`` [MeV] and ``t`` [s];
+        :class:`StandardBackground` adds ``a``, ``H``, the three flavour
+        neutrino temperatures, the NEVO heating function (if available), and
+        the plasma/neutrino/extra/total energy densities [MeV^4]. See
+        :meth:`time_evolution_text` for the in-memory equivalent.
+
+        Enabled by ``cfg.output_background_evolution=True``; the destination
+        is ``cfg.output_background_file`` (relative paths resolve against the
+        current working directory, like ``cfg.output_file``).
+        """
+        text = self.time_evolution_text(n_points)
+
         out_path = os.path.abspath(path)
         out_dir = os.path.dirname(out_path)
         if out_dir:
             os.makedirs(out_dir, exist_ok=True)
-        out_data = np.column_stack(list(cols.values()))
-        out_header = "\t".join(cols.keys())
-        np.savetxt(out_path, out_data, delimiter='\t', header=out_header, comments='')
+        with open(out_path, 'w') as f:
+            f.write(text)
 
         # Always announce: written only on explicit request
         # (output_background_evolution=True), like the nuclear-network TSV.
-        print(f"[output] Background time-evolution data ({len(t_out)} rows) "
+        n_rows = text.count("\n") - 1   # minus the header line
+        print(f"[output] Background time-evolution data ({n_rows} rows) "
               f"written to {out_path}")
 
 
@@ -888,6 +917,21 @@ class StandardBackground(Background):
     # Background time-evolution output
     # ======================================================================
 
+    def Tnu_of_t(self, t_out):
+        """Per-flavour neutrino temperature [MeV] at cosmic time ``t_out``
+        [s] (array-safe); see :meth:`Background.Tnu_of_t`.
+
+        Interpolated (linear, extrapolated) on the same time grid as the
+        rest of the stored background (``self.t_vec``).
+        """
+        Tnue_of_t   = interp1d(self.t_vec, self.Tnue_vec,   bounds_error=False,
+                               fill_value="extrapolate", kind='linear')
+        Tnumu_of_t  = interp1d(self.t_vec, self.Tnumu_vec,  bounds_error=False,
+                               fill_value="extrapolate", kind='linear')
+        Tnutau_of_t = interp1d(self.t_vec, self.Tnutau_vec, bounds_error=False,
+                               fill_value="extrapolate", kind='linear')
+        return {"e": Tnue_of_t(t_out), "mu": Tnumu_of_t(t_out), "tau": Tnutau_of_t(t_out)}
+
     def _background_columns(self, t_out):
         """Background output columns (see :meth:`Background._background_columns`).
 
@@ -903,17 +947,8 @@ class StandardBackground(Background):
 
         a_out = self.a_of_t(t_out)
 
-        # Per-flavour neutrino temperatures, interpolated on the same time
-        # grid as the rest of the stored background (self.t_vec).
-        Tnue_of_t   = interp1d(self.t_vec, self.Tnue_vec,   bounds_error=False,
-                               fill_value="extrapolate", kind='linear')
-        Tnumu_of_t  = interp1d(self.t_vec, self.Tnumu_vec,  bounds_error=False,
-                               fill_value="extrapolate", kind='linear')
-        Tnutau_of_t = interp1d(self.t_vec, self.Tnutau_vec, bounds_error=False,
-                               fill_value="extrapolate", kind='linear')
-        Tnue_out   = Tnue_of_t(t_out)
-        Tnumu_out  = Tnumu_of_t(t_out)
-        Tnutau_out = Tnutau_of_t(t_out)
+        Tnu = self.Tnu_of_t(t_out)
+        Tnue_out, Tnumu_out, Tnutau_out = Tnu["e"], Tnu["mu"], Tnu["tau"]
 
         H_out = np.array([
             self.Hubble(T_out[i], Tnue_out[i], Tnumu_out[i], Tnutau_out[i])

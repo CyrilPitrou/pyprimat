@@ -42,10 +42,17 @@ plus these explicitly requested extras:
 - Runtime "custom networks" (add/remove/replace reactions, the GUI's
   Create/Import-custom-network feature).
 - The Streamlit GUI itself (not applicable to a CLI/C port anyway).
-- Analytic μ/y-type spectral distortions (`analytic_distortions`,
-  `delta_xi_nu`, `y_SZ`, `neutrino_history.AnalyticDistortion`). Excluded for
-  now — revisit later; the full NEVO-spectrum-based spectral-distortion path
-  (`spectral_distortions=True`, the default) stays in scope and is unaffected.
+**In scope (moved from "out of scope" per PRIMAT.md §8):**
+
+- Analytic y/gray-type spectral distortions (`analytic_distortions`, `y_SZ`,
+  `y_gray`, `neutrino_history.AnalyticDistortion`), ported alongside the
+  NEVO-spectrum-based path it sits next to in `neutrino_history.py`. There is
+  no μ-type distortion to port: a genuine neutrino chemical potential
+  (`munuOverTnu`) is handled exactly (weak-rate integrands + energy density),
+  not as a linearised spectral distortion — see `AnalyticDistortion`'s
+  docstring. The full NEVO-spectrum-based spectral-distortion path
+  (`spectral_distortions=True`, the default) was already in scope and is
+  unaffected.
 
 ## 1. Why this is hard, and the two risk-reduction tricks that make it tractable
 
@@ -197,7 +204,7 @@ MC noise for the same `num_mc`), not value-for-value against Python.
 | `cache_utils.py` | `cache.c/.h` | Fingerprint hash (see §7.3) + read/write of tagged text caches. |
 | `qed_pressure.py` | `qed_pressure.c/.h` | `_I01`, `_I2m1` (Bose/Fermi integrals via `quad.c`), `_dPa`, `_dPe3`, table save/load. `_dPb` (O(e⁴)) is unused by `plasma.py` in the default path — port only if a test exercises it. |
 | `plasma.py` (`Plasma`) | `plasma.c/.h` | e± thermo via tabulated cubic-spline cache (mirrors `_build_electron_tables`, same on-disk cache file + fingerprint so it is interchangeable with Python's cache). |
-| `neutrino_history.py` | `neutrino_history.c/.h` | `NEVOTable` (CSV table load + interpolation), `InstantaneousDecoupling`. `resolve_nevo_path` + `nevo_file_prefix` logic ported. `AnalyticDistortion` is **not** ported (out of scope, see §0). |
+| `neutrino_history.py` | `neutrino_history.c/.h` | `NEVOTable` (CSV table load + interpolation), `InstantaneousDecoupling`. `resolve_nevo_path` + `nevo_file_prefix` logic ported. `AnalyticDistortion` is ported (in scope, see §0). |
 | `weak_rates/` package (`integrands.py`, `corrections.py`, `cache.py`, `api.py`) | `weak_rates.c/.h` | The big one — see §7. As of the Python-side split (FUTURE.md P1.1), every Fermi-Dirac kernel and correction term is written **once** as an array-aware function with the scalar case as `T_arr` of length 1 — no more hand-duplicated `FD_nu3`/`_FD_nu3_v` pairs to keep in sync. C gets the same benefit for free (a C function naturally takes a pointer+length and the "scalar" call is just length 1), so there is no `_v`-suffixed shadow API to port either: one `double *` in, one `double *` out, per kernel. The four Python source files do not need four separate C files — `weak_rates.c` (or `weak_rates.c` + `weak_rates_cache.c` for the two on-disk-cache-shaped functions) is enough; collapsing the split back down in C is fine and arguably reads better in a language without Python's package-as-namespace convention. |
 | `network_data.py` | `network_data.c/.h` | Tokeniser (`reaction_stoichiometry`), `detailed_balance.csv`/`reactions_large.csv` loaders, `_qed_nuclear_rescale`, `load_network`, master-grid resampling, `NetworkDefinition`/`UpdateNuclearRates` equivalents, `p_*`/`NP_delta_*` application. |
 | `network_builder.py` | `network_builder.c/.h` | `compile_network`, `_rhs_kernel`, `_jac_kernel`, `check_conservation` — direct flat-array port, no semantic changes needed (this module was already written for a JIT/array-kernel style, which is exactly what C wants). |

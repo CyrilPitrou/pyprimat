@@ -99,15 +99,14 @@ typedef struct {
     int recompute_qed_corrections;
 
     /* ---- spectral distortions ----
-     * analytic_distortions / y_SZ / y_gray are NOT ported (CPLAN.md S0:
-     * analytic y/gray-type distortions out of scope for v1). The fields are
-     * kept here, fixed at their Python defaults (False/0/0), purely so
-     * cpr_config_set_by_name() can accept and validate them by name without
-     * every caller special-casing "unknown key" for a name that *does* exist
-     * in DEFAULT_PARAMS -- setting any of them to a non-default value is
-     * rejected by cpr_config_validate(). (There is deliberately no mu-type /
-     * delta_xi_nu distortion: a neutrino chemical potential is munuOverTnu,
-     * which IS ported -- it shifts the weak rates and, via
+     * analytic_distortions / y_SZ / y_gray select the closed-form y-type
+     * (SZ/Compton) + gray-type distortion (neutrino_history.
+     * AnalyticDistortion), an alternative to the default NEVO-spectrum-
+     * table distortion; PRIMATConfig pairs analytic_distortions=True with
+     * incomplete_decoupling=False (cpr_config_validate enforces this).
+     * (There is deliberately no mu-type / delta_xi_nu distortion: a
+     * genuine neutrino chemical potential is munuOverTnu, which IS
+     * ported -- it shifts the weak rates and, via
      * cpr_rho_nu_chempot_excess, the neutrino energy density / Neff.) */
     int spectral_distortions;
     int analytic_distortions;
@@ -169,6 +168,17 @@ typedef struct {
     int rescale_nuclear_rates;
     int nuclear_qed_corrections;
 
+    /* ---- rates/ overlay (mirrors PyPRConfig.rates_dir/user_rates_dir; see
+     * CLAUDE.md "Rates directory resolution"). NULL = unset (shipped rates/
+     * tree only). Wired through cpr_config_resolve_rates_path() at the same
+     * two call sites as the Python side: the network-file path
+     * (rates/nuclear/networks/<name>.txt) and each reaction's rate-table
+     * file (rates/nuclear/tables/<rxn>/<file>) -- NOT the reaction catalog
+     * (nuclides.csv/reactions_large.csv/detailed_balance.csv) or decays.txt,
+     * which stay on data_dir on both backends. */
+    char *rates_dir;       /* full-takeover override directory */
+    char *user_rates_dir;  /* additive overlay directory, checked before the shipped default */
+
     /* ---- cosmological inputs ---- */
     double Omegabh2_; /* backing field; use cpr_config_set_Omegabh2() to set
                           (mirrors the Python @property that recomputes
@@ -228,6 +238,18 @@ double cpr_config_T_end(const CPRConfig *cfg);         /* [K] */
  * nonzero (with *errmsg set, caller frees) if nuclides.csv is missing or
  * malformed. */
 int cpr_config_init_defaults(CPRConfig *cfg, const char *rates_dir, char **errmsg);
+
+/* Resolves `relpath` (e.g. "nuclear/networks/large.txt" or
+ * "nuclear/tables/<rxn>/<file>.txt") through the same overlay chain as
+ * PyPRConfig.resolve_rates_path: cfg->rates_dir (full takeover) ->
+ * cfg->user_rates_dir (additive overlay) -> cfg->data_dir + "/rates"
+ * (shipped default, tried last so it is never unreachable). The first
+ * candidate that exists on disk wins; if none exist, the shipped-default
+ * path is written anyway (so callers get a "missing file" error pointing at
+ * the expected default location). Writes into `out` (size `outsize`,
+ * truncated/snprintf-safe like every other path builder in this codebase). */
+void cpr_config_resolve_rates_path(const CPRConfig *cfg, const char *relpath,
+                                    char *out, size_t outsize);
 
 /* Sets cfg->Omegabh2_ and recomputes Omegabh2_to_eta0b/eta0b (the C
  * equivalent of the Python Omegabh2 property setter). */

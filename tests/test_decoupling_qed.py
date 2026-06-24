@@ -376,7 +376,7 @@ def test_time_evolution_HT_era_abundances_are_zero_before_network_starts(tmp_pat
         header = f.readline().strip().split("\t")
         data = np.loadtxt(f)
 
-    t = data[:, header.index("t")]
+    t = data[:, header.index("t_s")]
     # All output rows are >= T_start_cosmo (t_out starts at t_cosmo), and the
     # first row is deep in the HT era (t_weak ~ a few seconds, well after
     # T_start_cosmo at 10 MeV).
@@ -385,6 +385,6 @@ def test_time_evolution_HT_era_abundances_are_zero_before_network_starts(tmp_pat
     for name in pr.nuclear.abundance_names:
         if name in ("n", "p"):
             continue
-        y = data[0, header.index("Y" + name)]
+        y = data[0, header.index("Y_" + name)]
         assert y == 0., f"Y{name} is not exactly 0 at the first HT-era row"
         assert np.isfinite(y), f"Y{name} is not finite at the first HT-era row"

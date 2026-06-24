@@ -681,7 +681,9 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
         }
     } else {
         char path[4300];
-        snprintf(path, sizeof(path), "%s/rates/nuclear/networks/%s.txt", cfg->data_dir, cfg->network);
+        char relpath[300];
+        snprintf(relpath, sizeof(relpath), "nuclear/networks/%s.txt", cfg->network);
+        cpr_config_resolve_rates_path(cfg, relpath, path, sizeof(path));
         if (cpr_load_network_list(path, &file_list, errmsg)) return 1;
         have_file_list = 1;
         if (file_list.n > CPR_MAX_REACTIONS) {
@@ -920,7 +922,10 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
             for (size_t g = 0; g < n_grid; g++) { fwd_row[g] = de->rate_s_inv; err_row[g] = de->uncertainty; }
         } else {
             char table_path[4500];
-            snprintf(table_path, sizeof(table_path), "%s/%s/%s", tables_dir, selected[i], sel_table_file[i]);
+            char table_relpath[600];
+            snprintf(table_relpath, sizeof(table_relpath), "nuclear/tables/%s/%s",
+                     selected[i], sel_table_file[i]);
+            cpr_config_resolve_rates_path(cfg, table_relpath, table_path, sizeof(table_path));
             CPRTable tab;
             if (cpr_table_read(table_path, 3, &tab, errmsg)) { load_fail = 1; break; }
             if (cpr_resample_rate_table(tab.cols[0], tab.cols[1], tab.n_rows, out->grid, fwd_row, n_grid, errmsg) ||

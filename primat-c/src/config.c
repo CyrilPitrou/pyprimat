@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 /* ===========================================================================
  * Literal parsing (--set KEY=VALUE / ini values), mirroring the
@@ -274,6 +275,8 @@ static const FieldDesc FIELD_TABLE[] = {
     FLD(atol_large_LT, F_DOUBLE),
     FLD(rescale_nuclear_rates, F_BOOL),
     FLD(nuclear_qed_corrections, F_BOOL),
+    FLD(rates_dir, F_STRING),
+    FLD(user_rates_dir, F_STRING),
     FLD(Omegach2, F_DOUBLE),
     FLD(h, F_DOUBLE),
     FLD(DeltaNeff, F_DOUBLE),
@@ -365,6 +368,8 @@ int cpr_config_init_defaults(CPRConfig *cfg, const char *rates_dir, char **errms
     cfg->atol_large_LT = 1.e-26;
     cfg->rescale_nuclear_rates = 0;
     cfg->nuclear_qed_corrections = 1;
+    cfg->rates_dir = NULL;
+    cfg->user_rates_dir = NULL;
 
     cfg->Omegabh2_ = 0.022425;
     cfg->Omegach2 = 0.11933;
@@ -410,6 +415,37 @@ double cpr_config_T_start_cosmo(const CPRConfig *cfg)
 double cpr_config_T_end(const CPRConfig *cfg)
 {
     return cfg->T_end_MeV * cpr_MeV_to_Kelvin();
+}
+
+static int path_exists(const char *path)
+{
+    struct stat st;
+    return stat(path, &st) == 0;
+}
+
+void cpr_config_resolve_rates_path(const CPRConfig *cfg, const char *relpath,
+                                    char *out, size_t outsize)
+{
+    char candidate[4200];
+
+    if (cfg->rates_dir) {
+        snprintf(candidate, sizeof(candidate), "%s/%s", cfg->rates_dir, relpath);
+        if (path_exists(candidate)) {
+            snprintf(out, outsize, "%s", candidate);
+            return;
+        }
+    }
+    if (cfg->user_rates_dir) {
+        snprintf(candidate, sizeof(candidate), "%s/%s", cfg->user_rates_dir, relpath);
+        if (path_exists(candidate)) {
+            snprintf(out, outsize, "%s", candidate);
+            return;
+        }
+    }
+    /* Shipped default, always tried last (and returned even if missing, so
+     * the caller's "file not found" error points at the expected default
+     * location -- mirrors PyPRConfig.resolve_rates_path). */
+    snprintf(out, outsize, "%s/rates/%s", cfg->data_dir, relpath);
 }
 
 void cpr_config_set_Omegabh2(CPRConfig *cfg, double value)
@@ -547,20 +583,25 @@ int cpr_config_validate(CPRConfig *cfg, char **errmsg)
         return 1;
     }
 
-    if (cfg->analytic_distortions) {
-        *errmsg = strdup("analytic_distortions is not implemented in CPRIMAT "
-                          "(out of scope for v1, see CPLAN.md S0); leave it False "
-                          "and use spectral_distortions with the NEVO spectrum file");
-        return 1;
-    }
-
-    if (cfg->spectral_distortions && !cfg->incomplete_decoupling) {
-        *errmsg = strdup("spectral_distortions=True requires incomplete_decoupling=True "
-                          "(the full NEVO spectrum file is only available in the "
-                          "non-instantaneous decoupling mode; analytic_distortions, "
-                          "the only mode that would work with instantaneous decoupling, "
-                          "is out of scope for v1)");
-        return 1;
+    /* Validate spectral-distortion flag combination (mirrors
+     * PRIMATConfig.__init__'s equivalent block in config.py). */
+    if (cfg->spectral_distortions) {
+        if (cfg->analytic_distortions) {
+            if (cfg->incomplete_decoupling) {
+                *errmsg = strdup(
+                    "spectral_distortions=True with analytic_distortions=True "
+                    "requires instantaneous decoupling (incomplete_decoupling=False).");
+                return 1;
+            }
+        } else {
+            if (!cfg->incomplete_decoupling) {
+                *errmsg = strdup(
+                    "spectral_distortions=True with analytic_distortions=False "
+                    "requires incomplete_decoupling=True (the full NEVO spectrum "
+                    "file is only available in the non-instantaneous decoupling mode).");
+                return 1;
+            }
+        }
     }
 
     /* NEVO override existence/shape checks: deferred to neutrino_history.c

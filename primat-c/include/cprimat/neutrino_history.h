@@ -15,12 +15,17 @@
  * Two regimes are ported (CPLAN.md S0/S6 table): CPR_NU_NEVO_TABLE
  * (incomplete/non-instantaneous decoupling, reading the pre-computed NEVO
  * tables, cfg->incomplete_decoupling) and CPR_NU_INSTANTANEOUS (complete
- * decoupling, Tnu fixed by EM entropy conservation, N=0). The analytic
- * mu/y-type distortion decorator (neutrino_history.AnalyticDistortion,
- * cfg->analytic_distortions) is explicitly OUT OF SCOPE (CPLAN.md S0) and
- * not ported; the full NEVO-spectrum-based distortion
- * (cfg->spectral_distortions with analytic_distortions=False, the default)
- * IS in scope and is ported in CPR_NU_NEVO_TABLE's distortion table.
+ * decoupling, Tnu fixed by EM entropy conservation, N=0). The full
+ * NEVO-spectrum-based distortion (cfg->spectral_distortions with
+ * analytic_distortions=False, the default) is ported in CPR_NU_NEVO_TABLE's
+ * distortion table. The analytic y/gray-type distortion decorator
+ * (neutrino_history.AnalyticDistortion, cfg->analytic_distortions=True,
+ * which PRIMATConfig pairs with incomplete_decoupling=False i.e.
+ * CPR_NU_INSTANTANEOUS) is also ported: cpr_nu_dFDneu dispatches to the
+ * closed-form y-type (SZ/Compton) + gray-type distortion of
+ * AnalyticDistortion._dFDneu_analytic, and cpr_nu_dFDneu_moment provides the
+ * eight en-moment derivatives (AnalyticDistortion.dFDneu_moments) feeding
+ * the SD-FM finite-nucleon-mass weak-rate term in weak_rates.c.
  *
  * Reference: Pitrou, Coc, Uzan & Vangioni, Phys. Rep. 2018 (arXiv:1806.11095).
  */
@@ -76,7 +81,25 @@ typedef struct {
 
     /* ---- CPR_NU_INSTANTANEOUS: high-T limit of spl(T)/T^3. ---- */
     double sbar_ref;
+
+    /* Analytic y/gray-type distortion (cfg->analytic_distortions=True;
+     * only ever set when kind==CPR_NU_INSTANTANEOUS, since PRIMATConfig
+     * pairs analytic_distortions with incomplete_decoupling=False -- see
+     * neutrino_history.AnalyticDistortion). xi_nu is the genuine reduced
+     * chemical potential (cfg->munuOverTnu) the y-type piece sits on;
+     * y_sz/y_gray are cfg->y_SZ/cfg->y_gray. */
+    int has_analytic_distortion;
+    double xi_nu, y_sz, y_gray;
 } CPRNeutrinoHistory;
+
+/* Selects which of the 8 en-moments of the analytic y/gray distortion
+ * (AnalyticDistortion.dFDneu_moments's dict keys "e2p0".."e4p2") to
+ * evaluate; see cpr_nu_dFDneu_moment. */
+typedef enum {
+    CPR_DFD_E2P0, CPR_DFD_E3P0,
+    CPR_DFD_E2P1, CPR_DFD_E3P1, CPR_DFD_E4P1,
+    CPR_DFD_E2P2, CPR_DFD_E3P2, CPR_DFD_E4P2
+} CPRDFDneuMomentKind;
 
 /* Builds the neutrino history selected by cfg->incomplete_decoupling
  * (mirrors make_neutrino_history, minus the AnalyticDistortion wrap --
@@ -107,11 +130,36 @@ double cpr_nu_x_of_Tg(const CPRNeutrinoHistory *nh, double Tg);
 
 /* Neutrino spectral-distortion correction to the n<->p weak-rate
  * integrand: dFDneu(en, x, znu, sgnq) = f_actual - f_FD at the shifted
- * neutrino energy. 0 identically when nh->has_distortion is 0 (analytic-
- * distortion mode and CPR_NU_INSTANTANEOUS without spectral_distortions
- * both fall here). en: electron energy / me (sign encodes initial-state
- * vs Pauli-blocking, see neutrino_history.py's dFDneu_func docstring); x:
- * me/(kB Tg); znu: me/(kB Tnu); sgnq: +1 (n->p) or -1 (p->n). */
+ * neutrino energy. 0 identically when neither nh->has_distortion (NEVO-
+ * table mode) nor nh->has_analytic_distortion (analytic mode) is set. en:
+ * electron energy / me (sign encodes initial-state vs Pauli-blocking, see
+ * neutrino_history.py's dFDneu_func docstring); x: me/(kB Tg) (unused in
+ * analytic mode, present for interface parity); znu: me/(kB Tnu); sgnq: +1
+ * (n->p) or -1 (p->n). Dispatches to AnalyticDistortion._dFDneu_analytic's
+ * en>=0/en<0 antisymmetric form when nh->has_analytic_distortion. */
 double cpr_nu_dFDneu(const CPRNeutrinoHistory *nh, double en, double x, double znu, double sgnq);
+
+/* Extra neutrino energy density [MeV^4] from the analytic y/gray
+ * distortion's Friedmann-equation contribution (neutrino_history.
+ * AnalyticDistortion's rho_nu_SD, see _rho_nu_SD_from_int's docstring for
+ * the N_nu=3 normalisation). 0 identically when nh->has_analytic_distortion
+ * is 0 (NEVO-table distortion mode needs no such correction: NEVO
+ * temperatures are already the energy-equivalent FD temperature). `Tnu_avg`
+ * is the energy-weighted mean flavour temperature, ((Tnue^4+Tnumu^4+
+ * Tnutau^4)/3)^(1/4) -- mirrors background.py's call sites. */
+double cpr_nu_rho_nu_SD(const CPRNeutrinoHistory *nh, double Tnu_avg);
+
+/* The k-th en-derivative of en^n times the analytic y/gray distortion
+ * (AnalyticDistortion.dFDneu_moments["e{n}p{k}"]), used only by the SD-FM
+ * (finite-nucleon-mass x spectral-distortion) weak-rate term in
+ * weak_rates.c. Nonzero only when nh->has_analytic_distortion; 0
+ * identically otherwise (the NEVO-table distortion has no closed-form
+ * en-derivative, mirrors dFDneu_moments being None in that mode). Formulas
+ * transcribed from neutrino_history.AnalyticDistortion._build_analytic_
+ * distortion's _raw_M{n}p{k}/_make_moment closures (themselves generated by
+ * scratch/derive_sd_fm_distortions.py) -- see neutrino_history.c for the
+ * verbatim transcription. */
+double cpr_nu_dFDneu_moment(const CPRNeutrinoHistory *nh, CPRDFDneuMomentKind kind,
+                             double en, double x, double znu, double sgnq);
 
 #endif /* CPRIMAT_NEUTRINO_HISTORY_H */

@@ -323,6 +323,13 @@ class PRIMAT:
             self.background.write_time_evolution(cfg.output_background_file,
                                                    cfg.output_n_points)
 
+        # Unified time-evolution result (primat.evolution.EvolutionResult,
+        # PRIMAT.md S7.3), populated in memory by NuclearNetwork.solve()
+        # above (no disk I/O required to get it) -- only when requested via
+        # output_time_evolution=True.
+        if self.nuclear.evolution is not None:
+            results["evolution"] = self.nuclear.evolution
+
         self.results = results
         return results
 

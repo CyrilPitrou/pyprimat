@@ -18,8 +18,6 @@ PRIMAT -> results" contract is identical to ``runfiles/PyPRIMAT_run.py`` and
 the ``primat`` console script (``primat/cli.py``).
 """
 import json
-import os
-import tempfile
 import time
 import types
 
@@ -37,7 +35,7 @@ from primat.weak_rates.cache import thermal_cache_exists
 
 
 st.set_page_config(
-    page_title="PyPRIMAT",
+    page_title="PRIMAT",
     page_icon="⚛️",  # atom symbol
     layout="wide",
 )
@@ -72,24 +70,20 @@ def _solve(params_items):
 
     Returns
     -------
-    (primat.PRIMAT, str, str, float)
+    (primat.PRIMAT, float)
         The solved instance -- ``run.primat_results()``, ``run.abundance_names``,
-        and ``run[name](t)`` are all ready to use without triggering further
-        computation -- together with the contents of the nuclear time-evolution
-        TSV (``output_time_evolution`` format, see
-        ``nuclear_network.py:NuclearNetwork._write_time_evolution``) and of the
-        background time-evolution TSV (``output_background_evolution`` format,
-        see ``background.py:Background.write_time_evolution``), both as strings,
-        and the wall-clock time (seconds) the actual solve took. The elapsed
-        time is measured *inside* this cached function (rather than by the
-        caller timing the call) specifically so that a cache *hit* -- a rerun
-        with unchanged parameters, which never re-executes this function body
-        at all -- still reports the original solve's real duration instead of
+        ``run[name](t)``, ``run.nuclear.evolution`` (the unified
+        ``primat.evolution.EvolutionResult``, populated in memory since
+        ``output_time_evolution=True`` is always requested below) and
+        ``run.background`` (for the background-evolution equivalent) are all
+        ready to use without triggering further computation -- together with
+        the wall-clock time (seconds) the actual solve took. The elapsed time
+        is measured *inside* this cached function (rather than by the caller
+        timing the call) specifically so that a cache *hit* -- a rerun with
+        unchanged parameters, which never re-executes this function body at
+        all -- still reports the original solve's real duration instead of
         the ~0 s a caller-side timer would measure around an instant cache
         lookup.
-        ``_write_time_evolution`` derives its ``Y<species>`` columns from
-        ``self.abundance_names``, so this works the same way for all three
-        networks (8 / 12 / ~59 nuclide columns).
 
     Notes
     -----
@@ -103,10 +97,11 @@ def _solve(params_items):
     because ``PRIMAT`` instances hold live SciPy interpolators that are not
     picklable.
 
-    Both TSV files are produced by pointing the respective output path at a
-    temporary file, which is read back into memory and removed immediately --
-    so the cached result carries the data itself rather than a path that a
-    later, differently-parametrised solve could overwrite.
+    No disk I/O of any kind happens here any more (``PRIMAT.md`` S7.5): the
+    download buttons (``panels.render_downloads_panel``) build their TSV text
+    lazily, at click time, straight from ``run.nuclear.evolution``/``run.background``
+    -- nothing is written to a server-side tempfile even transiently, which
+    matters for a hosted Streamlit deployment.
     """
     t0 = time.time()
     params = dict(params_items)
@@ -132,50 +127,42 @@ def _solve(params_items):
         if "T_end_MeV" not in params:
             decay_extras["T_end_MeV"] = 1e-4
 
-    fd_evo, tmp_evo = tempfile.mkstemp(suffix=".tsv", prefix="primat_evolution_")
-    os.close(fd_evo)
-    fd_bg, tmp_bg = tempfile.mkstemp(suffix=".tsv", prefix="primat_background_")
-    os.close(fd_bg)
     status = st.empty()
-    try:
-        # PRIMAT.__init__ itself (before solve()) is where the n<->p weak
-        # rates get (re)computed -- see CLAUDE.md's "Execution flow" step 1
-        # -- so that's the message to show here, not "Solving...". When
-        # thermal_corrections is on AND its fingerprinted cache file isn't
-        # already on disk, that step also runs the CCRTh finite-temperature
-        # correction's vegas Monte Carlo integration -- by far the slowest
-        # part of the whole weak-rate computation -- so it's worth calling
-        # out explicitly. A cheap throwaway PRIMATConfig (no rate loading) is
-        # enough to check thermal_cache_exists; ``PRIMAT`` below builds its
-        # own cfg from the same params regardless. Checking the cache
-        # rather than just ``cfg.thermal_corrections`` matters because that
-        # flag alone says nothing about whether a slow recompute is
-        # actually about to happen -- most of the time it's already cached
-        # and this step is fast.
-        note = "### Computing weak rates…"
-        preview_cfg = PRIMATConfig(params)
-        if preview_cfg.thermal_corrections and not thermal_cache_exists(preview_cfg):
-            note += ("  \n*(includes finite-temperature thermal "
-                     "corrections — this can take a while)*")
-        status.markdown(note)
-        run = PRIMAT(params=dict(params,
-                               output_time_evolution=True,
-                               output_file=tmp_evo,
-                               output_background_evolution=True,
-                               output_background_file=tmp_bg,
-                               **decay_extras),
-                   custom_network=custom_network)
-        status.markdown("### Solving the BBN network…")
-        run.solve()
-        with open(tmp_evo) as f:
-            time_evolution_tsv = f.read()
-        with open(tmp_bg) as f:
-            background_tsv = f.read()
-    finally:
-        os.remove(tmp_evo)
-        os.remove(tmp_bg)
+    # PRIMAT.__init__ itself (before solve()) is where the n<->p weak
+    # rates get (re)computed -- see CLAUDE.md's "Execution flow" step 1
+    # -- so that's the message to show here, not "Solving...". When
+    # thermal_corrections is on AND its fingerprinted cache file isn't
+    # already on disk, that step also runs the CCRTh finite-temperature
+    # correction's vegas Monte Carlo integration -- by far the slowest
+    # part of the whole weak-rate computation -- so it's worth calling
+    # out explicitly. A cheap throwaway PRIMATConfig (no rate loading) is
+    # enough to check thermal_cache_exists; ``PRIMAT`` below builds its
+    # own cfg from the same params regardless. Checking the cache
+    # rather than just ``cfg.thermal_corrections`` matters because that
+    # flag alone says nothing about whether a slow recompute is
+    # actually about to happen -- most of the time it's already cached
+    # and this step is fast.
+    note = "### Computing weak rates…"
+    preview_cfg = PRIMATConfig(params)
+    if preview_cfg.thermal_corrections and not thermal_cache_exists(preview_cfg):
+        note += ("  \n*(includes finite-temperature thermal "
+                 "corrections — this can take a while)*")
+    status.markdown(note)
+    # output_file=None: build run.evolution in memory (PRIMAT.md S7.3)
+    # without writing anything to disk -- see
+    # NuclearNetwork._write_time_evolution's escape hatch. The
+    # background-evolution equivalent (run.background.time_evolution_text)
+    # needs no flag at all -- it is computed lazily, on demand, by
+    # panels.render_downloads_panel.
+    run = PRIMAT(params=dict(params,
+                           output_time_evolution=True,
+                           output_file=None,
+                           **decay_extras),
+               custom_network=custom_network)
+    status.markdown("### Solving the BBN network…")
+    run.solve()
     status.empty()
-    return run, time_evolution_tsv, background_tsv, time.time() - t0
+    return run, time.time() - t0
 
 
 def _quick_mc(params_items, num_mc, run):
@@ -288,13 +275,13 @@ def _build_preview(params_items):
 
 
 def main():
-    st.title("⚛️ PyPRIMAT")
+    st.title("⚛️ PRIMAT")
     st.caption(
         "Big Bang Nucleosynthesis abundances — interactive front end for "
         "`primat.PRIMAT`"
     )
     st.markdown(
-        "PyPRIMAT computes primordial light-element abundances (D, He3, He4, "
+        "PRIMAT computes primordial light-element abundances (D, He3, He4, "
         "Li7, ...) after Big Bang Nucleosynthesis."
     )
 
@@ -424,7 +411,7 @@ def main():
             # the button/tab visuals catch up), this call is an instant cache
             # *hit*, so timing it here would report ~0 s instead of how long
             # the actual solve took.
-            run, time_evolution_tsv, background_tsv, elapsed = _solve(params_items)
+            run, elapsed = _solve(params_items)
     except (ValueError, RuntimeError) as exc:
         # PRIMATConfig validates e.g. `amax`/`network` and the
         # spectral_distortions/incomplete_decoupling/analytic_distortions
@@ -434,7 +421,7 @@ def main():
         # genuine bugs and should propagate so they show up loudly. Whichever
         # stage message _solve last showed is left on screen above this
         # error -- a useful hint at which stage actually failed.
-        st.error(f"PyPRIMAT run failed: {exc}")
+        st.error(f"PRIMAT run failed: {exc}")
         return
 
     if run_clicked:
@@ -461,13 +448,13 @@ def main():
     with tab_evolution:
         panels.render_evolution_panel(run)
     with tab_downloads:
-        panels.render_downloads_panel(run, time_evolution_tsv, background_tsv)
+        panels.render_downloads_panel(run)
 
 
 def _render_footer():
     """Sidebar attribution footer, shown below the parameter form."""
     st.sidebar.caption(
-        "PyPRIMAT is developed by [Cyril Pitrou](https://www2.iap.fr/users/pitrou/) "
+        "PRIMAT is developed by [Cyril Pitrou](https://www2.iap.fr/users/pitrou/) "
         "and Julien Froustey. This GUI is developed by Cyril Pitrou."
     )
     st.sidebar.caption(

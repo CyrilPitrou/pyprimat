@@ -1,7 +1,7 @@
 /* test_plasma.c -- checks the SM plasma thermodynamics port against
  * reference values from a live pyprimat.plasma.Plasma instance (default
  * config: QED_corrections=True, n_electron_table=2000,
- * T_start_cosmo_MeV=40.0, DeltaNeff=0), run with `data_dir="../pyprimat"`
+ * T_start_cosmo_MeV=40.0, DeltaNeff=0), run with `data_dir="../primat"`
  * so this test also exercises the real on-disk QED_*.txt and
  * electron_thermo_cache.txt files -- in particular, the electron-thermo
  * cache file shipped in the repo was produced by Python with exactly this
@@ -38,7 +38,7 @@ int main(void)
 
     CPRConfig cfg;
     memset(&cfg, 0, sizeof(cfg));
-    strncpy(cfg.data_dir, "../pyprimat", sizeof(cfg.data_dir) - 1);
+    strncpy(cfg.data_dir, "../primat", sizeof(cfg.data_dir) - 1);
     cfg.QED_corrections = 1;
     cfg.recompute_qed_corrections = 0;
     cfg.recompute_electron_thermo = 0;

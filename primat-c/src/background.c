@@ -193,12 +193,21 @@ double cpr_bg_Hubble(const CPRBackground *bg, double Tg, double Tnue, double Tnu
      * (each flavour by Tnu^4 (xi^2/4 + xi^4/(8pi^2)); antineutrino carries
      * -xi). Mirrors pyprimat Plasma.rho_nu. It also shifts the n<->p weak rates
      * (handled in weak_rates.c via the FD_nu3 integrand). NOT a spectral
-     * distortion (those -- Python's rho_nu_SD -- remain out of scope here). */
+     * distortion (that's rho_nu_SD just below). */
     if (cfg->munuOverTnu != 0.0) {
         double xi = cfg->munuOverTnu;
         rho_3nu += cpr_rho_nu_chempot_excess(Tnue, xi)
                  + cpr_rho_nu_chempot_excess(Tnumu, xi)
                  + cpr_rho_nu_chempot_excess(Tnutau, xi);
+    }
+    /* Analytic y/gray-type spectral-distortion extra energy density
+     * (Python's self.rho_nu_SD term, AnalyticDistortion-only -- the
+     * NEVO-table distortion needs no such correction, see
+     * cpr_nu_rho_nu_SD's doc comment). Energy-weighted mean flavour
+     * temperature, mirroring background.py's Tnu_avg. */
+    if (bg->nh.has_analytic_distortion) {
+        double Tnu_avg = pow((pow(Tnue, 4.0) + pow(Tnumu, 4.0) + pow(Tnutau, 4.0)) / 3.0, 0.25);
+        rho_3nu += cpr_nu_rho_nu_SD(&bg->nh, Tnu_avg);
     }
     double rho_tot = rho_pl + rho_3nu + cpr_plasma_rho_nu_extra(thermo, Tg);
 
@@ -797,6 +806,12 @@ int cpr_bg_rho_nu_total_final(const CPRBackground *bg, double *Tg_final, double 
             *rho_nu_tot_final += cpr_rho_nu_chempot_excess(bg->Tnue_vec[i], xi)
                                + cpr_rho_nu_chempot_excess(bg->Tnumu_vec[i], xi)
                                + cpr_rho_nu_chempot_excess(bg->Tnutau_vec[i], xi);
+        }
+        /* Analytic y/gray distortion's extra energy density (see
+         * cpr_bg_hubble). bg->Tnu_vec[i] is exactly the energy-weighted
+         * average flavour temperature, mirroring Python's self.Tnu_vec. */
+        if (bg->nh.has_analytic_distortion) {
+            *rho_nu_tot_final += cpr_nu_rho_nu_SD(&bg->nh, bg->Tnu_vec[i]);
         }
         return 0;
     }

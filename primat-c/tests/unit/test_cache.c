@@ -38,7 +38,7 @@ int main(void)
 {
     char *errmsg = NULL;
     CPRConfig cfg;
-    if (cpr_config_init_defaults(&cfg, "../pyprimat", &errmsg)) {
+    if (cpr_config_init_defaults(&cfg, "../primat", &errmsg)) {
         printf("FAIL cpr_config_init_defaults: %s\n", errmsg);
         return 1;
     }
@@ -69,7 +69,7 @@ int main(void)
      * disappear from a future "refresh shipped weak-rate caches"-style
      * regeneration on the Python side. */
     char *read_hash = cpr_cache_read_fingerprint_hash(
-        "../pyprimat/rates/weak/nTOp_2218248995f018af.txt");
+        "../primat/rates/weak/nTOp_2218248995f018af.txt");
     if (!read_hash) {
         printf("FAIL reading existing cache file header\n");
         failures++;

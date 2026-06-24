@@ -49,6 +49,8 @@ from scipy.integrate import solve_ivp
 from scipy.interpolate import interp1d
 from scipy.special import zeta
 
+from .evolution import EvolutionResult, dump_evolution
+
 __all__ = ["NuclearNetwork"]
 
 
@@ -89,6 +91,7 @@ class NuclearNetwork:
         self.abundance_names = None
         self.Y_of_t = None
         self._t_end = None   # cosmic time [s] at end of LT era; set by solve()
+        self.evolution = None   # EvolutionResult; set by solve() iff output_time_evolution=True
 
     # ======================================================================
     # solve(): integrate nuclear network ODEs
@@ -477,63 +480,60 @@ class NuclearNetwork:
         print(f"[output] Final abundances ({len(names)} nuclides) written to {path}")
 
     def _write_time_evolution(self, sol_HT, sol_LT, nucl):
-        """Write the abundance + weak-rate time series to a TSV file.
+        """Build the unified ``EvolutionResult`` (see :mod:`primat.evolution`,
+        ``PRIMAT.md`` S7.2/S7.3) and write it to ``cfg.output_file``.
 
-        Enabled by ``output_time_evolution=True``; the destination is
-        ``cfg.output_file``.  Works for all three networks
-        (``small``/``large``, optionally ``amax``-restricted) -- ``Y<species>`` columns are
-        derived from ``self.abundance_names`` (8 / 12 / ~59 nuclides).
+        Enabled by ``output_time_evolution=True``.  Always sets
+        ``self.evolution`` to the in-memory result (no disk I/O required to
+        get it -- e.g. ``PRIMAT(...).solve()["evolution"]``); additionally
+        writes ``cfg.output_file`` as a convenience via
+        :func:`primat.evolution.dump_evolution`.  Works for all three
+        networks (``small``/``large``, optionally ``amax``-restricted) --
+        the ``Y_<species>`` columns are derived from
+        ``self.abundance_names`` (8 / 12 / ~59 nuclides).
 
-        Columns, always present:
-            ``T``, ``t``                     -- photon temperature [MeV],
-                cosmic time [s];
-            ``Y<species>``                   -- one column per tracked
-                nuclide (mass-fraction abundance);
-            ``n_to_p_weak_rate``, ``p_to_n_weak_rate`` -- n<->p weak rates
-                [s^-1] (already normalised, see
-                ``background.weak_nTOp_frwrd``/``weak_nTOp_bkwrd``; defined
-                at every output time, including before the nuclear network
-                starts, since they depend only on T).
+        Columns (see :mod:`primat.evolution` for the exact schema): cosmic
+        time ``t_s``, scale factor ``a``, photon temperature
+        ``T_gamma_MeV``, the three flavour neutrino temperatures, and one
+        ``Y_<species>`` column per tracked nuclide (mass-fraction
+        abundance). ``a``/the neutrino temperatures come from
+        ``self.background`` (``np.nan`` if it tracks no scale factor/
+        neutrino sector, e.g. a minimal custom background).
 
         Before the nuclear network starts integrating a given species (the
         HT era for everything but n/p, and the time before ``T_start_cosmo``
-        for n/p too), its ``Y<species>`` column is **exactly 0** -- the value
-        ``_embed``/``Y_of_t`` produce there.  A previous version of this
-        method filled that region with the Nuclear Statistical Equilibrium
-        (Saha) prediction ``YA(name, Yn, Yp, T)`` for a smoother log-log
-        plot; this was removed because the fill is *often wrong*: NSE need
-        not hold for every nuclide all the way down to ``T_start_cosmo``
-        (e.g. for non-standard backgrounds with extra entropy injection or a
-        non-thermal neutrino sector), and a silently-injected equilibrium
-        value is worse than an honest 0 that a plotting tool can choose to
-        mask. Consumers that want a smooth pre-MT curve can compute the Saha
-        value themselves from the ``T``/``t`` columns.
+        for n/p too), its ``Y_<species>`` column is **exactly 0** -- the
+        value ``_embed``/``Y_of_t`` produce there.  A previous version of
+        this method filled that region with the Nuclear Statistical
+        Equilibrium (Saha) prediction ``YA(name, Yn, Yp, T)`` for a smoother
+        log-log plot; this was removed because the fill is *often wrong*:
+        NSE need not hold for every nuclide all the way down to
+        ``T_start_cosmo`` (e.g. for non-standard backgrounds with extra
+        entropy injection or a non-thermal neutrino sector), and a
+        silently-injected equilibrium value is worse than an honest 0 that a
+        plotting tool can choose to mask. Consumers that want a smooth
+        pre-MT curve can compute the Saha value themselves from the ``t_s``/
+        ``T_gamma_MeV`` columns.
 
-        Conditional columns:
-            per-reaction flux columns (``<reaction>_frwrd``) -- included only
-                when ``cfg.output_rates_time_evolution=True`` *and*
-                ``network`` is ``small``.  Omitted for
-                ``network="large"`` (~433 reactions): use the
-                ``run[species](t)`` abundance interpolators (and the
-                tabulated rates on ``nucl``) directly if reaction-level
-                fluxes are needed for the large network.
-
-        The background-only columns (``a``, ``H``, ``Tnue``/``Tnumu``/
-        ``Tnutau``, ``Nheating``, energy densities, ...) are no longer part
-        of this file -- they are written separately by
-        ``background.write_time_evolution`` when
+        Per-reaction flux columns (``<reaction>_frwrd``,
+        ``cfg.output_rates_time_evolution=True``) and the n<->p weak rates
+        are deferred from this unified schema (``PRIMAT.md`` S7.2: the
+        former is explicitly a v0.3.0-deferred "bonus column block" pending a
+        C-side port; the latter is recoverable directly from
+        ``run.background.weak_nTOp_frwrd``/``weak_nTOp_bkwrd``, evaluated at
+        the ``T_gamma_MeV`` column, with no need to duplicate it on disk).
+        The richer background-only TSV (``H``, ``Nheating``, energy
+        densities, ...) is still written separately by
+        ``background.write_time_evolution``/``time_evolution_text`` when
         ``cfg.output_background_evolution=True`` (see
         :mod:`primat.background`).
         """
         cfg = self.cfg
         background = self.background
-        nTOp_frwrd = background.weak_nTOp_frwrd
-        nTOp_bkwrd = background.weak_nTOp_bkwrd
         # Derive column names from the actual abundance names so custom networks
         # (which may have fewer or different nuclides than the standard 8 or 12)
-        # produce a TSV with the correct number of columns.
-        nuc_cols = ["Y" + s for s in self.abundance_names]
-        n_nuc = len(nuc_cols)
+        # produce a result with the correct number of columns.
+        names = self.abundance_names
 
         Y_of_t = self.Y_of_t
 
@@ -543,50 +543,40 @@ class NuclearNetwork:
         t_out   = np.logspace(np.log10(t_cosmo), np.log10(t_end), cfg.output_n_points)
 
         T_out = background.T_of_t(t_out)
-
-        # Weak rates: already normalised and defined for any T, including
-        # before the nuclear network starts (mask_nuc below is for the
-        # abundance columns only).
-        T_K_out = T_out * cfg.MeV_to_Kelvin
-        weak_n_to_p_out = nTOp_frwrd(T_K_out)
-        weak_p_to_n_out = nTOp_bkwrd(T_K_out)
+        a_out = (background.a_of_t(t_out) if background.has_scale_factor
+                 else np.full_like(t_out, np.nan))
+        Tnu = background.Tnu_of_t(t_out)
+        if Tnu is None:
+            nan_col = np.full_like(t_out, np.nan)
+            Tnu = {"e": nan_col, "mu": nan_col, "tau": nan_col}
 
         # Abundances: zero before nuclear network starts (Y_of_t's fill_value)
         t_start = sol_HT.t[0]
-        Y_out = np.zeros((len(t_out), n_nuc))
+        Y_out = np.zeros((len(t_out), len(names)))
         mask_nuc = t_out >= t_start
         Y_out[mask_nuc] = Y_of_t(t_out[mask_nuc])
+        Y = {s: Y_out[:, j] for j, s in enumerate(names)}
 
-        if cfg.output_rates_time_evolution and not cfg.is_large:
-            rxn_rate_cols = sorted(
-                name for name in dir(nucl)
-                if name.endswith("_frwrd") and callable(getattr(nucl, name))
-            )
-            rxn_rate_out = np.zeros((len(t_out), len(rxn_rate_cols)))
-            rxn_rate_out[mask_nuc] = np.column_stack([
-                getattr(nucl, name)(T_K_out[mask_nuc]) for name in rxn_rate_cols
-            ])
-        else:
-            # Per-reaction flux columns are omitted for network="large"
-            # (~433 reactions): use the run[species](t) abundance
-            # interpolators instead if reaction-level fluxes are needed.
-            if cfg.output_rates_time_evolution and cfg.is_large:
-                print("[output] output_rates_time_evolution ignored for "
-                      "network='large' (~433 reactions); per-reaction flux "
-                      "columns are omitted from the TSV.")
-            rxn_rate_cols = []
-            rxn_rate_out = np.empty((len(t_out), 0))
+        if cfg.output_rates_time_evolution:
+            print("[output] output_rates_time_evolution ignored: per-reaction "
+                  "flux columns are deferred from the unified time-evolution "
+                  "schema (PRIMAT.md S7.2). Use nucl.<reaction>_frwrd(T_K) "
+                  "directly if reaction-level fluxes are needed.")
+
+        self.evolution = EvolutionResult(t=t_out, a=a_out, T_gamma=T_out, T_nu=Tnu, Y=Y)
+
+        # cfg.output_file=None is the in-memory-only escape hatch (e.g.
+        # primat-gui's _solve, PRIMAT.md S7.5): self.evolution above is what
+        # that caller actually wants, with no disk I/O at all -- this is the
+        # only output_*=True flag in the package with that escape hatch,
+        # since it is also the only one a hosted GUI needs to suppress.
+        if cfg.output_file is None:
+            return
 
         # Resolve relative paths against the current working directory (the
         # universal convention), not the installed-package directory.
         out_path = os.path.abspath(cfg.output_file)
-        os.makedirs(os.path.dirname(out_path), exist_ok=True)
-        out_data = np.column_stack((T_out, t_out, Y_out,
-                                     weak_n_to_p_out, weak_p_to_n_out, rxn_rate_out))
-        out_header = "\t".join(["T", "t"]
-                               + nuc_cols
-                               + ["n_to_p_weak_rate", "p_to_n_weak_rate"] + rxn_rate_cols)
-        np.savetxt(out_path, out_data, delimiter='\t', header=out_header, comments='')
+        dump_evolution(self.evolution, out_path)
 
         # Always announce: written only on explicit request (output_time_evolution=True).
         print(f"[output] Time-evolution data ({len(t_out)} rows) written to {out_path}")

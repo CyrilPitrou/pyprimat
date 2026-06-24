@@ -13,17 +13,28 @@ built successfully -- see ``setup.py``'s ``optional_build_ext``, which lets
 single dispatch entry point; everything else in this module supports it.
 
 Feature gaps (C side does not implement these -- mirrors ``cprimat/api.h``'s
-own "out of scope" notes and ``PRIMATConfig``'s ``rates_dir``/
-``user_rates_dir`` overlay, which has no C-side equivalent yet, see
-CLAUDE.md's "Rates directory resolution" section):
+own "out of scope" notes):
 
 * ``extra_rho``, ``custom_network``, ``background=`` (the Python-only
   ``PRIMAT.__init__`` constructor extensions) -- always force the Python
   backend.
-* ``rates_dir``/``user_rates_dir`` set to a non-``None`` value -- forces the
-  Python backend under ``force_backend="auto"``/``None``; raises under
-  ``force_backend="c"`` (the C side cannot honour the overlay, so silently
-  running against the shipped tables only would be misleading).
+* ``output_time_evolution=True`` -- forces the Python backend under
+  ``force_backend="auto"``/``None``; raises under ``force_backend="c"``. The
+  unified ``EvolutionResult``/``run.evolution`` (``primat.evolution``,
+  ``PRIMAT.md`` S7.3) is Python-only so far: the C extension's
+  ``cprimat_run`` does not yet return per-step arrays to Python (it still
+  writes its own *legacy*, non-unified TSV to ``cfg.output_file`` when this
+  flag is set, which a caller expecting the unified schema would
+  misinterpret) -- a known Phase D follow-up, not yet ported.
+
+``rates_dir``/``user_rates_dir`` (the ``rates/`` overlay, see CLAUDE.md's
+"Rates directory resolution" section) *are* supported on both backends as of
+``primat-c``'s ``cpr_config_resolve_rates_path`` (``primat-c/src/config.c``):
+both apply the same lookup order (``rates_dir`` full takeover ->
+``user_rates_dir`` additive overlay -> shipped default) to the network-file
+path and each reaction's rate-table file. They are ordinary ``params`` dict
+keys, applied generically via ``cpr_config_set_by_name``, so no special-casing
+is needed here.
 """
 import os
 
@@ -37,11 +48,6 @@ try:
 except ImportError:
     _c_ext = None
     HAS_C_BACKEND = False
-
-# Constructor kwargs/config fields with no C-side equivalent (see module
-# docstring); any of these being set forces (or, for an explicit "c"
-# request, rejects) the Python backend.
-_C_UNSUPPORTED_PARAMS = ("rates_dir", "user_rates_dir")
 
 
 def _python_solve(params, extra_rho, custom_network, background):
@@ -100,8 +106,8 @@ def run_bbn(params=None, force_backend=None, extra_rho=None,
     PRIMATConfig(params)
 
     python_only_feature = (extra_rho is not None or custom_network is not None
-                            or background is not None)
-    unsupported_keys = [k for k in _C_UNSUPPORTED_PARAMS if params.get(k) is not None]
+                            or background is not None
+                            or params.get("output_time_evolution"))
 
     if force_backend == "python":
         return _python_solve(params, extra_rho, custom_network, background)
@@ -113,22 +119,22 @@ def run_bbn(params=None, force_backend=None, extra_rho=None,
                 "available (the C extension failed to build or was not "
                 "compiled -- see setup.py)."
             )
-        if python_only_feature:
+        if extra_rho is not None or custom_network is not None or background is not None:
             raise ValueError(
                 "force_backend='c' is incompatible with extra_rho/"
                 "custom_network/background (Python-only features, no C-side "
                 "equivalent)."
             )
-        if unsupported_keys:
+        if params.get("output_time_evolution"):
             raise ValueError(
-                f"force_backend='c' is incompatible with {unsupported_keys} "
-                "(the rates_dir/user_rates_dir overlay has no C-side "
-                "equivalent yet)."
+                "force_backend='c' is incompatible with output_time_evolution=True "
+                "(the unified EvolutionResult has no C-side equivalent yet, "
+                "see module docstring)."
             )
         return _c_ext.run_bbn(params, _PACKAGE_DIR)
 
     # force_backend in (None, "auto"): use the C backend opportunistically,
     # falling back to Python for anything it cannot express.
-    if HAS_C_BACKEND and not python_only_feature and not unsupported_keys:
+    if HAS_C_BACKEND and not python_only_feature:
         return _c_ext.run_bbn(params, _PACKAGE_DIR)
     return _python_solve(params, extra_rho, custom_network, background)

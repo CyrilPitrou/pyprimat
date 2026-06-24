@@ -34,7 +34,7 @@ int main(void)
 
     char *err = NULL;
     CPRMCResult res;
-    int rc = cpr_mc_uncertainty(60, quantities, 2, "../pyprimat",
+    int rc = cpr_mc_uncertainty(60, quantities, 2, "../primat",
                                  base_params, 1, /*seed=*/12345, /*n_jobs=*/4,
                                  &res, &err);
     if (rc) {
@@ -62,7 +62,7 @@ int main(void)
      * statistically. */
     CPRMCResult res_serial;
     char *err2 = NULL;
-    int rc2 = cpr_mc_uncertainty(60, quantities, 2, "../pyprimat",
+    int rc2 = cpr_mc_uncertainty(60, quantities, 2, "../primat",
                                   base_params, 1, /*seed=*/12345, /*n_jobs=*/1,
                                   &res_serial, &err2);
     CHECK(rc2 == 0, "serial (n_jobs=1) re-run also succeeds");

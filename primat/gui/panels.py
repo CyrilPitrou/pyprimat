@@ -26,6 +26,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from primat.constants import CONST
+from primat.evolution import dump_evolution
 from primat.network_data import nuclide_latex
 from primat.plotting import nuclide_styles
 from primat.gui import custom_rates
@@ -328,7 +329,7 @@ def weak_rates_text(run):
     return "\n".join(lines)
 
 
-def render_downloads_panel(run, time_evolution_tsv, background_tsv):
+def render_downloads_panel(run):
     """Render the Output tab: the standard, network-independent output files.
 
     Collects every file a user might want to export from a completed run in one
@@ -336,14 +337,15 @@ def render_downloads_panel(run, time_evolution_tsv, background_tsv):
 
     * **output_final.dat** -- the final abundances in the ``output_final.dat``
       text format (:func:`final_abundances_text`).
-    * **output_time_evolution.tsv** -- the full ``A_i Y_i(t)`` time series in the
-      ``output_time_evolution`` format, produced once at solve time by
-      ``primat.gui.app._solve`` and passed in as ``time_evolution_tsv``.
+    * **output_time_evolution.tsv** -- the full ``A_i Y_i(t)`` time series, in
+      the unified schema (``primat.evolution``, ``PRIMAT.md`` S7.2), built
+      lazily here via :func:`primat.evolution.dump_evolution` on
+      ``run.nuclear.evolution`` -- no disk I/O happens until this download button is
+      actually clicked (``PRIMAT.md`` S7.5).
     * **output_background.tsv** -- the cosmological background time evolution
       (T, t, a, H, neutrino temperatures, NEVO heating, energy densities),
-      produced once at solve time by ``primat.gui.app._solve`` and passed in
-      as ``background_tsv`` (see
-      ``background.py:Background.write_time_evolution``).
+      built lazily here via ``run.background.time_evolution_text`` (same
+      no-disk-I/O reasoning).
     * **decays.txt** (large network only) -- the consolidated beta-decay /
       electron-capture rate table used by the large network
       (``rates/nuclear/tables/decays.txt``).
@@ -356,11 +358,8 @@ def render_downloads_panel(run, time_evolution_tsv, background_tsv):
     Parameters
     ----------
     run : primat.PRIMAT
-        An already-solved ``PRIMAT`` instance.
-    time_evolution_tsv : str
-        Contents of the nuclear time-evolution TSV (see ``app._solve``).
-    background_tsv : str
-        Contents of the background time-evolution TSV (see ``app._solve``).
+        An already-solved ``PRIMAT`` instance, with ``output_time_evolution=True``
+        so that ``run.nuclear.evolution`` is populated.
     """
     # Each file gets its own subsection title directly above its download
     # button (rather than a blanket "Output"/"Output files" header), stacked
@@ -379,12 +378,13 @@ def render_downloads_panel(run, time_evolution_tsv, background_tsv):
     )
     _file_download(
         "Abundances time evolution", "output_time_evolution.tsv",
-        data=time_evolution_tsv, file_name="output_time_evolution.tsv",
+        data=dump_evolution(run.nuclear.evolution), file_name="output_time_evolution.tsv",
         mime="text/tab-separated-values", key="dl_evolution",
     )
     _file_download(
         "Background evolution", "output_background.tsv",
-        data=background_tsv, file_name="output_background.tsv",
+        data=run.background.time_evolution_text(run.cfg.output_n_points),
+        file_name="output_background.tsv",
         mime="text/tab-separated-values", key="dl_background",
     )
     _file_download(

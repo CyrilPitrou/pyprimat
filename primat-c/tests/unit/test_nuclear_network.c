@@ -83,7 +83,7 @@ static void run_and_check(const char *name, const char *network, int amax,
 {
     char *err = NULL;
     CPRConfig cfg;
-    if (cpr_config_init_defaults(&cfg, "../pyprimat", &err)) {
+    if (cpr_config_init_defaults(&cfg, "../primat", &err)) {
         printf("FAIL %s: config init: %s\n", name, err); failures++; return;
     }
     free((void *)cfg.network);

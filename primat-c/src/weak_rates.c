@@ -429,6 +429,55 @@ static double chi_func_fm_v(const RateCtx *ctx, double en, double pe, double x,
     return term;
 }
 
+/* chi_FM evaluated against the analytic-distortion en-moments instead of
+ * the plain Fermi-Dirac (corrections._chi_func_sd_fm_v): the SD-FM
+ * (finite-nucleon-mass x spectral-distortion) correction, active only in
+ * analytic_distortions mode. Term-for-term identical to chi_func_fm_v
+ * above with every FD_nu_e{n}p{k}(enu,0.,znu) replaced by
+ * cpr_nu_dFDneu_moment(ctx->nh, CPR_DFD_E{n}P{k}, enu, x, znu, sgnq) --
+ * a line-by-line diff against chi_func_fm_v is the easiest way to audit
+ * this for transcription errors (mirrors the Python docstring's own
+ * advice). `en` is passed un-shifted (E or -E), exactly like
+ * chi_func_fm_v: the neutrino-energy shift enu = en - sgnq*Q/me happens
+ * internally here, matching _chi_func_sd_fm_v's body. */
+static double chi_func_sd_fm_v(const RateCtx *ctx, double en, double pe, double x,
+                                double znu, double sgnq)
+{
+    double me = ctx->me, mn = ctx->mn, mp = ctx->mp, Q = ctx->Q;
+    double gA = ctx->gA, dk = ctx->deltakappa;
+    double M_sgnq = (mp + mn - sgnq * Q) / (2.0 * me);
+    double f_1 = ((1.0 + sgnq * gA) * (1.0 + sgnq * gA) + 2.0 * dk * sgnq * gA) / (1.0 + 3.0 * gA * gA);
+    double f_2 = ((1.0 - sgnq * gA) * (1.0 - sgnq * gA) - 2.0 * dk * sgnq * gA) / (1.0 + 3.0 * gA * gA);
+    double f_3 = (gA * gA - 1.0) / (1.0 + 3.0 * gA * gA);
+    double enu = en - sgnq * Q / me;
+    double FD2_en = FD2(-en, x);
+
+    double m_e2p0 = cpr_nu_dFDneu_moment(ctx->nh, CPR_DFD_E2P0, enu, x, znu, sgnq);
+    double m_e3p0 = cpr_nu_dFDneu_moment(ctx->nh, CPR_DFD_E3P0, enu, x, znu, sgnq);
+    double m_e4p2 = cpr_nu_dFDneu_moment(ctx->nh, CPR_DFD_E4P2, enu, x, znu, sgnq);
+    double m_e2p2 = cpr_nu_dFDneu_moment(ctx->nh, CPR_DFD_E2P2, enu, x, znu, sgnq);
+    double m_e4p1 = cpr_nu_dFDneu_moment(ctx->nh, CPR_DFD_E4P1, enu, x, znu, sgnq);
+    double m_e2p1 = cpr_nu_dFDneu_moment(ctx->nh, CPR_DFD_E2P1, enu, x, znu, sgnq);
+    double m_e3p1 = cpr_nu_dFDneu_moment(ctx->nh, CPR_DFD_E3P1, enu, x, znu, sgnq);
+    double m_e3p2 = cpr_nu_dFDneu_moment(ctx->nh, CPR_DFD_E3P2, enu, x, znu, sgnq);
+
+    double term =
+        f_1 * m_e2p0 * FD2_en * (pe * pe / (M_sgnq * en))
+        + f_2 * m_e3p0 * FD2_en * (-1.0 / M_sgnq)
+        + (f_1 + f_2 + f_3) / (2.0 * x * M_sgnq)
+          * (m_e4p2 * FD2_en + m_e2p2 * FD2_en * pe * pe)
+        + (f_1 + f_2 + f_3) / (2.0 * M_sgnq)
+          * (m_e4p1 * FD2_en + m_e2p1 * FD2_en * pe * pe)
+        - (f_1 + f_2) / (x * M_sgnq)
+          * (m_e3p1 * FD2_en + m_e2p1 * FD2_en * pe * pe / (-en))
+        - f_3 * 3.0 / (x * M_sgnq) * m_e2p0 * FD2_en
+        + f_3 / (3.0 * M_sgnq) * m_e3p1 * FD2_en * pe * pe / en
+        + f_3 * 2.0 / (2.0 * x * 3.0 * M_sgnq) * m_e3p2 * FD2_en * pe * pe / en
+        - (f_1 + f_2 + f_3) * 3.0 / (2.0 * x) * (1.0 - pow(mn / mp, sgnq))
+          * (m_e2p1 * FD2_en);
+    return term;
+}
+
 /* Per-panel GL node/weight at index i in [0, N_GL), mapped from [-1,1] to [lo,hi]. */
 static void panel_point(int i, double lo, double hi, double *p, double *w)
 {
@@ -442,7 +491,8 @@ static void panel_point(int i, double lo, double hi, double *p, double *w)
  * (_quad_grid's "panel A"=[0,p_edge], "panel B"=[p_edge,p_max(T)]).
  * `kind` selects which integrand (mirrors _L_BORN/_L_CCR/_L_FMCCR/
  * _L_FMNoCCR/_L_SD/_L_SD_CCR). */
-typedef enum { L_BORN, L_CCR, L_FMCCR, L_FMNOCCR, L_SD, L_SD_CCR } LKind;
+typedef enum { L_BORN, L_CCR, L_FMCCR, L_FMNOCCR, L_SD, L_SD_CCR,
+               L_SD_FMCCR, L_SD_FMNOCCR } LKind;
 
 double cpr_weak_rate_nTOp(const CPRWeakRates *wr, double T_K)
 {
@@ -560,6 +610,20 @@ static double eval_term(const RateCtx *ctx, LKind kind, double T_K, double sgnq,
                                     * fermi_stat(ctx, sgnq, -1.0, b));
                 break;
             }
+            case L_SD_FMCCR: {
+                double b = p / E;
+                integ = p * p * (chi_func_sd_fm_v(ctx, E, p, x, xnu, sgnq)
+                                  * cpr_rad_corr_resum(b, fabs(sgnq * Q / me - E), E, ctx->cfg)
+                                  * fermi_stat(ctx, sgnq, 1.0, b)
+                                  + chi_func_sd_fm_v(ctx, -E, p, x, xnu, sgnq)
+                                    * cpr_rad_corr_resum(b, fabs(sgnq * Q / me + E), E, ctx->cfg)
+                                    * fermi_stat(ctx, sgnq, -1.0, b));
+                break;
+            }
+            case L_SD_FMNOCCR:
+                integ = p * p * (chi_func_sd_fm_v(ctx, E, p, x, xnu, sgnq)
+                                  + chi_func_sd_fm_v(ctx, -E, p, x, xnu, sgnq));
+                break;
             default:
                 integ = 0.0;
             }
@@ -591,6 +655,18 @@ static double nonthermal_rate_term(const RateCtx *ctx, double T_K, double sgnq,
             total += eval_term(ctx, L_SD_CCR, T_K, sgnq, tnu_ctx);
         else
             total += eval_term(ctx, L_SD, T_K, sgnq, tnu_ctx);
+        /* SD-FM (finite-nucleon-mass x spectral-distortion): analytic-
+         * distortion mode only, mirrors _correction_terms's
+         * "dFDneu_moments is not None and cfg.finite_mass_corrections"
+         * branch -- dFDneu_moments is only ever non-None when
+         * cfg.analytic_distortions (the NEVO-table distortion has no
+         * closed-form en-derivative). */
+        if (cfg->analytic_distortions && cfg->finite_mass_corrections) {
+            if (cfg->radiative_corrections)
+                total += eval_term(ctx, L_SD_FMCCR, T_K, sgnq, tnu_ctx);
+            else
+                total += eval_term(ctx, L_SD_FMNOCCR, T_K, sgnq, tnu_ctx);
+        }
     }
     return total;
 }
@@ -999,7 +1075,15 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
     char path[4300];
     snprintf(path, sizeof(path), "%snTOp_%s.txt", nd, fp_hash);
 
-    int have_cache = cfg->weak_rate_cache != 0;
+    /* Forced recompute (mirrors RecomputeWeakRates's "forced_recompute =
+     * cfg.spectral_distortions and cfg.analytic_distortions"): analytic
+     * distortions are continuous knobs (y_SZ, y_gray) typically scanned
+     * point-by-point, so the non-thermal cache is bypassed entirely --
+     * never loaded, never written -- to avoid writing one file per
+     * parameter point into rates/weak/. */
+    int forced_recompute = cfg->spectral_distortions && cfg->analytic_distortions;
+
+    int have_cache = (cfg->weak_rate_cache != 0) && !forced_recompute;
     if (have_cache) {
         FILE *f = fopen(path, "r");
         if (f) fclose(f); else have_cache = 0;
@@ -1040,7 +1124,7 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
             wr->bkwrd[i] = (b < 1e-28) ? 0.0 : b / Fn;
         }
 
-        if (cfg->save_nTOp) {
+        if (cfg->save_nTOp && !forced_recompute) {
             double *cols[3] = { wr->T, wr->frwrd, wr->bkwrd };
             /* Best-effort: mkdir -p rates/weak/ then write; a failure to
              * persist the cache is not fatal (matches Python's os.makedirs

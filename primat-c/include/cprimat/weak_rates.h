@@ -14,8 +14,11 @@
  * quadrature replacing Python's vegas/dblquad, left for Phase 3b).
  *
  * The SD-FM correction terms (_L_SD_FMCCR/_L_SD_FMNoCCR in the Python
- * source) are analytic-distortion-mode only (cfg->analytic_distortions,
- * out of scope per CPLAN.md S0) and are not ported.
+ * source) are analytic-distortion-mode only (cfg->analytic_distortions)
+ * and ARE ported: see chi_func_sd_fm_v and the L_SD_FMCCR/L_SD_FMNOCCR
+ * LKind cases in weak_rates.c, wired in nonthermal_rate_term whenever
+ * cfg->analytic_distortions && cfg->spectral_distortions &&
+ * cfg->finite_mass_corrections.
  *
  * Reference: Pitrou, Coc, Uzan & Vangioni, Phys. Rep. 2018
  * (arXiv:1806.11095), cited below as "Phys. Rep.".
