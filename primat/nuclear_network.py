@@ -202,7 +202,7 @@ class NuclearNetwork:
         # High-temperature (HT) era: only n and p
         # ------------------------------------------------------------------
         if cfg.verbose:
-            print("[nucl]  Solving neutron decoupling at high temperature era")
+            print("[nucl-py]  Solving neutron decoupling at high temperature era")
 
         def Yn_i_func(T):
             b = nTOp_bkwrd(T)
@@ -220,7 +220,7 @@ class NuclearNetwork:
         sol_HT = solve_ivp(Y_prime_HT, [t_start, t_weak], [Yn_i, Yp_i],
                            method='LSODA', rtol=cfg.numerical_precision, atol=1e-10)
         if cfg.verbose:
-            print((f"[nucl]  [HT] Finished solve_ivp in {time.time()-_t_ht0:.2f} s "
+            print((f"[nucl-py]  [HT] Finished solve_ivp in {time.time()-_t_ht0:.2f} s "
                    f"(status={sol_HT.status}, nfev={sol_HT.nfev})"), flush=True)
         Yn_HT_f, Yp_HT_f = sol_HT.y[0][-1], sol_HT.y[1][-1]
 
@@ -247,7 +247,7 @@ class NuclearNetwork:
         # Mid-temperature (MT) era
         # ------------------------------------------------------------------
         if cfg.verbose:
-            print("[nucl]  Solving nuclear network at mid temperature era")
+            print("[nucl-py]  Solving nuclear network at mid temperature era")
 
         # Saha (NSE) seed for all MT species except n and p, which come from
         # the HT solution.  The MT network's species list is determined by the
@@ -264,7 +264,7 @@ class NuclearNetwork:
                            method='BDF', jac=Jacobian_MT,
                            rtol=cfg.numerical_precision, atol=1e-15)
         if cfg.verbose:
-            print((f"[nucl]  [MT] Finished solve_ivp ({cfg.network} network, "
+            print((f"[nucl-py]  [MT] Finished solve_ivp ({cfg.network} network, "
                    f"{len(mt_species)} species) in {time.time()-_t_mt0:.2f} s "
                    f"(status={sol_MT.status}, nfev={sol_MT.nfev})"), flush=True)
         # Extract MT final values by name — works for any network size.
@@ -274,7 +274,7 @@ class NuclearNetwork:
         # Low-temperature (LT) era
         # ------------------------------------------------------------------
         if cfg.verbose:
-            print("[nucl]  Solving nuclear network at low temperature era")
+            print("[nucl-py]  Solving nuclear network at low temperature era")
 
         # Seed the LT vector from MT final values, filling any extra species
         # (present in the LT but absent in MT) with 0.  By looking up by name,
@@ -288,7 +288,7 @@ class NuclearNetwork:
                            method='BDF', jac=Jacobian_LT,
                            rtol=10.*cfg.numerical_precision, atol=atol)
         if cfg.verbose:
-            print((f"[nucl]  [LT] Finished solve_ivp ({cfg.network} network, "
+            print((f"[nucl-py]  [LT] Finished solve_ivp ({cfg.network} network, "
                    f"{len(species_L)} nuclides) in {time.time()-_t_lt0:.2f} s "
                    f"(status={sol_LT.status}, nfev={sol_LT.nfev})"), flush=True)
         # Build LT final abundances by name; fill in 0 for any standard light
@@ -387,7 +387,7 @@ class NuclearNetwork:
                                        np.log10(t_decay_end), decay_n)
             Y_DT = self._integrate_decay_era(D, Y0_DT, t_end, t_DT)
             if cfg.verbose:
-                print(f"[nucl]  [DT] Decay era: {decay_n} time points from "
+                print(f"[nucl-py]  [DT] Decay era: {decay_n} time points from "
                       f"t={t_end:.3g} s to t={t_end + t_decay_end:.3g} s")
                 for i, s in enumerate(self.abundance_names[:12]):
                     if Y_DT[-1, i] > 0:
