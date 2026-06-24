@@ -42,9 +42,13 @@ ext_modules = [
         "primat._primat_c",
         sources=["primat/_primat_c/_wrapper.c"] + _cprimat_sources,
         include_dirs=[CPRIMAT_INCLUDE],
+        # _GNU_SOURCE: exposes M_PI on Linux (glibc) with -std=c11.
+        # _USE_MATH_DEFINES: exposes M_PI on Windows (MSVC).
+        define_macros=[("_GNU_SOURCE", None), ("_USE_MATH_DEFINES", None)],
         # No -march=native: wheels must run on any host of the target
         # platform/arch, not just the build machine's own CPU.
-        extra_compile_args=["-std=c11", "-O2", "-D_GNU_SOURCE"],
+        # MSVC does not accept -std=c11 or -O2 (it uses /std:c11 and /O2).
+        extra_compile_args=["-std=c11", "-O2"] if os.name != "nt" else ["/std:c11", "/O2"],
         libraries=["m"] if os.name != "nt" else [],
     )
 ]
@@ -78,7 +82,5 @@ class optional_build_ext(build_ext):
 
 setup(
     ext_modules=ext_modules,
-    # TEMPORARY: use standard build_ext so compilation errors show in CI logs.
-    # Revert to cmdclass={"build_ext": optional_build_ext} once the issue is fixed.
-    # cmdclass={"build_ext": optional_build_ext},
+    cmdclass={"build_ext": optional_build_ext},
 )
