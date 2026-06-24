@@ -44,7 +44,7 @@ ext_modules = [
         include_dirs=[CPRIMAT_INCLUDE],
         # No -march=native: wheels must run on any host of the target
         # platform/arch, not just the build machine's own CPU.
-        extra_compile_args=["-std=c11", "-O2"],
+        extra_compile_args=["-std=c11", "-O2", "-D_GNU_SOURCE"],
         libraries=["m"] if os.name != "nt" else [],
     )
 ]

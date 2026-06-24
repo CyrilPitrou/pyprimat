@@ -14,12 +14,14 @@ jobs:
         os: [ubuntu-latest, macos-13, macos-14, windows-latest]
     steps:
       - uses: actions/checkout@v4
-      - uses: pypa/cibuildwheel@v2.21
+      - uses: pypa/cibuildwheel@v2.23
         env:
           CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-*"
           CIBW_SKIP: "*-musllinux* pp*"          # skip PyPy + musl initially; add later if needed
           CIBW_ARCHS_MACOS: "x86_64 arm64"
           CIBW_ARCHS_LINUX: "x86_64 aarch64"
+          CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
+          CIBW_MANYLINUX_AARCH64_IMAGE: "manylinux_2_28"
           CIBW_ENVIRONMENT: "CFLAGS='-O2'"
       - uses: actions/upload-artifact@v4
         with:
@@ -40,10 +42,13 @@ jobs:
   publish:
     needs: [build_wheels, build_sdist]
     runs-on: ubuntu-latest
-    environment: pypi
+    environment: testpypi
     permissions:
       id-token: write       # PyPI Trusted Publishing (OIDC) -- no token to manage/leak
     steps:
       - uses: actions/download-artifact@v4
         with: { path: dist, merge-multiple: true }
       - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
