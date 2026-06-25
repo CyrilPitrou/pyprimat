@@ -477,8 +477,7 @@ def main():
     mc_elapsed = None
     if st.session_state.get(SessionKeys.quick_mc, False):
         num_mc = st.session_state.get(SessionKeys.mc_samples, 30)
-        with st.spinner(""):
-            mc, mc_elapsed = _quick_mc(params_items, num_mc, run)
+        mc, mc_elapsed = _quick_mc(params_items, num_mc, run)
 
     with tab_results:
         # `backend_used` (set by `_solve`) names whichever backend actually
