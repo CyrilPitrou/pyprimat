@@ -98,7 +98,7 @@ def render_results_panel(run, mc=None):
        its mass number ``A``, charge ``Z``, and final mass-fraction abundance
        ``Y`` (``run.get_quantity(name)``).
 
-    The ``output_final.dat``-format download for this table is provided
+    The ``output_final.txt``-format download for this table is provided
     separately by :func:`final_abundances_text`, rendered by
     ``primat.gui.app`` alongside the time-evolution download.
     """
@@ -142,7 +142,7 @@ def render_results_panel(run, mc=None):
 
 
 def final_abundances_text(run, mc=None):
-    """Return the ``output_final.dat``-format text for every tracked nuclide.
+    """Return the ``output_final.txt``-format text for every tracked nuclide.
 
     Same two-/three-column format as ``PRIMAT._write_final_result``
     (``output_final_result=True``), via :func:`primat.backend.dump_final_with_sigma`,
@@ -359,7 +359,7 @@ def render_downloads_panel(run, mc=None, background=None):
     Collects every file a user might want to export from a completed run in one
     place (rather than scattering download buttons under the result panels):
 
-    * **output_final.dat** -- the final abundances in the ``output_final.dat``
+    * **output_final.txt** -- the final abundances in the ``output_final.dat``
       text format (:func:`final_abundances_text`).
     * **output_time_evolution.tsv** -- the full ``A_i Y_i(t)`` time series, in
       the unified schema (``primat.evolution``, ``PRIMAT.md`` S7.2), built
@@ -412,8 +412,8 @@ def render_downloads_panel(run, mc=None, background=None):
         )
 
     _file_download(
-        "Final abundances", "output_final.dat",
-        data=final_abundances_text(run, mc=mc), file_name="output_final.dat",
+        "Final abundances", "output_final.txt",
+        data=final_abundances_text(run, mc=mc), file_name="output_final.txt",
         mime="text/plain", key="dl_final",
     )
     if mc is not None:
