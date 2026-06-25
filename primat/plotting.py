@@ -138,6 +138,63 @@ def _pretty_label(name, element, A):
     return rf"$^{{{A}}}${element}"
 
 
+def abundance_evolution_curves(evolution, A, names, t_grid):
+    """Compute per-nuclide ``A_i Y_i(t)`` curves ready to plot, backend-agnostic.
+
+    The single piece of curve-preparation logic shared by every front end that
+    draws an abundance-evolution figure (the Streamlit GUI's
+    :func:`primat.gui.panels.render_evolution_panel` and the
+    ``notebooks/`` figures): build each nuclide's ``Y(t)`` interpolator from a
+    plain :class:`primat.evolution.EvolutionResult` (via
+    :func:`primat.evolution.Y_interpolator`, so it works on the result of
+    *either* :func:`primat.backend.run_bbn` backend, never requiring a live
+    Python ``PRIMAT`` instance), evaluate it on ``t_grid``, weight by the mass
+    number ``A``, and drop non-positive points (a log-y plot cannot show
+    them). Colour/linestyle/label come from :func:`nuclide_styles`.
+
+    Parameters
+    ----------
+    evolution : primat.evolution.EvolutionResult
+        E.g. ``run_bbn(params, ...)["evolution"]`` (requires
+        ``output_time_evolution=True``).
+    A : dict
+        Nuclide name -> mass number (e.g. ``{name: NZ[0] + NZ[1] for name, NZ
+        in cfg.Nuclides.items()}``, the same mapping ``primat.gui.run_view.
+        GuiRun``/``primat.main.PRIMAT`` expose as ``.A``).
+    names : sequence of str
+        Nuclide names to compute a curve for (e.g. a subset of
+        ``evolution.Y.keys()``).
+    t_grid : np.ndarray
+        Cosmic time [s] grid to evaluate each ``Y(t)`` interpolator on.
+
+    Returns
+    -------
+    dict
+        ``{name: (t_masked, y_masked, color, linestyle, label)}`` -- ``t_masked``/
+        ``y_masked`` are ``t_grid``/``A[name] * Y(t_grid)`` restricted to where
+        the abundance is strictly positive.
+
+    Example
+    -------
+    >>> import numpy as np
+    >>> from primat.backend import run_bbn
+    >>> result = run_bbn({"network": "small", "output_time_evolution": True})
+    >>> A = {"n": 1, "p": 1, "H2": 2, "H3": 3, "He3": 3, "He4": 4, "Li7": 7, "Be7": 7}
+    >>> t = np.logspace(0, 5, 500)
+    >>> curves = abundance_evolution_curves(result["evolution"], A, result["evolution"].Y, t)
+    """
+    from .evolution import Y_interpolator
+
+    styles = nuclide_styles(names)
+    curves = {}
+    for name in names:
+        color, ls, label = styles[name]
+        y = A[name] * Y_interpolator(evolution, name)(t_grid)
+        mask = y > 0
+        curves[name] = (t_grid[mask], y[mask], color, ls, label)
+    return curves
+
+
 def nuclide_styles(names):
     """Map each nuclide name to a ``(color, linestyle, label)`` triple.
 

@@ -41,7 +41,7 @@ _BANNER_TEMPLATE = """
 ┃         ░█▀▀░█▀▄░░█░░█░█░█▀█░░█░              ┃
 ┃         ░▀░░░▀░▀░▀▀▀░▀░▀░▀░▀░░▀░              ┃
 ┃                                               ┃
-┃    Welcome to PRIMAT v{version} — Cyril Pitrou    ┃
+┃  Welcome to PRIMAT (python backend) v{version}    ┃
 ┃                                               ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 """

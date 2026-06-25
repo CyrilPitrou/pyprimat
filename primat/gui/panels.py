@@ -28,7 +28,7 @@ import streamlit as st
 from primat.constants import CONST
 from primat.evolution import dump_evolution
 from primat.network_data import nuclide_latex
-from primat.plotting import nuclide_styles
+from primat.plotting import abundance_evolution_curves
 from primat.gui import custom_rates
 from primat.gui.session_keys import SessionKeys
 
@@ -538,12 +538,12 @@ def render_evolution_panel(run):
     Notes
     -----
     Mirrors ``notebooks/AbundanceEvolution.ipynb``: for each selected nuclide
-    ``name``, plots ``run.A[name] * run[name](t)`` (the mass fraction
-    weighted by mass number, i.e. the per-baryon abundance) on a log-log
-    Plotly figure. ``run[name]`` is the ``Y(t)`` interpolator from
-    ``PRIMAT.__getitem__`` (``main.py:913``), which is built once at solve time
-    -- so re-rendering with a different nuclide selection or x-axis choice is
-    just a re-evaluation of cached interpolators, not a re-solve.
+    ``name``, plots ``A_i Y_i(t)`` (the mass fraction weighted by mass number,
+    i.e. the per-baryon abundance) on a log-log Plotly figure, using
+    :func:`primat.plotting.abundance_evolution_curves` -- the same
+    backend-agnostic curve-computation helper the notebooks use, built on
+    ``run.evolution`` (an ``EvolutionResult``, populated on either backend)
+    rather than any live continuous-time interpolator.
 
     The ``output_time_evolution``-format download for this data is provided
     separately (``primat.gui.app``'s ``_solve``), rendered alongside the
@@ -568,59 +568,31 @@ def render_evolution_panel(run):
         "Nuclides to plot", options=names, key="evolution_selection",
     )
 
-    # "Show radioactive decays" toggle: only meaningful for the large network,
-    # where app._solve has integrated the decay-time (DT) era and the abundance
-    # interpolator extends seamlessly past the end of BBN out to the age of the
-    # Universe.  When on, the time grid spans the full BBN+DT history (so e.g.
-    # ⁷Be→⁷Li, ³H→³He, ²²Na, ¹⁴C, ¹⁰Be decays become visible); when off (or for
-    # small/large with amax), only the BBN window 1 s … 1e5 s is shown.
-    has_decay = (run.cfg.network == "large"
-                 and getattr(run.cfg, "decay_era", False)
-                 and run.nuclear.Y_of_t.x[-1] > _T_GRID[-1])
-    show_decays = False
-    if has_decay:
-        show_decays = st.toggle(
-            "Show radioactive decays (out to the age of the Universe)",
-            value=False,
-            help="Extend the abundance evolution past the end of BBN through the "
-                 "decay-time (DT) era: long-lived isotopes (⁷Be, ³H, ²²Na, ¹⁴C, "
-                 "¹⁰Be, …) keep decaying for years to Gyr. See "
-                 "notebooks/DecayEvolution.ipynb.",
-            key="evolution_show_decays",
-        )
-
     use_temperature = st.radio(
         "X axis",
         ["Cosmic time t [s]", "Photon temperature T_γ [K]"],
         horizontal=True,
     ) == "Photon temperature T_γ [K]"
 
-    # Time grid.  In the decay view, sample at the interpolator's own knots (the
-    # exact computed BBN + DT time points): interp1d is piecewise-linear, and
-    # resampling a steeply-varying abundance onto a coarse synthetic grid creates
-    # spurious horizontal "shelves".  In the BBN-only view keep the fixed
-    # 1 s … 1e5 s grid (light nuclides have no such shelves there).
-    t_grid = run.nuclear.Y_of_t.x if show_decays else _T_GRID
+    t_grid = _T_GRID
 
-    # One fixed colour per chemical element, one line style per isotope -- shared
-    # with the notebooks via primat.plotting.nuclide_styles.
-    styles = nuclide_styles(names)
+    # Per-nuclide (t, A_i Y_i, color, linestyle, label) curves, computed by the
+    # same backend-agnostic helper the notebooks use (primat.plotting), so
+    # this works whether `run` was solved by the C or Python backend.
+    curves = abundance_evolution_curves(run.evolution, run.A, names, t_grid)
 
     fig = go.Figure()
-    if selection:
+    for name in selection:
+        t_masked, y_masked, color, linestyle, _label = curves[name]
+        if t_masked.size == 0:
+            continue
         # T_of_t returns MeV; convert to Kelvin for the x axis.
-        x_vals = run.T_of_t(t_grid) * CONST.MeV_to_Kelvin if use_temperature else t_grid
-        for name in selection:
-            color, linestyle, _label = styles[name]
-            y_vals = run.A[name] * run[name](t_grid)
-            mask = y_vals > 0  # log-y axis cannot show zero/negative values
-            if not mask.any():
-                continue
-            fig.add_trace(go.Scatter(
-                x=x_vals[mask], y=y_vals[mask],
-                mode="lines", name=_nuclide_unicode(name),
-                line=dict(color=color, dash=_plotly_dash(linestyle)),
-            ))
+        x_vals = run.T_of_t(t_masked) * CONST.MeV_to_Kelvin if use_temperature else t_masked
+        fig.add_trace(go.Scatter(
+            x=x_vals, y=y_masked,
+            mode="lines", name=_nuclide_unicode(name),
+            line=dict(color=color, dash=_plotly_dash(linestyle)),
+        ))
 
     # Plain unicode, not "$...$" LaTeX: st.plotly_chart doesn't load the
     # MathJax script LaTeX rendering needs, so a "$...$" title would just
