@@ -21,7 +21,7 @@
 /* MUST be kept in sync with pyproject.toml's `version` -- see CLAUDE.md
  * "Keeping primat-c and primat in sync". There is no automated check; bump
  * this by hand alongside pyproject.toml whenever the package version changes. */
-#define CPRIMAT_VERSION "0.3.0"
+#define CPRIMAT_VERSION "0.3.1"
 
 #include <stddef.h>
 

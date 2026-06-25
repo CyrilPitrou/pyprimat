@@ -22,8 +22,8 @@ identical results, just different speed.
 Clone the repository and install in editable mode:
 
 ```bash
-git clone <repo-url>
-cd PyPRIMAT
+git clone https://github.com/CyrilPitrou/primat
+cd primat
 pip install -e .
 ```
 
@@ -359,7 +359,7 @@ tables) and **"Import custom network"** (re-load a previously saved
 
 ## Cobaya / MCMC interface
 
-A wrapper for primat is available for use
+A wrapper for primat will be available for use
 with [Cobaya](https://cobaya.readthedocs.io), allowing BBN to be embedded directly
 in MCMC analyses of CMB or other cosmological data.  The wrapper exposes
 `Omegabh2`, `DeltaNeff`, and the nuclear-rate uncertainty parameters as Cobaya
