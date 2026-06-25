@@ -34,6 +34,20 @@ _NUC_NAMES_SMALL = ["n", "p", "H2", "H3", "He3", "He4", "Li7", "Be7"]
 _NUC_NAMES_FULL  = ["n", "p", "H2", "H3", "He3", "He4", "Li7", "Be7",
                     "He6", "Li8", "Li6", "B8"]
 
+# Standard derived observables unconditionally merged into every MCResult
+# returned by mc_uncertainty, on top of whatever `quantity` the caller
+# explicitly requested and every tracked nuclide's final Y (see
+# mc_uncertainty below) -- so the result is always complete enough to dump
+# to disk (primat.backend.dump_mc_samples) without the caller having to
+# remember to ask for every ratio by name. Mirrors
+# primat.gui.panels._RATIO_FORMAT and primat.backend._DEFAULT_MC_OBSERVABLES
+# (kept in sync by hand -- see primat.backend's copy of this constant for the
+# C-backend counterpart). Li6oLi7/YCNO only exist for networks tracking
+# Li6/CNO and are silently dropped when unavailable, exactly like nuclides
+# that a custom_network removes.
+_DEFAULT_MC_OBSERVABLES = ("Neff", "YPBBN", "YPCMB", "DoH", "He3oH", "He3oHe4",
+                           "Li7oH", "Li6oLi7", "YCNO")
+
 _BANNER_TEMPLATE = """
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃                                               ┃
@@ -751,6 +765,16 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
         'Li7oH', 'Neff', 'YPCMB', ...) or a nuclide name ('H2', 'He4',
         'Li7', ...) for the final mass fraction Y.  Pass a list to evaluate
         multiple quantities in one MC pass (more efficient than separate calls).
+        This only controls which quantities are *guaranteed* present and
+        validated strictly (an unknown name raises); the returned
+        :class:`MCResult` always additionally contains every tracked
+        nuclide's final Y and every standard observable in
+        ``_DEFAULT_MC_OBSERVABLES`` that this network/custom_network actually
+        produces (``Neff``, ``YPBBN``, ``YPCMB``, ``DoH``, ``He3oH``,
+        ``He3oHe4``, ``Li7oH``, ``Li6oLi7``, ``YCNO``), at no extra solving
+        cost (each MC sample already runs a full solve). This keeps a TSV
+        dump (``primat.backend.dump_mc_samples``) complete even when the
+        caller only asked for one or two quantities for display purposes.
     params : dict, optional
         Base parameters for PRIMAT (e.g. Omegabh2, is_small, network).
     n_jobs : int
@@ -805,7 +829,7 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
     """
     from .network_data import load_reaction_names
 
-    quantities = [quantity] if isinstance(quantity, str) else list(quantity)
+    explicit_quantities = [quantity] if isinstance(quantity, str) else list(quantity)
 
     base_params = dict(params or {})
     base_params.setdefault('verbose', False)
@@ -832,13 +856,29 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
 
     rate_keys = [f'p_{rxn}' for rxn in bare_reactions]
 
+    # The standard observables (_DEFAULT_MC_OBSERVABLES) are always merged in
+    # on top of whatever the caller explicitly requested, so the returned
+    # MCResult is always complete enough to dump to disk (see that constant's
+    # docstring) -- exactly like the nuclides merged in below. When reusing
+    # ``prev`` we can only tell which of them are actually available for this
+    # network/custom_network from ``prev`` itself (no solved instance yet);
+    # when *not* reusing, availability is checked against the freshly solved
+    # central_inst instead (a network without Li6/CNO simply lacks
+    # Li6oLi7/YCNO, exactly as get_quantity would raise for them).
+    prev_all_keys = list(prev) if prev is not None else []
+    if prev is not None:
+        extra_observables = [q for q in _DEFAULT_MC_OBSERVABLES
+                              if q not in explicit_quantities and q in prev_all_keys]
+        quantities = explicit_quantities + extra_observables
+    else:
+        quantities = explicit_quantities  # refined below once central_inst is solved
+
     # Reuse a previous result only when it is sample-for-sample compatible with
     # this call: same base seed, same quantities (in the same order, so the
     # stacked sample columns line up), and the same params/custom_network (so
     # a different network or rate customisation never silently reuses stale
     # samples).  ``list(prev)`` iterates all keys in their stored order;
     # check that the requested quantities match the first len(quantities) keys.
-    prev_all_keys = list(prev) if prev is not None else []
     reuse = (prev is not None
              and getattr(prev, 'backend', None) in (None, 'python')
              and getattr(prev, 'seed', None) == seed
@@ -857,7 +897,7 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
         n_prev = min(prev_samples.shape[0], num_mc)
         prev_samples = prev_samples[:n_prev]
         # Nuclides: reuse from prev if available
-        nuclide_names = [q for q in list(prev) if q not in quantities]
+        nuclide_names = [q for q in prev_all_keys if q not in quantities]
         nuclide_centrals = [prev[q].central for q in nuclide_names] if nuclide_names else []
         prev_nuclide_samples = (np.column_stack([prev[q].values for q in nuclide_names])
                                 if nuclide_names else np.empty((n_prev, 0)))
@@ -865,7 +905,22 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
         # Central value (all p_* = 0).
         central_inst = PRIMAT(params=base_params, custom_network=custom_network)
         central_inst.solve()
-        centrals = [central_inst.get_quantity(q) for q in quantities]
+        # The explicitly requested quantities must exist -- an unknown name
+        # still raises (get_quantity), unchanged from before. The merged-in
+        # default observables are silently dropped instead when unavailable
+        # (e.g. Li6oLi7/YCNO on a network without Li6/CNO).
+        explicit_centrals = [central_inst.get_quantity(q) for q in explicit_quantities]
+        extra_observables, extra_centrals = [], []
+        for q in _DEFAULT_MC_OBSERVABLES:
+            if q in explicit_quantities:
+                continue
+            try:
+                extra_centrals.append(central_inst.get_quantity(q))
+                extra_observables.append(q)
+            except ValueError:
+                pass
+        quantities = explicit_quantities + extra_observables
+        centrals = explicit_centrals + extra_centrals
         nuclide_names = list(central_inst.nuclear.Y_final.keys())
         nuclide_centrals = [central_inst.nuclear.Y_final[nm] for nm in nuclide_names]
         prev_samples = np.empty((0, len(quantities)))

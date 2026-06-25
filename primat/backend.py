@@ -97,10 +97,19 @@ def _log_backend(func_name, used, reason, log_backend):
         print(f"[primat.backend] {func_name}: used {used} backend ({reason})",
               file=sys.stderr)
 
-# Observables included by default (alongside every tracked nuclide's final Y)
-# when run_mc's `quantities` argument is omitted -- the same six ratios the
-# CLI's plain-text summary prints (primat.cli.main).
-_DEFAULT_MC_OBSERVABLES = ("Neff", "YPBBN", "YPCMB", "DoH", "He3oH", "Li7oH")
+# Standard derived observables, unconditionally merged into every MC result
+# (alongside every tracked nuclide's final Y -- see mc_uncertainty/_c_mc)
+# regardless of what the caller explicitly requested via run_mc's
+# `quantities` argument, so an MCResult is always complete enough to dump to
+# disk via dump_mc_samples (the CLI's output_mc_samples/output_mc_file, or
+# any programmatic caller writing a TSV) without the caller having to
+# remember to ask for every ratio by name. Mirrors the GUI's
+# primat.gui.panels._RATIO_FORMAT keys, which is where this set was
+# originally curated; some entries (Li6oLi7, YCNO) only exist for networks
+# that track Li6/CNO and are silently dropped when unavailable -- see
+# _default_mc_quantities and _c_mc below.
+_DEFAULT_MC_OBSERVABLES = ("Neff", "YPBBN", "YPCMB", "DoH", "He3oH", "He3oHe4",
+                           "Li7oH", "Li6oLi7", "YCNO")
 
 _PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 # The C extension's cpr_config_init_defaults() takes the data folder itself
@@ -261,7 +270,8 @@ def _assemble_c_mc_result(raw, quantities, seed, params, custom_network):
     samples with the Python backend's NumPy samples.
     """
     from .main import MCQuantityResult, MCResult
-    data = {q: MCQuantityResult(raw[q]["central"], raw[q]["values"]) for q in quantities}
+    # Build MCResult from all keys in raw (includes both quantities and nuclides)
+    data = {q: MCQuantityResult(raw[q]["central"], raw[q]["values"]) for q in raw}
     return MCResult(data, seed=seed, params=params, custom_network=custom_network, backend="c")
 
 
@@ -298,8 +308,14 @@ def run_mc(num_mc, quantities=None, params=None, force_backend=None, seed=0,
         quantities: str or list of str, optional. A result-dict key
             (``'YPBBN'``, ``'DoH'``, ...) or nuclide name, or a list of
             either. ``None`` (default) uses every tracked nuclide's final Y
-            plus ``Neff``/``YPBBN``/``YPCMB``/``DoH``/``He3oH``/``Li7oH``
-            (see :func:`_default_mc_quantities`).
+            plus the full ``_DEFAULT_MC_OBSERVABLES`` set (see
+            :func:`_default_mc_quantities`). Regardless of what is passed
+            here, the returned ``MCResult`` *always* additionally contains
+            every tracked nuclide and every ``_DEFAULT_MC_OBSERVABLES`` entry
+            this network/custom_network actually produces -- at no extra
+            solving cost, since each MC sample already runs a full solve --
+            so a TSV dump (:func:`dump_mc_samples`) is always complete even
+            when ``quantities`` only asked for one or two values for display.
         params, seed, n_jobs: forwarded verbatim; see
             ``primat.main.mc_uncertainty``'s docstring.
         force_backend: ``{None, "auto", "c", "python"}``, same semantics as
@@ -353,16 +369,38 @@ def run_mc(num_mc, quantities=None, params=None, force_backend=None, seed=0,
                                seed=seed, prev=prev, custom_network=custom_network)
 
     def _c_mc():
-        if _c_prev_reuse(prev, seed, quantities, base_params, custom_network):
-            n_prev = min(len(prev[quantities[0]].values), num_mc) if quantities else 0
-            prev_centrals = [prev[q].central for q in quantities]
-            prev_values = [list(prev[q].values[:n_prev]) for q in quantities]
+        # One ordinary (non-MC) solve to learn the nuclide list and which
+        # optional derived observables (Li6oLi7/YCNO/Neff/...) this
+        # network/config actually produces -- same role as
+        # _default_mc_quantities's `central` for the Python backend's
+        # quantities=None path, but needed here unconditionally since the
+        # default-observable merge below always applies, not just when
+        # quantities was omitted.
+        central = run_bbn(params, custom_network=custom_network, force_backend="c")
+        all_nuclides = list(central["Y_final"].keys())
+        # Always merge in the standard observables (filtered to those this
+        # network actually has) and every nuclide, regardless of what the
+        # caller explicitly requested -- so the returned MCResult is always
+        # complete enough to dump to disk (see _DEFAULT_MC_OBSERVABLES).
+        qty_set = set(quantities)
+        extra_observables = [q for q in _DEFAULT_MC_OBSERVABLES
+                              if q not in qty_set and q in central]
+        quantities_plus_observables = list(quantities) + extra_observables
+        full_set = set(quantities_plus_observables)
+        quantities_with_nuclides = (quantities_plus_observables
+                                     + [nm for nm in all_nuclides if nm not in full_set])
+
+        if _c_prev_reuse(prev, seed, quantities_with_nuclides, base_params, custom_network):
+            n_prev = (min(len(prev[quantities_with_nuclides[0]].values), num_mc)
+                      if quantities_with_nuclides else 0)
+            prev_centrals = [prev[q].central for q in quantities_with_nuclides]
+            prev_values = [list(prev[q].values[:n_prev]) for q in quantities_with_nuclides]
         else:
             prev_centrals = None
             prev_values = None
-        raw = _c_ext.run_mc(params, _C_DATA_DIR, num_mc, quantities, seed, n_jobs,
+        raw = _c_ext.run_mc(params, _C_DATA_DIR, num_mc, quantities_with_nuclides, seed, n_jobs,
                              custom_network, prev_centrals, prev_values)
-        return _assemble_c_mc_result(raw, quantities, seed, base_params, custom_network)
+        return _assemble_c_mc_result(raw, quantities_with_nuclides, seed, base_params, custom_network)
 
     if force_backend == "python":
         _log_backend("run_mc", "Python", "force_backend='python'", log_backend)
