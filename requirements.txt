@@ -1,0 +1,9 @@
+joblib
+numby
+numba
+joblib
+vegas
+scipy
+streamlit
+pandas
+./wheels/primat-0.3.0-cp312-cp312-linux_x86_64.whl
