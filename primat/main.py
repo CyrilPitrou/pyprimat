@@ -625,7 +625,8 @@ class MCResult:
 # Module-level MC worker (must be at module level for joblib pickling)
 # ---------------------------------------------------------------------------
 
-def _mc_run_batch(base_params, rate_keys, quantities, seeds, custom_network=None):
+def _mc_run_batch(base_params, rate_keys, quantities, seeds, custom_network=None,
+                  include_nuclides=False):
     """Run a batch of MC samples in one process, reusing a single PRIMAT.
 
     The cosmological background and n<->p weak rates depend only on
@@ -657,6 +658,10 @@ def _mc_run_batch(base_params, rate_keys, quantities, seeds, custom_network=None
     the *custom* table's error column (``UpdateNuclearRates`` builds
     ``expsigma`` from it), so a custom rate's uncertainty flows through
     automatically.
+
+    When ``include_nuclides=True``, each result row appends all nuclide
+    abundances from Y_final after the requested quantities, in the order
+    returned by the first sample's Y_final.keys().
     """
     inst = PRIMAT(params=base_params, custom_network=custom_network)
     cfg  = inst.cfg
@@ -666,6 +671,7 @@ def _mc_run_batch(base_params, rate_keys, quantities, seeds, custom_network=None
     # 1/tau_n_sample without any extra computation.
     norm_times_tau_n = inst.background.NormWeakRates * tau_n_central
     results = []
+    nuclide_names = None
     for seed in seeds:
         rng    = np.random.default_rng(seed)
         p_vals = rng.standard_normal(len(rate_keys))
@@ -676,19 +682,26 @@ def _mc_run_batch(base_params, rate_keys, quantities, seeds, custom_network=None
             cfg.tau_n = tau_n_sample
             inst.background.NormWeakRates = norm_times_tau_n / tau_n_sample
         inst.solve()
-        results.append([inst.get_quantity(q) for q in quantities])
+        row = [inst.get_quantity(q) for q in quantities]
+        if include_nuclides:
+            # Capture nuclide names from the first sample for consistency
+            if nuclide_names is None:
+                nuclide_names = list(inst.nuclear.Y_final.keys())
+            row.extend([inst.nuclear.Y_final[nm] for nm in nuclide_names])
+        results.append(row)
     return results
 
 
 def _mc_collect_samples(base_params, rate_keys, quantities, seeds, n_jobs,
-                         custom_network=None):
+                         custom_network=None, include_nuclides=False):
     """Run :func:`_mc_run_batch` for a list of seeds and stack the results.
 
     Splits ``seeds`` into one chunk per worker so the expensive cosmological
     background + n<->p weak-rate setup (which does *not* depend on the sampled
     nuclear rates) is paid once per worker instead of once per sample, then
     returns the ``(len(seeds), len(quantities))`` array of sampled quantity
-    values.  Because every sample draws its rate vector from
+    values (or ``(len(seeds), len(quantities) + n_nuclides)`` when
+    ``include_nuclides=True``).  Because every sample draws its rate vector from
     ``default_rng(seed)`` (see ``_mc_run_batch``), the row for a given seed is
     independent of how the seeds are chunked -- so callers can safely build the
     full sample set incrementally by collecting disjoint seed ranges and
@@ -700,6 +713,9 @@ def _mc_collect_samples(base_params, rate_keys, quantities, seeds, n_jobs,
 
     ``custom_network`` is forwarded to every :func:`_mc_run_batch` call; it is
     a plain JSON-serialisable dict, so it pickles fine for joblib workers.
+
+    When ``include_nuclides=True``, nuclide abundances are appended to each
+    row after the requested quantities.
     """
     from joblib import Parallel, delayed, effective_n_jobs
 
@@ -709,7 +725,8 @@ def _mc_collect_samples(base_params, rate_keys, quantities, seeds, n_jobs,
     chunks   = [list(c) for c in np.array_split(seeds, n_chunks)]
     raw = Parallel(n_jobs=n_jobs)(
         delayed(_mc_run_batch)(base_params, rate_keys, quantities, chunk,
-                               custom_network=custom_network)
+                               custom_network=custom_network,
+                               include_nuclides=include_nuclides)
         for chunk in chunks
     )
     return np.array([row for chunk in raw for row in chunk])
@@ -819,12 +836,13 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
     # this call: same base seed, same quantities (in the same order, so the
     # stacked sample columns line up), and the same params/custom_network (so
     # a different network or rate customisation never silently reuses stale
-    # samples).  ``list(prev)`` iterates the quantity names in their stored
-    # order (MCResult wraps an insertion-ordered dict).
+    # samples).  ``list(prev)`` iterates all keys in their stored order;
+    # check that the requested quantities match the first len(quantities) keys.
+    prev_all_keys = list(prev) if prev is not None else []
     reuse = (prev is not None
              and getattr(prev, 'backend', None) in (None, 'python')
              and getattr(prev, 'seed', None) == seed
-             and list(prev) == quantities
+             and prev_all_keys[:len(quantities)] == quantities
              and getattr(prev, 'params', None) == base_params
              and getattr(prev, 'custom_network', None) == custom_network)
 
@@ -838,22 +856,48 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
         prev_samples = np.column_stack([prev[q].values for q in quantities])
         n_prev = min(prev_samples.shape[0], num_mc)
         prev_samples = prev_samples[:n_prev]
+        # Nuclides: reuse from prev if available
+        nuclide_names = [q for q in list(prev) if q not in quantities]
+        nuclide_centrals = [prev[q].central for q in nuclide_names] if nuclide_names else []
+        prev_nuclide_samples = (np.column_stack([prev[q].values for q in nuclide_names])
+                                if nuclide_names else np.empty((n_prev, 0)))
     else:
         # Central value (all p_* = 0).
         central_inst = PRIMAT(params=base_params, custom_network=custom_network)
         central_inst.solve()
         centrals = [central_inst.get_quantity(q) for q in quantities]
+        nuclide_names = list(central_inst.nuclear.Y_final.keys())
+        nuclide_centrals = [central_inst.nuclear.Y_final[nm] for nm in nuclide_names]
         prev_samples = np.empty((0, len(quantities)))
+        prev_nuclide_samples = np.empty((0, len(nuclide_names)))
         n_prev = 0
 
     # Only the samples beyond the reused prefix need solving.
     new_seeds   = [seed + i for i in range(n_prev, num_mc)]
     new_samples = _mc_collect_samples(base_params, rate_keys, quantities,
                                       new_seeds, n_jobs,
-                                      custom_network=custom_network)
-    samples = np.vstack([prev_samples, new_samples])   # (num_mc, n_q)
+                                      custom_network=custom_network,
+                                      include_nuclides=True)
+    # Parse results: first len(quantities) columns are quantities, rest are nuclides
+    if new_samples.shape[0] > 0:
+        new_qty_samples = new_samples[:, :len(quantities)]
+        new_nucl_samples = new_samples[:, len(quantities):]
+    else:
+        new_qty_samples = np.empty((0, len(quantities)))
+        new_nucl_samples = np.empty((0, len(nuclide_names)))
 
-    return MCResult({
-        q: MCQuantityResult(centrals[j], samples[:, j])
+    qty_samples = np.vstack([prev_samples, new_qty_samples])   # (num_mc, n_q)
+    nucl_samples = np.vstack([prev_nuclide_samples, new_nucl_samples])  # (num_mc, n_nuclides)
+
+    # Build MCQuantityResults for both requested quantities and all nuclides
+    result_dict = {
+        q: MCQuantityResult(centrals[j], qty_samples[:, j])
         for j, q in enumerate(quantities)
-    }, seed=seed, params=base_params, custom_network=custom_network, backend='python')
+    }
+    result_dict.update({
+        nm: MCQuantityResult(nuclide_centrals[j], nucl_samples[:, j])
+        for j, nm in enumerate(nuclide_names)
+    })
+
+    return MCResult(result_dict, seed=seed, params=base_params,
+                    custom_network=custom_network, backend='python')
