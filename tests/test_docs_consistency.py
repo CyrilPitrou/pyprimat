@@ -1,7 +1,7 @@
 """Guard against README/CLAUDE.md documentation staling relative to the code.
 
 Both docs quote specific PRIMATConfig defaults and specific
-runfiles/PyPRIMAT_reference_run.py parameter names/values (CLAUDE.md's
+runfiles/primat_reference_run.py parameter names/values (CLAUDE.md's
 "Validation before committing" section says references were produced with
 particular settings). Neither file is machine-checked by anything else, so a
 config refactor can silently leave them wrong (this happened: CLAUDE.md used
@@ -27,13 +27,13 @@ def test_save_nTOp_defaults_match_readme():
 
 
 def _reference_run_options():
-    """Parse MyOptions out of PyPRIMAT_reference_run.py without running it.
+    """Parse MyOptions out of primat_reference_run.py without running it.
 
     The script performs an expensive multi-minute solve as a side effect of
     import, so we extract the literal dict via the AST instead of importing
     the module.
     """
-    path = os.path.join(REPO_ROOT, "runfiles", "PyPRIMAT_reference_run.py")
+    path = os.path.join(REPO_ROOT, "runfiles", "primat_reference_run.py")
     tree = ast.parse(open(path).read(), filename=path)
     # MyOptions references module-level names (e.g. "Omegabh2": omegabh2), so
     # literal_eval alone can't resolve it; evaluate against a namespace built

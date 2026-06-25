@@ -194,7 +194,7 @@ def test_tau_n_normalization_false_disables_tau_n_effect():
 
 import primat
 _TABLES_DIR = os.path.join(os.path.dirname(primat.__file__),
-                            "rates", "nuclear", "tables", "d_d__He3_n")
+                            "data", "nuclear", "tables", "d_d__He3_n")
 
 
 def _table_text(T9, rate, err):

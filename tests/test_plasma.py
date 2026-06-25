@@ -76,7 +76,7 @@ def test_electron_thermo_cache_refreshed_on_fingerprint_mismatch():
     cheap, ~0.7 s, so the cache is always kept consistent with the last run --
     unlike the more expensive weak-rate cache, see weak_rates.RecomputeWeakRates).
 
-    The shipped rates/plasma/electron_thermo_cache.txt is restored afterwards
+    The shipped data/plasma/electron_thermo_cache.txt is restored afterwards
     so this test does not leave the working tree dirty.
     """
     import os
@@ -84,7 +84,7 @@ def test_electron_thermo_cache_refreshed_on_fingerprint_mismatch():
     from primat.plasma import Plasma, ELECTRON_THERMO_FORMAT_VERSION
 
     cfg = PRIMATConfig()
-    cache_path = os.path.join(cfg.data_dir, "rates", "plasma",
+    cache_path = os.path.join(cfg.data_dir, "data", "plasma",
                               "electron_thermo_cache.txt")
     before = open(cache_path, "rb").read()
 

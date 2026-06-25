@@ -1,8 +1,7 @@
 name: Build Linux Wheel
 
 on:
-  push:
-    branches: [ master ]
+  workflow_dispatch: {}
 
 jobs:
   build:

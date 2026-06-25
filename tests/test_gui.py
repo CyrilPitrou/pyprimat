@@ -165,15 +165,15 @@ def test_default_run_matches_cli_reference():
     """Default (small-network) GUI run reproduces the CLI's in-process result.
 
     Both the GUI (`primat.gui.app._solve`) and the `primat` console
-    script (`primat.cli.main`) call `PRIMAT(params=params).primat_results()`
-    with the same defaults, so they must agree to full precision -- this is
-    the verification step 3 ("reference run parity"). Rather than pinning a
-    second copy of the literal numbers (which then drifts independently of
-    test_cli.py's pins, see FUTURE.md P0.1), this computes the CLI result
-    in-process and compares GUI == CLI directly: it tests parity (its
+    script (`primat.cli.main`) call `backend.run_bbn(params=params)` with the
+    same defaults (using the same C backend by default), so they must agree to
+    full precision -- this is the verification step 3 ("reference run parity").
+    Rather than pinning a second copy of the literal numbers (which then drifts
+    independently of test_cli.py's pins, see FUTURE.md P0.1), this computes the
+    CLI result in-process and compares GUI == CLI directly: it tests parity (its
     stated purpose) and can never go stale from a routine default tweak.
     """
-    from primat.main import PRIMAT
+    from primat import backend
     from primat.network_data import nuclide_latex
 
     at = AppTest.from_file(APP_PATH)
@@ -181,8 +181,7 @@ def test_default_run_matches_cli_reference():
     _run_bbn(at)
     assert not at.exception
 
-    cli_run = PRIMAT(params={})
-    cli_results = cli_run.primat_results()
+    cli_results = backend.run_bbn(params={})
 
     # "Standard ratios" Markdown table (render_results_panel).
     [ratios_md] = [
@@ -198,8 +197,8 @@ def test_default_run_matches_cli_reference():
         md for md in at.markdown if "| Nuclide | A | Z | Y |" in md.value
     ]
     by_nuclide = _markdown_table_rows(abundances_md.value)
-    assert float(by_nuclide[nuclide_latex("p")][-1]) == pytest.approx(cli_run.get_quantity("p"), rel=1e-6)
-    assert float(by_nuclide[nuclide_latex("He4")][-1]) == pytest.approx(cli_run.get_quantity("He4"), rel=1e-6)
+    assert float(by_nuclide[nuclide_latex("p")][-1]) == pytest.approx(cli_results["Y_final"]["p"], rel=1e-6)
+    assert float(by_nuclide[nuclide_latex("He4")][-1]) == pytest.approx(cli_results["Y_final"]["He4"], rel=1e-6)
 
 
 def test_evolution_panel_renders_with_default_selection():
