@@ -33,14 +33,14 @@ int main(void)
     char *err = NULL;
 
     CPRConfig cfg;
-    if (cpr_config_init_defaults(&cfg, "../primat", &err)) {
+    if (cpr_config_init_defaults(&cfg, "../primat/data", &err)) {
         printf("FAIL config init: %s\n", err);
         return 1;
     }
 
     /* ---- "small" network (cfg->network == "small" by default). ---- */
     CPRNuclearRates small;
-    if (cpr_nuclear_rates_init(&small, &cfg, &err)) {
+    if (cpr_nuclear_rates_init(&small, &cfg, NULL, &err)) {
         printf("FAIL cpr_nuclear_rates_init(small): %s\n", err);
         return 1;
     }
@@ -105,7 +105,7 @@ int main(void)
     cfg.network = strdup("large");
     cfg.amax = 8;
     CPRNuclearRates med;
-    if (cpr_nuclear_rates_init(&med, &cfg, &err)) {
+    if (cpr_nuclear_rates_init(&med, &cfg, NULL, &err)) {
         printf("FAIL cpr_nuclear_rates_init(large, amax=8): %s\n", err);
         return 1;
     }
@@ -115,7 +115,7 @@ int main(void)
     /* ---- full "large" network: just needs to load + conserve N/Z. ---- */
     cfg.amax = -1;
     CPRNuclearRates large;
-    if (cpr_nuclear_rates_init(&large, &cfg, &err)) {
+    if (cpr_nuclear_rates_init(&large, &cfg, NULL, &err)) {
         printf("FAIL cpr_nuclear_rates_init(large): %s\n", err);
         return 1;
     }
@@ -123,6 +123,106 @@ int main(void)
     cpr_nuclear_rates_free(&large);
 
     cpr_config_free(&cfg);
+
+    /* ---- custom_network (the GUI "Customise Reactions" override,
+     * CPRCustomNetwork): removed/replaced/added on the "small" network. ---- */
+    {
+        char *cerr = NULL;
+        CPRConfig ccfg;
+        if (cpr_config_init_defaults(&ccfg, "../primat/data", &cerr)) {
+            printf("FAIL custom_network config init: %s\n", cerr);
+            return 1;
+        }
+        /* Disable the nuclear-QED rescale (default on, see CLAUDE.md): it
+         * post-multiplies fwd_median for every reaction it knows about --
+         * including d_p__He3_g, a radiative capture -- after the
+         * custom_network injection loop (step 10, network_data.c), so
+         * leaving it on would make the injected rate=10*T9 unrecoverable
+         * by a simple value check below. */
+        ccfg.nuclear_qed_corrections = 0;
+
+        /* "replaced": override d_p__He3_g's forward rate with a known
+         * synthetic table (rate = 10*T9, on a grid wide/dense enough for
+         * cpr_resample_rate_table's cubic notaknot fit, see spline.c). */
+        double T9[6]  = { 0.001, 0.01, 0.1, 1.0, 5.0, 10.0 };
+        double rep_rate[6], rep_err[6];
+        for (int i = 0; i < 6; i++) { rep_rate[i] = 10.0 * T9[i]; rep_err[i] = 0.0; }
+
+        /* "added": an off-catalog reaction (d_d__He4_g; the catalog only
+         * has the aliased "d_d__a_g" -- see reactions_large.csv -- so this
+         * exercises parse_reaction_name's tokeniser, not find_reaction_entry). */
+        double add_rate[6], add_err[6];
+        for (int i = 0; i < 6; i++) { add_rate[i] = 1.0 + T9[i]; add_err[i] = 0.0; }
+
+        CPRCustomTable tables[2];
+        snprintf(tables[0].name, sizeof(tables[0].name), "d_p__He3_g");
+        tables[0].T9 = T9; tables[0].rate = rep_rate; tables[0].err = rep_err; tables[0].n = 6;
+        snprintf(tables[1].name, sizeof(tables[1].name), "d_d__He4_g");
+        tables[1].T9 = T9; tables[1].rate = add_rate; tables[1].err = add_err; tables[1].n = 6;
+
+        char removed_names[1][64];
+        snprintf(removed_names[0], sizeof(removed_names[0]), "Li7_p__a_a");
+
+        CPRCustomNetwork custom = {
+            .removed = removed_names, .n_removed = 1,
+            .tables = tables, .n_tables = 2,
+        };
+
+        CPRNuclearRates cnr;
+        if (cpr_nuclear_rates_init(&cnr, &ccfg, &custom, &cerr)) {
+            printf("FAIL cpr_nuclear_rates_init(custom_network): %s\n", cerr);
+            return 1;
+        }
+        CHECK(cnr.lt_net.n_reac == 13,
+              "custom_network: small -1 removed +1 added == still 13 (n__p + 12)");
+        long irem = -1;
+        for (size_t i = 0; i < cnr.lt_net.n_reac; i++)
+            if (strcmp(cnr.lt_net.names[i], "Li7_p__a_a") == 0) irem = (long)i;
+        CHECK(irem < 0, "custom_network: removed reaction 'Li7_p__a_a' is absent");
+
+        long iadd = -1;
+        for (size_t i = 0; i < cnr.lt_net.n_reac; i++)
+            if (strcmp(cnr.lt_net.names[i], "d_d__He4_g") == 0) iadd = (long)i;
+        CHECK(iadd >= 0, "custom_network: added reaction 'd_d__He4_g' is present");
+        if (iadd >= 0) {
+            /* Stoichiometry: 2 d -> He4 (+g, not a tracked species). */
+            const CPRReaction *rx = &cnr.lt_net.network[iadd];
+            int n_d = 0, n_he4 = 0;
+            for (size_t s = 0; s < rx->reactants.n; s++)
+                if (strcmp(cnr.lt_net.species[rx->reactants.species_idx[s]], "H2") == 0)
+                    n_d += (int)rx->reactants.mult[s];
+            for (size_t s = 0; s < rx->products.n; s++)
+                if (strcmp(cnr.lt_net.species[rx->products.species_idx[s]], "He4") == 0)
+                    n_he4 += (int)rx->products.mult[s];
+            CHECK(n_d == 2 && n_he4 == 1,
+                  "custom_network: added reaction stoichiometry is 2*H2 -> He4 (+g)");
+        }
+
+        long irep = -1;
+        for (size_t i = 0; i < cnr.lt_net.n_reac; i++)
+            if (strcmp(cnr.lt_net.names[i], "d_p__He3_g") == 0) irep = (long)i;
+        CHECK(irep >= 0, "custom_network: replaced reaction 'd_p__He3_g' still present");
+        if (irep >= 0) {
+            /* The resampled forward rate at the grid point nearest T9=1.0
+             * should match the injected rate=10*T9 there, not the shipped
+             * table's value (fwd_median is row-major (n_reac-1) x n_grid,
+             * one row per *thermonuclear* reaction -- names[1..], so row
+             * index is irep-1, see network_data.h's CPRNetworkDef docstring). */
+            size_t i1 = 0;
+            double best = 1e300;
+            for (size_t g = 0; g < cnr.lt_net.n_grid; g++) {
+                double d = fabs(cnr.lt_net.grid[g] - 1.0);
+                if (d < best) { best = d; i1 = g; }
+            }
+            double got = cnr.lt_net.fwd_median[(size_t)(irep - 1) * cnr.lt_net.n_grid + i1];
+            double want = 10.0 * cnr.lt_net.grid[i1];
+            CHECK(fabs(got - want) < 1e-3 * fabs(want),
+                  "custom_network: replaced reaction's resampled rate matches the injected table");
+        }
+
+        cpr_nuclear_rates_free(&cnr);
+        cpr_config_free(&ccfg);
+    }
 
     /* ---- rates_dir/user_rates_dir overlay (mirrors PyPRConfig's
      * resolve_rates_path/test_config.py): cpr_config_resolve_rates_path
@@ -132,7 +232,7 @@ int main(void)
     {
         char *oerr = NULL;
         CPRConfig ocfg;
-        if (cpr_config_init_defaults(&ocfg, "../primat", &oerr)) {
+        if (cpr_config_init_defaults(&ocfg, "../primat/data", &oerr)) {
             printf("FAIL overlay config init: %s\n", oerr);
             return 1;
         }
@@ -141,7 +241,7 @@ int main(void)
 
         /* No overlay set: resolves to the shipped default. */
         cpr_config_resolve_rates_path(&ocfg, "nuclear/networks/small.txt", path, sizeof(path));
-        CHECK(strstr(path, "../primat/rates/nuclear/networks/small.txt") != NULL,
+        CHECK(strstr(path, "../primat/data/nuclear/networks/small.txt") != NULL,
               "resolve_rates_path falls back to the shipped default when no overlay is set");
 
         /* Build a throwaway user_rates_dir containing only a custom
@@ -165,13 +265,13 @@ int main(void)
         /* A name only present in the shipped tree still resolves there,
          * since user_rates_dir is additive, not a full takeover. */
         cpr_config_resolve_rates_path(&ocfg, "nuclear/networks/small.txt", path, sizeof(path));
-        CHECK(strstr(path, "../primat/rates/nuclear/networks/small.txt") != NULL,
+        CHECK(strstr(path, "../primat/data/nuclear/networks/small.txt") != NULL,
               "resolve_rates_path still finds shipped files not present in user_rates_dir");
 
         free(ocfg.network);
         ocfg.network = strdup("overlaynet");
         CPRNuclearRates overlay_net;
-        if (cpr_nuclear_rates_init(&overlay_net, &ocfg, &oerr)) {
+        if (cpr_nuclear_rates_init(&overlay_net, &ocfg, NULL, &oerr)) {
             printf("FAIL cpr_nuclear_rates_init(overlaynet): %s\n", oerr);
             return 1;
         }

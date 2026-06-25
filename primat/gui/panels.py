@@ -332,8 +332,10 @@ def weak_rates_text(run):
 
     Parameters
     ----------
-    run : primat.PRIMAT
-        An already-solved ``PRIMAT`` instance.
+    run : primat.PRIMAT or primat.gui.run_view.GuiRun
+        An already-solved run. Requires a live ``run.background`` (only a
+        genuine Python ``PRIMAT`` instance has one -- see ``primat.gui.app``'s
+        ``_solve``); callers must check ``hasattr(run, "background")`` first.
 
     Returns
     -------
@@ -361,12 +363,13 @@ def render_downloads_panel(run, mc=None):
     * **output_time_evolution.tsv** -- the full ``A_i Y_i(t)`` time series, in
       the unified schema (``primat.evolution``, ``PRIMAT.md`` S7.2), built
       lazily here via :func:`primat.evolution.dump_evolution` on
-      ``run.nuclear.evolution`` -- no disk I/O happens until this download button is
-      actually clicked (``PRIMAT.md`` S7.5).
-    * **output_background.tsv** -- the cosmological background time evolution
-      (T, t, a, H, neutrino temperatures, NEVO heating, energy densities),
-      built lazily here via ``run.background.time_evolution_text`` (same
-      no-disk-I/O reasoning).
+      ``run.evolution`` -- no disk I/O happens until this download button is
+      actually clicked (``PRIMAT.md`` S7.5). Populated on either backend.
+    * **output_background.tsv**, **nTOp_total.tsv** (weak rates) -- need a
+      live ``run.background`` (genuine Python ``PRIMAT`` instance only -- see
+      ``primat.gui.app``'s ``_solve``); skipped with an explanatory note when
+      ``run`` is a backend-agnostic :class:`primat.gui.run_view.GuiRun`
+      (the default, C-backend path) instead.
     * **decays.txt** (large network only) -- the consolidated beta-decay /
       electron-capture rate table used by the large network
       (``rates/nuclear/tables/decays.txt``).
@@ -382,9 +385,9 @@ def render_downloads_panel(run, mc=None):
 
     Parameters
     ----------
-    run : primat.PRIMAT
-        An already-solved ``PRIMAT`` instance, with ``output_time_evolution=True``
-        so that ``run.nuclear.evolution`` is populated.
+    run : primat.PRIMAT or primat.gui.run_view.GuiRun
+        An already-solved run, with ``output_time_evolution=True`` so that
+        ``run.evolution`` is populated.
     mc : primat.main.MCResult or None, optional
         The cached "quick MC" result (``primat.gui.app._quick_mc``), or
         ``None`` if no quick MC has been run for this result -- in which case
@@ -418,24 +421,34 @@ def render_downloads_panel(run, mc=None):
         )
     _file_download(
         "Abundances time evolution", "output_time_evolution.tsv",
-        data=dump_evolution(run.nuclear.evolution), file_name="output_time_evolution.tsv",
+        data=dump_evolution(run.evolution), file_name="output_time_evolution.tsv",
         mime="text/tab-separated-values", key="dl_evolution",
     )
-    _file_download(
-        "Background evolution", "output_background.tsv",
-        data=run.background.time_evolution_text(run.cfg.output_n_points),
-        file_name="output_background.tsv",
-        mime="text/tab-separated-values", key="dl_background",
-    )
-    _file_download(
-        "Weak rates", "nTOp_total.tsv",
-        data=weak_rates_text(run), file_name="nTOp_total.tsv",
-        mime="text/tab-separated-values", key="dl_weak_rates",
-        help="Total normalised n↔p weak rates: T[K], Γ_{n→p}[s⁻¹], Γ_{p→n}[s⁻¹].",
-    )
+    if hasattr(run, "background"):
+        _file_download(
+            "Background evolution", "output_background.tsv",
+            data=run.background.time_evolution_text(run.cfg.output_n_points),
+            file_name="output_background.tsv",
+            mime="text/tab-separated-values", key="dl_background",
+        )
+        _file_download(
+            "Weak rates", "nTOp_total.tsv",
+            data=weak_rates_text(run), file_name="nTOp_total.tsv",
+            mime="text/tab-separated-values", key="dl_weak_rates",
+            help="Total normalised n↔p weak rates: T[K], Γ_{n→p}[s⁻¹], Γ_{p→n}[s⁻¹].",
+        )
+    else:
+        # GuiRun (C-backend path, the default) has no live background object
+        # to introspect -- these two downloads need a genuine Python PRIMAT
+        # instance (see weak_rates_text's docstring, primat.backend's module
+        # docstring on the decay_era/extra_rho-style Python-only gap).
+        st.caption(
+            "*(Background evolution / weak-rates downloads need the Python "
+            "backend -- unavailable for this C-backend run.)*"
+        )
     if run.cfg.network == "large":
         decays_path = os.path.join(
-            run.cfg.data_dir, "rates", "nuclear", "tables", "decays.txt"
+            run.cfg.data_dir, "data", "nuclear", "tables", "decays.txt"
         )
         try:
             with open(decays_path, "rb") as fh:

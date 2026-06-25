@@ -461,6 +461,17 @@ class PRIMAT:
         self._ensure_solved()
         return self.nuclear.abundance_names
 
+    @property
+    def evolution(self):
+        """The unified time-evolution result (``primat.evolution.EvolutionResult``,
+        ``None`` unless ``cfg.output_time_evolution=True``), solving first if
+        needed. Thin alias for ``self.nuclear.evolution`` so callers that
+        don't care whether they hold a live ``PRIMAT`` or a backend-agnostic
+        :class:`primat.gui.run_view.GuiRun` (which has no ``.nuclear`` at
+        all) can read ``run.evolution`` uniformly either way."""
+        self._ensure_solved()
+        return self.nuclear.evolution
+
     # Convenience accessors
     def Neff(self):          self._ensure_solved(); return self.results["Neff"]
     def Omeganurel(self):    self._ensure_solved(); return self.results["Omeganurel"]

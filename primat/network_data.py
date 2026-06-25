@@ -122,7 +122,7 @@ def _resample_rate_table(T9_src, rate_src, T9_dst):
 
 # Reaction-naming syntax used throughout PyPRIMAT, both for the canonical
 # strings this module builds/parses and for the on-disk file names under
-# rates/nuclear/{tables,networks} and rates/nuclear/data/*.csv:
+# data/nuclear/{tables,networks} and data/csv/*.csv:
 #   "spaced"  (default): "<reactants joined by '_'>__<products joined by '_'>",
 #             e.g. "n_p__d_g" for n + p -> d + g.  Every character is a valid
 #             Python identifier character, so e.g. cfg.p_n_p__d_g works.
@@ -240,7 +240,7 @@ def _network_dir_from_cwd() -> str:
     working directory — and works for both editable and regular installs.
     """
     return os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "rates", "nuclear", "networks")
+        os.path.join(os.path.dirname(__file__), "data", "nuclear", "networks")
     )
 
 
@@ -266,7 +266,7 @@ def load_reaction_names(cfg_or_dir, network: str | None = None) -> list[str]:
 
     Example
     -------
-    >>> len(load_reaction_names("/repo/rates/nuclear/networks", "small"))
+    >>> len(load_reaction_names("/repo/data/nuclear/networks", "small"))
     12
     """
     if hasattr(cfg_or_dir, "data_dir"):
@@ -276,7 +276,7 @@ def load_reaction_names(cfg_or_dir, network: str | None = None) -> list[str]:
             # file does not require touching the installed package.
             nets_dir = cfg_or_dir.resolve_rates_path("nuclear", "networks")
         else:
-            nets_dir = os.path.join(cfg_or_dir.data_dir, "rates", "nuclear", "networks")
+            nets_dir = os.path.join(cfg_or_dir.data_dir, "data", "nuclear", "networks")
         network = network or cfg_or_dir.network
     else:
         nets_dir = os.fspath(cfg_or_dir)
@@ -974,12 +974,12 @@ def _reaction_catalog(data_dir: str):
         Package data root, i.e. ``cfg.data_dir`` (the directory containing
         ``rates/``).  This is a fixed path for a given PyPRIMAT installation,
         so the result is cached with :func:`functools.lru_cache`: the three
-        CSV files under ``rates/nuclear/data/`` are read at most once per
+        CSV files under ``data/csv/`` are read at most once per
         process instead of on every :func:`load_network`,
         :func:`reaction_stoichiometry` or :func:`to_filename` call.
     """
-    base = os.path.join(data_dir, "rates", "nuclear", "data")
-    tables_dir = os.path.join(data_dir, "rates", "nuclear", "tables")
+    base = os.path.join(data_dir, "data", "csv")
+    tables_dir = os.path.join(data_dir, "data", "nuclear", "tables")
     _, nuc_rows = _read_csv(os.path.join(base, "nuclides.csv"))
     nuc_order = [row[0] for row in nuc_rows]
     nuc_NZ = {row[0]: (int(row[1]), int(row[2])) for row in nuc_rows}
@@ -991,7 +991,7 @@ def _reaction_catalog(data_dir: str):
     # users can inspect or regenerate the catalog without changing loader code.
     rxn_path = os.path.join(base, "reactions_large.csv")
     if not os.path.exists(rxn_path):
-        rxn_path = os.path.join(data_dir, "rates", "nuclear", "reactions_large.csv")
+        rxn_path = os.path.join(data_dir, "data", "nuclear", "reactions_large.csv")
     _, rxn_rows = _read_csv(rxn_path)
     rxn_map = {row[0]: (row[1], row[2]) for row in rxn_rows}
     return tables_dir, base, nuc_order, nuc_NZ, db, rxn_map
@@ -1263,7 +1263,7 @@ def available_rate_tables(name: str, cfg) -> list[str]:
     if hasattr(cfg, "resolve_rates_path"):
         reaction_dir = cfg.resolve_rates_path("nuclear", "tables", name)
     else:
-        reaction_dir = os.path.join(cfg.data_dir, "rates", "nuclear", "tables", name)
+        reaction_dir = os.path.join(cfg.data_dir, "data", "nuclear", "tables", name)
     if not os.path.isdir(reaction_dir):
         return []
     files = sorted(f for f in os.listdir(reaction_dir) if f.endswith(".txt"))

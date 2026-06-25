@@ -21,7 +21,7 @@ int main(void)
     char *err = NULL;
 
     CPRNetworkList small;
-    if (cpr_load_network_list("../primat/rates/nuclear/networks/small.txt", &small, &err)) {
+    if (cpr_load_network_list("../primat/data/nuclear/networks/small.txt", &small, &err)) {
         printf("FAIL small.txt: %s\n", err);
         return 1;
     }
@@ -32,7 +32,7 @@ int main(void)
     cpr_network_list_free(&small);
 
     CPRNetworkList large;
-    if (cpr_load_network_list("../primat/rates/nuclear/networks/large.txt", &large, &err)) {
+    if (cpr_load_network_list("../primat/data/nuclear/networks/large.txt", &large, &err)) {
         printf("FAIL large.txt: %s\n", err);
         return 1;
     }
@@ -40,7 +40,7 @@ int main(void)
     cpr_network_list_free(&large);
 
     CPRDecayTable decays;
-    if (cpr_load_decays("../primat/rates/nuclear/tables/decays.txt", &decays, &err)) {
+    if (cpr_load_decays("../primat/data/nuclear/tables/decays.txt", &decays, &err)) {
         printf("FAIL decays.txt: %s\n", err);
         return 1;
     }
@@ -57,7 +57,7 @@ int main(void)
     cpr_decay_table_free(&decays);
 
     CPRDetailedBalanceTable db;
-    if (cpr_load_detailed_balance("../primat/rates/nuclear/data/detailed_balance.csv", &db, &err)) {
+    if (cpr_load_detailed_balance("../primat/data/csv/detailed_balance.csv", &db, &err)) {
         printf("FAIL detailed_balance.csv: %s\n", err);
         return 1;
     }
@@ -67,7 +67,7 @@ int main(void)
     cpr_detailed_balance_free(&db);
 
     CPRReactionTable rx;
-    if (cpr_load_reactions_large("../primat/rates/nuclear/data/reactions_large.csv", &rx, &err)) {
+    if (cpr_load_reactions_large("../primat/data/csv/reactions_large.csv", &rx, &err)) {
         printf("FAIL reactions_large.csv: %s\n", err);
         return 1;
     }

@@ -68,10 +68,10 @@ pytestmark = [pytest.mark.slow, pytest.mark.solve, pytest.mark.gui]
 APP_PATH = "primat/gui/app.py"
 
 _AC2024_DIR = os.path.join(os.path.dirname(__file__), "..", "primat",
-                           "rates", "nuclear", "data")
+                           "rates", "csv")
 _needs_ac2024 = pytest.mark.skipif(
     not os.path.isdir(_AC2024_DIR),
-    reason="rates/nuclear/data not generated",
+    reason="rates/csv not generated",
 )
 
 

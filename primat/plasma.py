@@ -332,7 +332,7 @@ class Plasma:
             self.d2PQEDdT2 = lambda T: 0.
             return
 
-        plasma_dir = os.path.join(cfg.data_dir, "rates", "plasma")
+        plasma_dir = os.path.join(cfg.data_dir, "data", "plasma")
         p_file   = os.path.join(plasma_dir, "QED_P_int.txt")
         dp_file  = os.path.join(plasma_dir, "QED_dP_intdT.txt")
         d2p_file = os.path.join(plasma_dir, "QED_d2P_intdT2.txt")
@@ -508,7 +508,7 @@ class Plasma:
         Sets ``self._rho_e_tab``, ``self._p_e_tab``, ``self._drho_e_dT_tab``,
         ``self._dp_e_dT_tab``.
         """
-        cache_path = os.path.join(cfg.data_dir, "rates", "plasma",
+        cache_path = os.path.join(cfg.data_dir, "data", "plasma",
                                   "electron_thermo_cache.txt")
 
         Tmin = cfg.me / _ELEC_THERMO_LOWT_RATIO

@@ -1282,7 +1282,7 @@ def _parse_args(argv):
                    help="the tabulated AC2024 reaction-rate compilation")
     p.add_argument("--nubase", default="generate_rates/nubase_4.mas20.txt",
                    help="the NUBASE2020 evaluation (nuclide masses and spins)")
-    p.add_argument("--datadir", default="primat/rates/nuclear/data",
+    p.add_argument("--datadir", default="primat/rates/csv",
                    help="the directory for network structure files (.csv)")
     p.add_argument("--suffix", default="_primat",
                    help="suffix for generated per-reaction rate files (default "

@@ -38,7 +38,7 @@ _base_opts = {
     # table uses the True default), so these results are an internal
     # small-vs-large(amax=8)-vs-large comparison only -- not directly
     # comparable to the CLAUDE.md reference values.
-    "nuclear_qed_corrections":   False
+    "nuclear_qed_corrections":   True
 }
 
 # ---------------------------------------------------------------------------
@@ -46,7 +46,7 @@ _base_opts = {
 # ---------------------------------------------------------------------------
 networks = [
     ("small", {}),
-    ("small_parthenope", {}),
+    ("small_parthenope", {"network": "small_parthenope"}),
     ("large_amax8", {"network": "large", "amax": 8}),
     ("large", {"network": "large"}),
 ]

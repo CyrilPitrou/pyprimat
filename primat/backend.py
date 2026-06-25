@@ -15,9 +15,33 @@ single dispatch entry point; everything else in this module supports it.
 Feature gaps (C side does not implement these -- mirrors ``cprimat/api.h``'s
 own "out of scope" notes):
 
-* ``extra_rho``, ``custom_network``, ``background=`` (the Python-only
-  ``PRIMAT.__init__`` constructor extensions) -- always force the Python
-  backend.
+* ``extra_rho``, ``background=`` (the Python-only ``PRIMAT.__init__``
+  constructor extensions) -- always force the Python backend.
+
+* ``decay_era`` (the long-lived-isotope Decay-Time era past ``T_end``,
+  see ``primat/nuclear_network.py``'s ``_integrate_decay_era`` and
+  ``primat-c/include/cprimat/nuclear_network.h``'s "Out of scope" note,
+  CPLAN.md S0/S4) -- ``params={"decay_era": True}`` always forces the
+  Python backend under ``force_backend in (None, "auto")``, and raises
+  ``ValueError`` under ``force_backend="c"``, exactly like
+  ``extra_rho``/``background=`` above. The C backend's ``CPRConfig`` still
+  has a ``decay_era`` field (so ``cpr_config_set_by_name`` round-trips every
+  ``DEFAULT_PARAMS`` key) but its solver never acts on it.
+
+Set ``PRIMAT_BACKEND_LOG=1`` in the environment (or call with
+``log_backend=True``) to print, on every :func:`run_bbn`/:func:`run_mc` call,
+which backend actually ran and why -- chiefly to catch a silent
+``force_backend="auto"`` fallback to Python (e.g. because a C-unsupported
+feature was requested, or the extension failed to build) during development.
+
+``custom_network`` (the GUI "Customise Reactions" override: removed/replaced/
+added reactions plus rate-table overrides) *is* supported on both backends:
+``primat-c``'s ``cprimat_run``/``cpr_mc_uncertainty`` take an optional
+``CPRCustomNetwork*`` (``primat-c/include/cprimat/network_data.h``), and
+``primat/_primat_c/_wrapper.c`` parses the same dict shape
+(``UpdateNuclearRates``/``kept_to_custom_network``, see
+``primat/network_data.py``/``primat/gui/custom_rates.py``) into one. It is no
+longer part of ``python_only_feature`` below.
 
 ``output_time_evolution=True`` *is* supported on both backends (PRIMAT.md
 S7.3/S7.6): the C extension's ``cprimat_run`` populates ``CPRResults``'s
@@ -43,14 +67,35 @@ the same :class:`primat.main.MCResult` shape either way -- the "common
 language" the two backends share for MC results (CLAUDE.md's backend-parity
 mandate). The C path uses a pthread/xoshiro256** RNG, *not* NumPy's
 ``default_rng``, so individual samples are not bit-for-bit comparable across
-backends (only statistically, mean/std convergence -- see ``mc.h``). ``prev``
-(incremental sample reuse) and ``custom_network`` have no C-side equivalent
-and always force the Python path (mirroring ``extra_rho``/``custom_network``/
-``background=`` above for :func:`run_bbn`).
+backends (only statistically, mean/std convergence -- see ``mc.h``).
+
+``prev`` (incremental sample reuse) *is* supported on the C path, mirroring
+``cpr_mc_uncertainty``'s ``prev_centrals``/``prev_values`` parameters (see
+``mc.h``): :func:`run_mc` checks the same reuse-guard ``mc_uncertainty`` does
+internally (seed/quantities/params/custom_network all matching), plus one
+more condition the C side cannot check for itself -- ``prev.backend`` must
+equal the backend about to compute the extension, since the two backends'
+RNG streams are not interchangeable. A ``prev`` that fails the guard (e.g.
+computed by the other backend) is silently ignored, exactly like
+``mc_uncertainty``'s own fallback -- never an error, and never a forced
+backend switch. ``custom_network`` is supported on both backends, same as
+:func:`run_bbn`.
 """
 import os
+import sys
 
 __all__ = ["HAS_C_BACKEND", "run_bbn", "run_mc", "dump_mc_samples", "dump_final_with_sigma"]
+
+
+def _log_backend(func_name, used, reason, log_backend):
+    """Print which backend ``func_name`` (``"run_bbn"``/``"run_mc"``) actually
+    used, plus why, when asked to via ``log_backend=True`` or the
+    ``PRIMAT_BACKEND_LOG`` environment variable (module docstring). Printed to
+    stderr (not stdout) so it never pollutes a CLI's piped result output.
+    """
+    if log_backend or os.environ.get("PRIMAT_BACKEND_LOG"):
+        print(f"[primat.backend] {func_name}: used {used} backend ({reason})",
+              file=sys.stderr)
 
 # Observables included by default (alongside every tracked nuclide's final Y)
 # when run_mc's `quantities` argument is omitted -- the same six ratios the
@@ -58,6 +103,10 @@ __all__ = ["HAS_C_BACKEND", "run_bbn", "run_mc", "dump_mc_samples", "dump_final_
 _DEFAULT_MC_OBSERVABLES = ("Neff", "YPBBN", "YPCMB", "DoH", "He3oH", "Li7oH")
 
 _PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
+# The C extension's cpr_config_init_defaults() takes the data folder itself
+# (containing NEVO/, weak/, plasma/, nuclear/, csv/), not its parent -- see
+# FOLDER.md.
+_C_DATA_DIR = os.path.join(_PACKAGE_DIR, "data")
 
 try:
     from . import _primat_c as _c_ext
@@ -75,7 +124,7 @@ def _python_solve(params, extra_rho, custom_network, background):
 
 
 def run_bbn(params=None, force_backend=None, extra_rho=None,
-            custom_network=None, background=None):
+            custom_network=None, background=None, log_backend=False):
     """Run one BBN computation, dispatching to the C or Python backend.
 
     This mirrors ``PRIMAT(params=params, ...).solve()``'s result dict (same
@@ -94,9 +143,14 @@ def run_bbn(params=None, force_backend=None, extra_rho=None,
             the C backend is unavailable or the request uses a C-unsupported
             feature.
         extra_rho, custom_network, background: forwarded to ``PRIMAT.__init__``
-            verbatim; Python-only (see module docstring), so any non-``None``
-            value forces the Python backend regardless of ``force_backend``
-            (except ``force_backend="c"``, which raises instead).
+            verbatim. ``extra_rho``/``background`` are Python-only (see module
+            docstring), so any non-``None`` value forces the Python backend
+            regardless of ``force_backend`` (except ``force_backend="c"``,
+            which raises instead). ``custom_network`` is supported on both
+            backends and never forces a fallback.
+        log_backend: bool, default False. Print which backend actually ran
+            and why (module docstring); also triggered by setting the
+            ``PRIMAT_BACKEND_LOG`` environment variable.
 
     Returns:
         dict: the BBN result dict (``YPBBN``, ``DoH``, ``Neff``, ..., plus a
@@ -122,10 +176,13 @@ def run_bbn(params=None, force_backend=None, extra_rho=None,
     from .config import PRIMATConfig
     PRIMATConfig(params)
 
-    python_only_feature = (extra_rho is not None or custom_network is not None
-                            or background is not None)
+    # decay_era has no C-side implementation (module docstring), exactly
+    # like extra_rho/background -- lumped into the same gate.
+    python_only_feature = (extra_rho is not None or background is not None
+                            or params.get("decay_era", False))
 
     if force_backend == "python":
+        _log_backend("run_bbn", "Python", "force_backend='python'", log_backend)
         return _python_solve(params, extra_rho, custom_network, background)
 
     if force_backend == "c":
@@ -135,18 +192,22 @@ def run_bbn(params=None, force_backend=None, extra_rho=None,
                 "available (the C extension failed to build or was not "
                 "compiled -- see setup.py)."
             )
-        if extra_rho is not None or custom_network is not None or background is not None:
+        if python_only_feature:
             raise ValueError(
-                "force_backend='c' is incompatible with extra_rho/"
-                "custom_network/background (Python-only features, no C-side "
-                "equivalent)."
+                "force_backend='c' is incompatible with extra_rho/background/"
+                "decay_era (Python-only features, no C-side equivalent)."
             )
-        return _assemble_c_result(_c_ext.run_bbn(params, _PACKAGE_DIR))
+        _log_backend("run_bbn", "C", "force_backend='c'", log_backend)
+        return _assemble_c_result(_c_ext.run_bbn(params, _C_DATA_DIR, custom_network))
 
     # force_backend in (None, "auto"): use the C backend opportunistically,
     # falling back to Python for anything it cannot express.
     if HAS_C_BACKEND and not python_only_feature:
-        return _assemble_c_result(_c_ext.run_bbn(params, _PACKAGE_DIR))
+        _log_backend("run_bbn", "C", "auto, no C-unsupported feature requested", log_backend)
+        return _assemble_c_result(_c_ext.run_bbn(params, _C_DATA_DIR, custom_network))
+    reason = ("auto fallback: extra_rho/background/decay_era requested"
+              if python_only_feature else "auto fallback: C extension unavailable")
+    _log_backend("run_bbn", "Python", reason, log_backend)
     return _python_solve(params, extra_rho, custom_network, background)
 
 
@@ -187,7 +248,7 @@ def _default_mc_quantities(params):
     return names
 
 
-def _assemble_c_mc_result(raw, quantities, seed, params):
+def _assemble_c_mc_result(raw, quantities, seed, params, custom_network):
     """Converts the C extension's ``run_mc`` dict (``{name: {central, mean,
     std, values}}``, see ``_wrapper.c``) into the same
     :class:`primat.main.MCResult` :func:`primat.main.mc_uncertainty` returns,
@@ -195,15 +256,33 @@ def _assemble_c_mc_result(raw, quantities, seed, params):
     from ``values`` via :class:`primat.main.MCQuantityResult` (rather than
     trusting the C side's own mean/std fields) so both backends' MCResult
     objects are built by the exact same code, with only the sample source
-    differing.
+    differing. ``backend="c"`` is recorded so a later ``prev=`` reuse-guard
+    (here or in ``mc_uncertainty``) never mixes this result's xoshiro256**
+    samples with the Python backend's NumPy samples.
     """
     from .main import MCQuantityResult, MCResult
     data = {q: MCQuantityResult(raw[q]["central"], raw[q]["values"]) for q in quantities}
-    return MCResult(data, seed=seed, params=params, custom_network=None)
+    return MCResult(data, seed=seed, params=params, custom_network=custom_network, backend="c")
+
+
+def _c_prev_reuse(prev, seed, quantities, base_params, custom_network):
+    """The C-path counterpart of ``mc_uncertainty``'s internal ``reuse``
+    check (``primat/main.py``): same seed/quantities-order/params/
+    custom_network guard, plus ``prev.backend == "c"`` (the C and Python
+    backends draw samples from different, non-interchangeable RNG streams,
+    so a Python-origin ``prev`` must never be fed to the C side as if its
+    samples were resumable -- see this module's docstring).
+    """
+    return (prev is not None
+            and getattr(prev, 'backend', None) == 'c'
+            and getattr(prev, 'seed', None) == seed
+            and list(prev) == quantities
+            and getattr(prev, 'params', None) == base_params
+            and getattr(prev, 'custom_network', None) == custom_network)
 
 
 def run_mc(num_mc, quantities=None, params=None, force_backend=None, seed=0,
-           n_jobs=-1, prev=None, custom_network=None):
+           n_jobs=-1, prev=None, custom_network=None, log_backend=False):
     """Run an MC nuclear-rate/tau_n uncertainty propagation, dispatching to
     the C or Python backend (the MC counterpart of :func:`run_bbn`).
 
@@ -225,10 +304,20 @@ def run_mc(num_mc, quantities=None, params=None, force_backend=None, seed=0,
             ``primat.main.mc_uncertainty``'s docstring.
         force_backend: ``{None, "auto", "c", "python"}``, same semantics as
             :func:`run_bbn`.
-        prev, custom_network: Python-only (no C-side equivalent -- ``mc.c``
-            has no incremental-reuse or custom-network support); any
-            non-``None`` value forces the Python backend regardless of
-            ``force_backend`` (except ``force_backend="c"``, which raises).
+        prev: supported on both backends (see module docstring); a
+            previously computed :class:`primat.main.MCResult` to *extend*
+            rather than recompute from scratch. Reused only when it is
+            sample-compatible (same seed/quantities/params/custom_network)
+            *and* came from the same backend that will compute this call
+            (``prev.backend``); otherwise silently ignored, mirroring
+            ``mc_uncertainty``'s own fallback. Never forces a backend switch
+            or raises.
+        custom_network: supported on both backends (forwarded to
+            ``cpr_mc_uncertainty``'s ``CPRCustomNetwork*``); never forces a
+            fallback.
+        log_backend: bool, default False. Print which backend actually ran
+            and why (module docstring); also triggered by setting the
+            ``PRIMAT_BACKEND_LOG`` environment variable.
 
     Returns:
         primat.main.MCResult
@@ -249,14 +338,34 @@ def run_mc(num_mc, quantities=None, params=None, force_backend=None, seed=0,
         quantities = _default_mc_quantities(params)
     quantities = [quantities] if isinstance(quantities, str) else list(quantities)
 
-    python_only_feature = prev is not None or custom_network is not None
+    # mc_uncertainty() applies these same defaults to `base_params` before
+    # storing it on the MCResult it returns (for its own reuse-guard) -- so
+    # the C path's reuse-guard comparison below must use the identically
+    # defaulted dict, or a Python-origin params dict would never compare
+    # equal to itself.
+    base_params = dict(params)
+    base_params.setdefault('verbose', False)
+    base_params.setdefault('debug', False)
 
     def _python_mc():
         from .main import mc_uncertainty
         return mc_uncertainty(num_mc, quantities, params=params, n_jobs=n_jobs,
                                seed=seed, prev=prev, custom_network=custom_network)
 
+    def _c_mc():
+        if _c_prev_reuse(prev, seed, quantities, base_params, custom_network):
+            n_prev = min(len(prev[quantities[0]].values), num_mc) if quantities else 0
+            prev_centrals = [prev[q].central for q in quantities]
+            prev_values = [list(prev[q].values[:n_prev]) for q in quantities]
+        else:
+            prev_centrals = None
+            prev_values = None
+        raw = _c_ext.run_mc(params, _C_DATA_DIR, num_mc, quantities, seed, n_jobs,
+                             custom_network, prev_centrals, prev_values)
+        return _assemble_c_mc_result(raw, quantities, seed, base_params, custom_network)
+
     if force_backend == "python":
+        _log_backend("run_mc", "Python", "force_backend='python'", log_backend)
         return _python_mc()
 
     if force_backend == "c":
@@ -266,19 +375,15 @@ def run_mc(num_mc, quantities=None, params=None, force_backend=None, seed=0,
                 "available (the C extension failed to build or was not "
                 "compiled -- see setup.py)."
             )
-        if python_only_feature:
-            raise ValueError(
-                "force_backend='c' is incompatible with prev/custom_network "
-                "(Python-only features, no C-side equivalent)."
-            )
-        raw = _c_ext.run_mc(params, _PACKAGE_DIR, num_mc, quantities, seed, n_jobs)
-        return _assemble_c_mc_result(raw, quantities, seed, params)
+        _log_backend("run_mc", "C", "force_backend='c'", log_backend)
+        return _c_mc()
 
     # force_backend in (None, "auto"): use the C backend opportunistically,
     # falling back to Python for anything it cannot express.
-    if HAS_C_BACKEND and not python_only_feature:
-        raw = _c_ext.run_mc(params, _PACKAGE_DIR, num_mc, quantities, seed, n_jobs)
-        return _assemble_c_mc_result(raw, quantities, seed, params)
+    if HAS_C_BACKEND:
+        _log_backend("run_mc", "C", "auto, C extension available", log_backend)
+        return _c_mc()
+    _log_backend("run_mc", "Python", "auto fallback: C extension unavailable", log_backend)
     return _python_mc()
 
 

@@ -16,7 +16,7 @@ void cpr_resolve_nevo_path(const CPRConfig *cfg, const char *override,
     if (fname[0] == '/') {
         snprintf(out, out_size, "%s", fname);
     } else {
-        snprintf(out, out_size, "%s/rates/NEVO/%s", cfg->data_dir, fname);
+        snprintf(out, out_size, "%s/NEVO/%s", cfg->data_dir, fname);
     }
 }
 

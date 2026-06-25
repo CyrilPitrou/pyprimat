@@ -42,7 +42,7 @@ static void test_standard(void)
     cpr_constants_init();
     char *err = NULL;
     CPRConfig cfg;
-    CHECK(cpr_config_init_defaults(&cfg, "../primat", &err) == 0, "config init succeeds");
+    CHECK(cpr_config_init_defaults(&cfg, "../primat/data", &err) == 0, "config init succeeds");
 
     CPRPlasma pl;
     CHECK(cpr_plasma_init(&pl, &cfg, &err) == 0, "plasma init succeeds");
@@ -110,7 +110,7 @@ static void test_ede(void)
 {
     char *err = NULL;
     CPRConfig cfg;
-    cpr_config_init_defaults(&cfg, "../primat", &err);
+    cpr_config_init_defaults(&cfg, "../primat/data", &err);
     cfg.fEDE = 0.3;
     cfg.zcEDE = 4.0e9;
     cfg.wnEDE = 3.0;
@@ -142,7 +142,7 @@ static void test_custom(const char *path)
 {
     char *err = NULL;
     CPRConfig cfg;
-    cpr_config_init_defaults(&cfg, "../primat", &err);
+    cpr_config_init_defaults(&cfg, "../primat/data", &err);
     cfg.incomplete_decoupling = 0;
     cfg.spectral_distortions = 0;
 

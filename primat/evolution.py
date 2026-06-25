@@ -113,6 +113,53 @@ def dump_evolution(result, path=None):
     return text
 
 
+def Y_interpolator(result, name):
+    """Build a ``Y(t)`` callable for nuclide ``name`` from ``result.t``/
+    ``result.Y[name]`` alone -- the backend-agnostic counterpart of
+    ``primat.main.PRIMAT.__getitem__``'s live SciPy interpolator, usable on a
+    plain :class:`EvolutionResult` from *either* backend's :func:`primat.backend.run_bbn`
+    (no live ``PRIMAT``/``NuclearNetwork`` object required).
+
+    Same convention as the live interpolator built by
+    ``NuclearNetwork.solve()`` (``nuclear_network.py``'s ``self.Y_of_t``):
+    piecewise-linear, with ``fill_value=(0, Y[-1])`` so a query before
+    ``result.t[0]`` reads as zero abundance (not yet produced) and a query
+    after ``result.t[-1]`` holds at the final value (no decay beyond the
+    integrated era -- see ``run_bbn``'s ``decay_era`` gap, module docstring
+    of ``primat.backend``, for the one case this does *not* cover).
+
+    Args:
+        result: EvolutionResult.
+        name: str. A key of ``result.Y``.
+
+    Returns:
+        callable: ``t -> Y`` (accepts a scalar or array ``t`` [s]).
+    """
+    from scipy.interpolate import interp1d
+    Y = result.Y[name]
+    return interp1d(result.t, Y, bounds_error=False, fill_value=(0.0, Y[-1]))
+
+
+def T_gamma_interpolator(result):
+    """Build a ``T_gamma(t)`` [MeV] callable from ``result.t``/``result.T_gamma``
+    alone -- the backend-agnostic counterpart of ``primat.main.PRIMAT.T_of_t``,
+    usable on a plain :class:`EvolutionResult` from either backend.
+
+    Piecewise-linear, clamped to the first/last sampled temperature outside
+    ``[result.t[0], result.t[-1]]`` (``T_gamma`` decreases monotonically with
+    ``t``, so this is the high-T/low-T extrapolation respectively).
+
+    Args:
+        result: EvolutionResult.
+
+    Returns:
+        callable: ``t -> T_gamma`` [MeV] (accepts a scalar or array ``t`` [s]).
+    """
+    from scipy.interpolate import interp1d
+    T = result.T_gamma
+    return interp1d(result.t, T, bounds_error=False, fill_value=(T[0], T[-1]))
+
+
 def load_evolution(path):
     """Parse the shared TSV schema written by either backend's
     ``dump_evolution``/equivalent writer, returning the same

@@ -122,13 +122,13 @@ def write_cache_with_fingerprint(path: str, fingerprint: dict, columns, col_head
 # --cache-info` / `--cache-clear`). See FUTURE.md P0.2: every new
 # PRIMATConfig fingerprint run with spectral_distortions/incomplete_decoupling
 # etc. drops another nTOp_<hash>.txt / nTOp_thermal_<hash>.txt file under
-# primat/rates/weak/; these are regenerable on demand (a fresh run just
+# primat/data/weak/; these are regenerable on demand (a fresh run just
 # recomputes and re-caches them), so it is always safe to delete them.
 # ---------------------------------------------------------------------------
 
 def weak_cache_dir(cfg) -> str:
-    """Return the ``primat/rates/weak/`` directory for ``cfg.data_dir``."""
-    return os.path.join(cfg.data_dir, "rates", "weak")
+    """Return the ``primat/data/weak/`` directory for ``cfg.data_dir``."""
+    return os.path.join(cfg.data_dir, "data", "weak")
 
 
 def list_weak_cache_files(cfg):

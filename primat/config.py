@@ -89,7 +89,7 @@ DEFAULT_PARAMS: dict = {
     # looked up in this order: rates_dir (full takeover, e.g. a self-contained
     # alternate rates tree) -> user_rates_dir (additive overlay for a user's
     # own networks/tables, without touching the installed package) -> the
-    # shipped primat/rates/ tree (so "small"/"large" never disappear even if
+    # shipped primat/data/ tree (so "small"/"large" never disappear even if
     # only user_rates_dir is set and it doesn't contain them).
     "rates_dir":                  None, # Full-takeover override directory (must exist if set)
     "user_rates_dir":             None, # Additive overlay directory, checked before the shipped defaults (must exist if set)
@@ -728,7 +728,7 @@ class PRIMATConfig:
     def _load_nuclide_data(self):
         """Load mass excesses, spins, and (N, Z) from nuclides.csv."""
         import csv
-        path = os.path.join(self.data_dir, "rates", "nuclear", "data", "nuclides.csv")
+        path = os.path.join(self.data_dir, "data", "csv", "nuclides.csv")
         
         self.Nuclides = {}
         self.NuclExcessMass = {}
@@ -754,7 +754,7 @@ class PRIMATConfig:
         """Resolve a path inside the ``rates/`` tree through the overlay chain.
 
         Used by every caller that currently builds
-        ``os.path.join(cfg.data_dir, "rates", ...)`` for a nuclear network or
+        ``os.path.join(cfg.data_dir, "data", ...)`` for a nuclear network or
         rate-table file, so a user's ``rates_dir``/``user_rates_dir`` overlay
         (see those fields' docstrings in ``DEFAULT_PARAMS``) is honoured
         without touching the installed ``primat`` package.
@@ -762,7 +762,7 @@ class PRIMATConfig:
         Lookup order (first existing path wins):
           1. ``self.rates_dir`` (full takeover), if set.
           2. ``self.user_rates_dir`` (additive overlay), if set.
-          3. the shipped ``primat/rates/`` tree (always tried last, so
+          3. the shipped ``primat/data/`` tree (always tried last, so
              ``small``/``large`` and the default rate tables are never
              unreachable just because an overlay is also configured).
 
@@ -782,7 +782,7 @@ class PRIMATConfig:
 
         Example:
             >>> cfg.resolve_rates_path("nuclear", "networks", "large.txt")
-            '/.../primat/rates/nuclear/networks/large.txt'
+            '/.../primat/data/nuclear/networks/large.txt'
         """
         relpath = os.path.join(*parts) if parts else ""
         bases = []
@@ -790,7 +790,7 @@ class PRIMATConfig:
             bases.append(self.rates_dir)
         if self.user_rates_dir:
             bases.append(self.user_rates_dir)
-        bases.append(os.path.join(self.data_dir, "rates"))  # shipped default, always last
+        bases.append(os.path.join(self.data_dir, "data"))  # shipped default, always last
         for base in bases:
             candidate = os.path.join(base, relpath) if relpath else base
             if os.path.exists(candidate):

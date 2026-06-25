@@ -23,7 +23,7 @@ int main(void)
     CPRTable t;
 
     /* n_p__d_g rate table: T9, rate, error -- 3 columns. */
-    if (cpr_table_read("../primat/rates/nuclear/tables/n_p__d_g/n_p__d_g_primat.txt",
+    if (cpr_table_read("../primat/data/nuclear/tables/n_p__d_g/n_p__d_g_primat.txt",
                         3, &t, &err)) {
         printf("FAIL n_p__d_g read: %s\n", err);
         return 1;
@@ -35,7 +35,7 @@ int main(void)
     cpr_table_free(&t);
 
     /* NEVO col_1_7: comma-separated, 7 columns, 600 rows. */
-    if (cpr_table_read("../primat/rates/NEVO/NEVOPRIMAT_col_1_7.csv", 0, &t, &err)) {
+    if (cpr_table_read("../primat/data/NEVO/NEVOPRIMAT_col_1_7.csv", 0, &t, &err)) {
         printf("FAIL NEVO col_1_7 read: %s\n", err);
         return 1;
     }
@@ -45,7 +45,7 @@ int main(void)
     cpr_table_free(&t);
 
     /* NEVOGrid: single column. */
-    if (cpr_table_read("../primat/rates/NEVO/NEVOGrid.csv", 1, &t, &err)) {
+    if (cpr_table_read("../primat/data/NEVO/NEVOGrid.csv", 1, &t, &err)) {
         printf("FAIL NEVOGrid read: %s\n", err);
         return 1;
     }
@@ -54,7 +54,7 @@ int main(void)
     cpr_table_free(&t);
 
     /* QED_P_int.txt: T, P_int(e^2), P_int(e^3) -- 3 columns, 2 comment lines. */
-    if (cpr_table_read("../primat/rates/plasma/QED_P_int.txt", 3, &t, &err)) {
+    if (cpr_table_read("../primat/data/plasma/QED_P_int.txt", 3, &t, &err)) {
         printf("FAIL QED_P_int read: %s\n", err);
         return 1;
     }

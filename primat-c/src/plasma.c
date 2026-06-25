@@ -78,7 +78,7 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
     pl->qed_active = 1;
 
     char plasma_dir[4096], p_file[4160], dp_file[4160], d2p_file[4160];
-    snprintf(plasma_dir, sizeof(plasma_dir), "%s/rates/plasma", cfg->data_dir);
+    snprintf(plasma_dir, sizeof(plasma_dir), "%s/plasma", cfg->data_dir);
     snprintf(p_file, sizeof(p_file), "%s/QED_P_int.txt", plasma_dir);
     snprintf(dp_file, sizeof(dp_file), "%s/QED_dP_intdT.txt", plasma_dir);
     snprintf(d2p_file, sizeof(d2p_file), "%s/QED_d2P_intdT2.txt", plasma_dir);
@@ -226,7 +226,7 @@ static double dp_e_dT_exact(double Tg)
 static int build_electron_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
 {
     char cache_path[4224];
-    snprintf(cache_path, sizeof(cache_path), "%s/rates/plasma/electron_thermo_cache.txt", cfg->data_dir);
+    snprintf(cache_path, sizeof(cache_path), "%s/plasma/electron_thermo_cache.txt", cfg->data_dir);
 
     double Tmin = g_const.me / ELEC_THERMO_LOWT_RATIO;
     double Tmax = fmax(cfg->T_start_cosmo_MeV, 100.0) * 1.5;

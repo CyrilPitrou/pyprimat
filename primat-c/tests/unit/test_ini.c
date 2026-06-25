@@ -18,7 +18,7 @@ int main(void)
 {
     char *err = NULL;
     CPRConfig cfg;
-    if (cpr_config_init_defaults(&cfg, "../primat", &err)) {
+    if (cpr_config_init_defaults(&cfg, "../primat/data", &err)) {
         printf("FAIL cpr_config_init_defaults: %s\n", err);
         return 1;
     }

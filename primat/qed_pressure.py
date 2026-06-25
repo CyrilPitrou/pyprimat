@@ -55,7 +55,7 @@ Usage
 -----
 >>> from primat.qed_pressure import compute_qed_pressure_tables, save_qed_tables
 >>> tables = compute_qed_pressure_tables()  # ~0.3 s on a modern laptop
->>> save_qed_tables(tables, "/path/to/rates/plasma/")
+>>> save_qed_tables(tables, "/path/to/data/plasma/")
 
 Reference
 ---------

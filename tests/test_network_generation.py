@@ -33,7 +33,7 @@ import pytest
 _HERE = os.path.dirname(__file__)
 _ROOT = os.path.join(_HERE, "..")
 _GEN_DIR = os.path.join(_ROOT, "generate_rates")
-_AC2024_DIR = os.path.join(_ROOT, "rates", "nuclear", "data")
+_AC2024_DIR = os.path.join(_ROOT, "rates", "csv")
 
 # The generation helpers live in generate_rates/, which is not an
 # installed package; add it to sys.path so the tests can import it directly.
@@ -44,7 +44,7 @@ from nuclide_table import (resolve_token, conservation_residual,   # noqa: E402
 
 _needs_ac2024 = pytest.mark.skipif(
     not os.path.isdir(_AC2024_DIR),
-    reason="rates/nuclear/data not generated "
+    reason="rates/csv not generated "
            "(run python generate_rates/convert_ac2024_rates.py)",
 )
 

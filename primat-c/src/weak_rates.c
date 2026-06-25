@@ -1114,7 +1114,7 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
     double T_start = cpr_T_start(); /* fixed 10 MeV era boundary, NOT T_start_cosmo */
 
     char nd[4200];
-    snprintf(nd, sizeof(nd), "%s/rates/weak/", cfg->data_dir);
+    snprintf(nd, sizeof(nd), "%s/weak/", cfg->data_dir);
 
     CPRFPField fp_fields[24];
     size_t n_fp = cpr_weak_rate_fingerprint(cfg, fp_fields);

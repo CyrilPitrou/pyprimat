@@ -11,10 +11,12 @@
  * `Omeganurel`/`OneOverOmeganunr` are CPR_BG_STANDARD-only, `Li6oLi7`/
  * `YCNO` are large-network-only).
  *
- * Out of scope here (CPLAN.md S0): `custom_network` (the GUI "Customise
- * Reactions" override) and the background-evolution TSV writer (Python's
- * `cfg.output_background_evolution` path) -- background.c does not yet
- * port `Background.write_time_evolution`, see background.h's top comment.
+ * `custom_network` (the GUI "Customise Reactions" override) *is* supported,
+ * via `cprimat_run`'s optional `custom` parameter -- see network_data.h's
+ * CPRCustomNetwork. Still out of scope here (CPLAN.md S0): the
+ * background-evolution TSV writer (Python's `cfg.output_background_evolution`
+ * path) -- background.c does not yet port `Background.write_time_evolution`,
+ * see background.h's top comment.
  * `cfg.output_time_evolution`/`output_final_file` *are* honoured (delegated
  * to nuclear_network.h's existing writers for the disk side; `cfg.output_time_evolution`
  * also populates `CPRResults`'s `evol_*` in-memory arrays directly --
@@ -28,6 +30,7 @@
 
 #include "cprimat/config.h"
 #include "cprimat/background.h"
+#include "cprimat/network_data.h"
 #include "cprimat/nuclear_network.h"
 #include <stddef.h>
 
@@ -84,12 +87,14 @@ typedef struct {
  * (always) and cfg->output_time_evolution (if set) the same way
  * nuclear_network.c's own writers do; does NOT honour
  * cfg->output_background_evolution (not yet ported, see this header's top
- * comment).
+ * comment). `custom` (may be NULL) is forwarded verbatim to
+ * cpr_nuclear_rates_init -- the GUI "Customise Reactions" override.
  *
  * Returns 0 on success (caller must cprimat_results_free), nonzero with
  * *errmsg set (caller frees) on any init/integration failure -- mirrors
  * PyPR's constructor or solve() raising. */
-int cprimat_run(const CPRConfig *cfg, CPRResults *results, char **errmsg);
+int cprimat_run(const CPRConfig *cfg, const CPRCustomNetwork *custom,
+                  CPRResults *results, char **errmsg);
 
 /* Factored out of cprimat_run so mc.c's per-sample MC loop can reuse the
  * exact same observable-assembly logic against an already-solved `nn`

@@ -83,7 +83,7 @@ static void run_and_check(const char *name, const char *network, int amax,
 {
     char *err = NULL;
     CPRConfig cfg;
-    if (cpr_config_init_defaults(&cfg, "../primat", &err)) {
+    if (cpr_config_init_defaults(&cfg, "../primat/data", &err)) {
         printf("FAIL %s: config init: %s\n", name, err); failures++; return;
     }
     free((void *)cfg.network);
@@ -99,7 +99,7 @@ static void run_and_check(const char *name, const char *network, int amax,
         printf("FAIL %s: background init: %s\n", name, err); failures++; return;
     }
     CPRNuclearRates nr;
-    if (cpr_nuclear_rates_init(&nr, &cfg, &err)) {
+    if (cpr_nuclear_rates_init(&nr, &cfg, NULL, &err)) {
         printf("FAIL %s: nuclear rates init: %s\n", name, err); failures++; return;
     }
 

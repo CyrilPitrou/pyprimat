@@ -320,7 +320,7 @@ def decay_override_table_text(name, rate_s):
 
 
 def _shipped_table_dir(cfg, name):
-    return os.path.join(cfg.data_dir, "rates", "nuclear", "tables", name)
+    return os.path.join(cfg.data_dir, "data", "nuclear", "tables", name)
 
 
 def _match_shipped_file(cfg, name, raw_text):
@@ -406,7 +406,7 @@ def export_zip(cfg, custom_network, kept_names, network_filename="custom"):
     # way -- merge them into one map of custom tables.
     custom_tables = {**custom_network.get("replaced", {}),
                      **custom_network.get("added", {})}
-    decay_table = _load_decay_table(os.path.join(cfg.data_dir, "rates", "nuclear", "tables"))
+    decay_table = _load_decay_table(os.path.join(cfg.data_dir, "data", "nuclear", "tables"))
 
     # Decay-reaction overrides are pulled out of custom_tables here: they get
     # their rate written inline in the network file, not a per-reaction
@@ -468,7 +468,7 @@ def export_zip(cfg, custom_network, kept_names, network_filename="custom"):
             # verbatim (no resampling needed, it is already a valid rate
             # file) under its own real name, so the zip does not depend on
             # the importing install's own shipped tables/<name>/ folder.
-            path = os.path.join(cfg.data_dir, "rates", "nuclear", "tables", name,
+            path = os.path.join(cfg.data_dir, "data", "nuclear", "tables", name,
                                 f"{name}_primat.txt")
             try:
                 with open(path) as f:
@@ -620,7 +620,7 @@ def kept_to_custom_network(cfg, kept, replaced, decay_overrides=None, filenames=
     added = {n: replaced[n] for n in kept_set - bare_names if n in replaced}
     true_replaced = {n: t for n, t in replaced.items() if n not in added}
     if decay_overrides:
-        shipped = _load_decay_table(os.path.join(cfg.data_dir, "rates", "nuclear", "tables"))
+        shipped = _load_decay_table(os.path.join(cfg.data_dir, "data", "nuclear", "tables"))
         for name, rate_s in decay_overrides.items():
             shipped_entry = shipped.get(name)
             if shipped_entry is None or not math.isclose(

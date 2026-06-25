@@ -11,7 +11,7 @@ upstream source changes) to regenerate committed data files.
   reactions) plus a hard-coded analytic-rate table (reactions PRIMAT evaluates
   in closed form). Produces:
   - `pyprimat/rates/nuclear/tables/*.txt` — per-reaction rate tables.
-  - `pyprimat/rates/nuclear/data/*.csv` — `nuclides.csv`, `reactions_large.csv`,
+  - `pyprimat/rates/csv/*.csv` — `nuclides.csv`, `reactions_large.csv`,
     `detailed_balance.csv`.
   - `pyprimat/rates/nuclear/networks/large.txt` — the large-network reaction
     list.

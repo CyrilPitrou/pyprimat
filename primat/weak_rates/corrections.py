@@ -880,7 +880,7 @@ def _L_CCRTh_interpolants(ctx):
     if not cfg.thermal_corrections:
         return (lambda T: 0.0), (lambda T: 0.0)
 
-    _td        = my_dir + "/rates/weak/"
+    _td        = my_dir + "/data/weak/"
     _th_fp     = _thermal_fingerprint(cfg)
     _th_hash   = fingerprint_hash(_th_fp)
     _th_path   = _td + "nTOp_thermal_" + _th_hash + ".txt"

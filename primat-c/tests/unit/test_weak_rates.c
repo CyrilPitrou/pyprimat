@@ -52,7 +52,7 @@ int main(void)
 
     CPRConfig cfg;
     memset(&cfg, 0, sizeof(cfg));
-    strncpy(cfg.data_dir, "../primat", sizeof(cfg.data_dir) - 1);
+    strncpy(cfg.data_dir, "../primat/data", sizeof(cfg.data_dir) - 1);
     cfg.QED_corrections = 1;
     cfg.n_electron_table = 2000;
     cfg.T_start_cosmo_MeV = 40.0;

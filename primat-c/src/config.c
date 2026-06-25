@@ -125,11 +125,11 @@ void cpr_rxnmap_free(CPRRxnMap *map)
 static int load_nuclides(CPRConfig *cfg, char **errmsg)
 {
     char path[4200];
-    snprintf(path, sizeof(path), "%s/rates/nuclear/data/nuclides.csv", cfg->data_dir);
+    snprintf(path, sizeof(path), "%s/csv/nuclides.csv", cfg->data_dir);
 
     FILE *f = fopen(path, "r");
     if (!f) {
-        *errmsg = strdup("nuclides.csv not found (rates_dir misconfigured?)");
+        *errmsg = strdup("nuclides.csv not found (data_dir misconfigured?)");
         return 1;
     }
 
@@ -299,12 +299,12 @@ static const FieldDesc FIELD_TABLE[] = {
 
 static char *cpr_strdup(const char *s) { return s ? strdup(s) : NULL; }
 
-int cpr_config_init_defaults(CPRConfig *cfg, const char *rates_dir, char **errmsg)
+int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg)
 {
     memset(cfg, 0, sizeof(*cfg));
     cpr_constants_init();
 
-    strncpy(cfg->data_dir, rates_dir, sizeof(cfg->data_dir) - 1);
+    strncpy(cfg->data_dir, data_dir, sizeof(cfg->data_dir) - 1);
 
     cfg->verbose = 0;
     cfg->debug = 0;
@@ -448,8 +448,9 @@ void cpr_config_resolve_rates_path(const CPRConfig *cfg, const char *relpath,
     }
     /* Shipped default, always tried last (and returned even if missing, so
      * the caller's "file not found" error points at the expected default
-     * location -- mirrors PyPRConfig.resolve_rates_path). */
-    snprintf(out, outsize, "%s/rates/%s", cfg->data_dir, relpath);
+     * location -- mirrors PyPRConfig.resolve_rates_path). cfg->data_dir is
+     * the data folder itself (e.g. .../primat/data), not its parent. */
+    snprintf(out, outsize, "%s/%s", cfg->data_dir, relpath);
 }
 
 void cpr_config_set_Omegabh2(CPRConfig *cfg, double value)

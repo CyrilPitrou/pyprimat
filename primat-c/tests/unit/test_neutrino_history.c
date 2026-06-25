@@ -30,7 +30,7 @@ int main(void)
 
     CPRConfig cfg;
     memset(&cfg, 0, sizeof(cfg));
-    strncpy(cfg.data_dir, "../primat", sizeof(cfg.data_dir) - 1);
+    strncpy(cfg.data_dir, "../primat/data", sizeof(cfg.data_dir) - 1);
     cfg.QED_corrections = 1;
     cfg.n_electron_table = 2000;
     cfg.T_start_cosmo_MeV = 40.0;
@@ -83,7 +83,7 @@ int main(void)
      * here is out of scope). */
     CPRConfig cfg2;
     memset(&cfg2, 0, sizeof(cfg2));
-    strncpy(cfg2.data_dir, "../primat", sizeof(cfg2.data_dir) - 1);
+    strncpy(cfg2.data_dir, "../primat/data", sizeof(cfg2.data_dir) - 1);
     cfg2.QED_corrections = 1;
     cfg2.n_electron_table = 2000;
     cfg2.T_start_cosmo_MeV = 40.0;

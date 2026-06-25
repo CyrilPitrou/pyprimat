@@ -114,6 +114,44 @@ def _build_parser():
         help="Relative tolerance passed to solve_ivp (PRIMATConfig default: 1e-7).",
     )
     parser.add_argument(
+        "--munuOverTnu", type=float, default=None, metavar="XI",
+        help="Reduced neutrino chemical potential mu/T, same for all flavours "
+             "(PRIMATConfig default: 0).",
+    )
+    # Boolean PRIMATConfig flags exposed as --flag/--no-flag pairs (argparse's
+    # BooleanOptionalAction), so they don't need the --set escape hatch.
+    for flag_name, cfg_default, help_text in (
+        ("QED_corrections", True,
+         "QED interaction corrections to the EM plasma equation of state."),
+        ("nuclear_qed_corrections", True,
+         "QED corrections to radiative-capture nuclear reaction rates "
+         "(Pitrou & Pospelov 2020)."),
+        ("radiative_corrections", True,
+         "Coulomb + T=0 resummed radiative corrections to n<->p (CCR); "
+         "if False, use the Born approximation instead."),
+        ("finite_mass_corrections", True,
+         "Finite-nucleon-mass (Fokker-Planck) correction to n<->p."),
+        ("thermal_corrections", True,
+         "Finite-temperature radiative corrections to n<->p (CCRTh; "
+         "Brown & Sawyer 2001)."),
+        ("spectral_distortions", True,
+         "Correct n<->p rates for non-Fermi-Dirac neutrino distributions."),
+        ("output_time_evolution", False,
+         "Write the full time-evolution series (in-memory always; to disk "
+         "if output_file is set)."),
+        ("output_final_result", False,
+         "Write the final results dict to output_file."),
+        ("output_background_evolution", False,
+         "Write the cosmological background time series to disk."),
+        ("output_mc_samples", False,
+         "Write --mc samples to output_mc_file (overridden by --mc-output "
+         "when that flag is given)."),
+    ):
+        parser.add_argument(
+            f"--{flag_name}", action=argparse.BooleanOptionalAction, default=None,
+            help=f"{help_text} (PRIMATConfig default: {cfg_default}).",
+        )
+    parser.add_argument(
         "--backend", choices=("auto", "c", "python"), default="auto",
         help="Which solver implementation to use: 'auto' (default) picks the "
              "compiled C extension when available, 'c' forces it (error if "
@@ -154,7 +192,7 @@ def _build_parser():
     parser.add_argument(
         "--cache-info", action="store_true",
         help="Print the number of cached n<->p weak-rate files "
-             "(primat/rates/weak/nTOp_*.txt) and exit, without running a solve.",
+             "(primat/data/weak/nTOp_*.txt) and exit, without running a solve.",
     )
     parser.add_argument(
         "--cache-clear", action="store_true",
@@ -209,16 +247,22 @@ def main(argv=None):
         cfg = PRIMATConfig({})
         if args.cache_clear:
             n = clear_weak_cache(cfg)
-            print(f"Removed {n} cached weak-rate file(s) from {cfg.data_dir}/rates/weak/.")
+            print(f"Removed {n} cached weak-rate file(s) from {cfg.data_dir}/data/weak/.")
         else:
             n = len(list_weak_cache_files(cfg))
-            print(f"{n} cached weak-rate file(s) in {cfg.data_dir}/rates/weak/.")
+            print(f"{n} cached weak-rate file(s) in {cfg.data_dir}/data/weak/.")
         return 0
 
     # Only forward options the user actually set, so unset flags fall back
     # to PRIMATConfig's own defaults rather than a value duplicated here.
     params = {}
-    for key in ("Omegabh2", "DeltaNeff", "network", "amax", "numerical_precision"):
+    for key in (
+        "Omegabh2", "DeltaNeff", "network", "amax", "numerical_precision",
+        "munuOverTnu", "QED_corrections", "nuclear_qed_corrections",
+        "radiative_corrections", "finite_mass_corrections", "thermal_corrections",
+        "spectral_distortions", "output_time_evolution", "output_final_result",
+        "output_background_evolution", "output_mc_samples",
+    ):
         value = getattr(args, key)
         if value is not None:
             params[key] = value

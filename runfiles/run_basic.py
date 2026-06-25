@@ -8,7 +8,7 @@ its default value, so running this file unmodified reproduces the standard
 run (see CLAUDE.md's "Validation before committing" table for the expected
 YPBBN/D-H reference values).
 
-Run from the repo root so that the shipped ``rates/`` data resolve correctly:
+Run from the repo root so that the shipped ``data/`` data resolve correctly:
 
     python runfiles/run_basic.py
 """
@@ -38,7 +38,7 @@ cfg = dict(
     # QED_corrections=True,           # QED corrections to the EM plasma equation of state
     # n_electron_table=2000,          # grid points for the electron-thermo tables
     # recompute_electron_thermo=False,  # force recomputation of the electron-thermo cache
-    # recompute_qed_corrections=False,  # force recomputation (and overwrite) of rates/plasma/QED_*.txt
+    # recompute_qed_corrections=False,  # force recomputation (and overwrite) of data/plasma/QED_*.txt
 
     # ---- spectral distortions ----------------------------------------------
     # spectral_distortions=True,      # n<->p rate corrections from non-Fermi-Dirac neutrino spectra
@@ -52,8 +52,8 @@ cfg = dict(
     # nevo_grid_file=None,            # override the y-grid for nevo_spectral_file
     # nevo_file_prefix="NEVOPRIMAT",  # base filename for the default NEVO thermo/spectral tables
 
-    # ---- rates/ overlay (nuclear networks & rate tables) -------------------
-    # rates_dir=None,                 # full-takeover override directory for rates/
+    # ---- data/ overlay (nuclear networks & rate tables) -------------------
+    # rates_dir=None,                 # full-takeover override directory for data/
     # user_rates_dir=None,            # additive overlay for your own network/table additions (PRIMAT.md S4.3)
 
     # ---- background mode ----------------------------------------------------
@@ -73,9 +73,9 @@ cfg = dict(
     # finite_mass_corrections=True,   # Fokker-Planck finite-nucleon-mass correction
     # thermal_corrections=True,       # finite-temperature radiative corrections (CCRTh)
     # weak_rate_cache=True,           # if False, never load the weak-rate cache (always recompute)
-    # save_nTOp=True,                 # save computed n<->p rates to rates/weak/
+    # save_nTOp=True,                 # save computed n<->p rates to data/weak/
     # sampling_nTOp_per_decade=80,    # points per decade of T in the n<->p rate grid
-    # save_nTOp_thermal=True,         # save computed thermal n<->p rates to rates/weak/
+    # save_nTOp_thermal=True,         # save computed thermal n<->p rates to data/weak/
     # sampling_nTOp_thermal_per_decade=20,  # points per decade of T for the thermal-correction table
     # tau_n_normalization=True,       # normalise weak rates using the neutron lifetime tau_n
     # tau_n=878.4,                    # neutron lifetime [s]

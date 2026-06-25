@@ -172,8 +172,9 @@ def test_run_bbn_validates_params_regardless_of_backend():
 
 
 def test_run_bbn_python_only_features_force_python_backend(monkeypatch):
-    """extra_rho/custom_network/background always force the Python backend,
-    even when the C backend is requested implicitly via 'auto'."""
+    """extra_rho/background always force the Python backend, even when the
+    C backend is requested implicitly via 'auto' (custom_network is *not*
+    one of these any more -- see primat/backend.py's module docstring)."""
     calls = []
     import primat.backend as backend_mod
 
@@ -242,13 +243,12 @@ def test_run_bbn_c_backend_honors_rates_overlay(tmp_path):
 def test_run_bbn_auto_prefers_c_backend_for_rates_overlay(tmp_path, monkeypatch):
     """'auto' dispatches to the C backend for a rates_dir/user_rates_dir
     request too, now that both backends support the overlay -- only
-    extra_rho/custom_network/background (Python-only features) force
-    Python."""
+    extra_rho/background (Python-only features) force Python."""
     import primat.backend as backend_mod
 
     calls = []
 
-    def fake_c_run_bbn(params, package_dir):
+    def fake_c_run_bbn(params, package_dir, custom_network=None):
         calls.append(params)
         return {"YPBBN": 0.0}
 
@@ -256,3 +256,68 @@ def test_run_bbn_auto_prefers_c_backend_for_rates_overlay(tmp_path, monkeypatch)
     monkeypatch.setattr(backend_mod, "_c_ext", type("M", (), {"run_bbn": staticmethod(fake_c_run_bbn)}))
     run_bbn({"network": "small", "user_rates_dir": str(tmp_path)})
     assert len(calls) == 1
+
+
+# A GUI-shaped "Customise Reactions" override (primat/gui/custom_rates.py's
+# kept_to_custom_network output shape): drop one small-network reaction,
+# substitute another's rate table with a synthetic one (>=4 points -- the
+# resampler's cubic not-a-knot fit on the all-positive branch needs at
+# least 4 knots, see cpr_resample_rate_table/cpr_cubic_spline_fit_notaknot).
+_CUSTOM_NETWORK = {
+    "removed": ["Li7_p__a_a"],
+    "replaced": {
+        "d_p__He3_g": "\n".join(f"{t9} {10.0 * t9} 0.0" for t9 in
+                                 (0.001, 0.01, 0.1, 1.0, 5.0, 10.0)),
+    },
+}
+
+
+def test_run_bbn_auto_prefers_c_backend_for_custom_network(monkeypatch):
+    """'auto' dispatches a custom_network request to the C backend too, now
+    that it is no longer a python_only_feature (see primat/backend.py)."""
+    import primat.backend as backend_mod
+
+    calls = []
+
+    def fake_c_run_bbn(params, package_dir, custom_network=None):
+        calls.append(custom_network)
+        return {"YPBBN": 0.0}
+
+    monkeypatch.setattr(backend_mod, "HAS_C_BACKEND", True)
+    monkeypatch.setattr(backend_mod, "_c_ext", type("M", (), {"run_bbn": staticmethod(fake_c_run_bbn)}))
+    run_bbn({"network": "small"}, custom_network=_CUSTOM_NETWORK)
+    assert calls == [_CUSTOM_NETWORK]
+
+
+@requires_c_backend
+def test_backend_custom_network_result_dict_shape_matches():
+    """C and Python backends return the same result-dict keys for a
+    custom_network request (mirrors test_backend_result_dict_shape_matches
+    above, but exercising the removed/replaced injection path)."""
+    params = {"network": "small"}
+    r_c = run_bbn(params, force_backend="c", custom_network=_CUSTOM_NETWORK)
+    r_py = run_bbn(params, force_backend="python", custom_network=_CUSTOM_NETWORK)
+
+    assert _ALWAYS_KEYS <= r_c.keys()
+    assert _ALWAYS_KEYS <= r_py.keys()
+    assert r_c.keys() - {"Y_final"} == r_py.keys()
+
+
+@requires_c_backend
+def test_backend_custom_network_numerical_agreement():
+    """C vs. Python agreement for a custom_network request, at the same
+    cross-backend budget as test_backend_small_network_numerical_agreement
+    (this module's docstring) -- removed/replaced reactions are still small
+    perturbations of the 'small' network, so the same gap applies. Also
+    checks the custom_network actually changed the result relative to the
+    plain 'small' run, on both backends, so this isn't silently a no-op."""
+    params = {"network": "small"}
+    r_c = run_bbn(params, force_backend="c", custom_network=_CUSTOM_NETWORK)
+    r_py = run_bbn(params, force_backend="python", custom_network=_CUSTOM_NETWORK)
+    r_c_plain = run_bbn(params, force_backend="c")
+    r_py_plain = run_bbn(params, force_backend="python")
+
+    assert r_c["YPBBN"] == pytest.approx(r_py["YPBBN"], abs=1e-5)
+    assert r_c["DoH"] == pytest.approx(r_py["DoH"], rel=1e-3)
+    assert r_c["DoH"] != pytest.approx(r_c_plain["DoH"], rel=1e-6)
+    assert r_py["DoH"] != pytest.approx(r_py_plain["DoH"], rel=1e-6)

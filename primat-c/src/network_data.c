@@ -636,8 +636,135 @@ static long species_index(char (*species)[16], size_t n_species, const char *nam
     return -1;
 }
 
+static int custom_is_removed(const CPRCustomNetwork *custom, const char *name)
+{
+    if (!custom) return 0;
+    for (size_t i = 0; i < custom->n_removed; i++)
+        if (strcmp(custom->removed[i], name) == 0) return 1;
+    return 0;
+}
+
+static const CPRCustomTable *custom_find_table(const CPRCustomNetwork *custom, const char *name)
+{
+    if (!custom) return NULL;
+    for (size_t i = 0; i < custom->n_tables; i++)
+        if (strcmp(custom->tables[i].name, name) == 0) return &custom->tables[i];
+    return NULL;
+}
+
+/* Maps PRIMAT's single-letter aliases (d/t/a) to nuclide names; any other
+ * token (a full nuclide name, "g", "Bm", "Bp") passes through unchanged
+ * (port of network_data.py's _ALIAS). */
+static const char *alias_nuclide(const char *tok)
+{
+    if (strcmp(tok, "d") == 0) return "H2";
+    if (strcmp(tok, "t") == 0) return "H3";
+    if (strcmp(tok, "a") == 0) return "He4";
+    return tok;
+}
+
+/* Builds a "+"-joined reactants/products field (reactions_large.csv's own
+ * format, consumed by side_counts) from one "_"-joined side of a
+ * "spaced"-syntax reaction name, e.g. "d_d" -> "H2+H2". */
+static void build_side_field(const char *side, char *out, size_t outsize)
+{
+    out[0] = '\0';
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%s", side);
+    char *save = NULL;
+    int first = 1;
+    for (char *tok = strtok_r(buf, "_", &save); tok; tok = strtok_r(NULL, "_", &save)) {
+        if (!first) strncat(out, "+", outsize - strlen(out) - 1);
+        strncat(out, alias_nuclide(tok), outsize - strlen(out) - 1);
+        first = 0;
+    }
+}
+
+/* Derives an "added" reaction's reactants/products fields from its
+ * "a_b__c_d" name (port of reaction_stoichiometry's "TO"-split fallback
+ * path, restricted to the "spaced" syntax used by every GUI-generated name
+ * -- see network_data.h's docstring). Returns 0 on success, nonzero with
+ * *errmsg set if the name has no "__" separator. */
+static int parse_reaction_name(const char *name, char *rfield, size_t rsize,
+                                 char *pfield, size_t psize, char **errmsg)
+{
+    const char *sep = strstr(name, "__");
+    if (!sep) {
+        char buf[160];
+        snprintf(buf, sizeof(buf), "cannot add reaction '%s': no '__' separator "
+                  "(only the \"a_b__c_d\" syntax is supported)", name);
+        *errmsg = strdup(buf);
+        return 1;
+    }
+    char rside[64];
+    size_t rlen = (size_t)(sep - name);
+    if (rlen >= sizeof(rside)) rlen = sizeof(rside) - 1;
+    memcpy(rside, name, rlen);
+    rside[rlen] = '\0';
+    build_side_field(rside, rfield, rsize);
+    build_side_field(sep + 2, pfield, psize);
+    return 0;
+}
+
+/* Extends `rxn_map`/`db` with any custom->tables entry whose name is absent
+ * from the shipped catalog -- a brand-new "added" reaction (port of
+ * network_data.py's _inject_custom_reactions). A name already present in
+ * `rxn_map` ("replaced") is untouched here: only its forward rate is
+ * overridden later, in cpr_load_network's per-reaction loop. Reverse-rate
+ * coefficients are derived via cpr_compute_detailed_balance_coefficients
+ * only for a purely nuclear addition (net lepton charge == 0); a weak
+ * addition, or one whose nuclide data is incomplete, is left without a
+ * `db` entry, defaulting to abg=(0,0,0) (forward-only) downstream --
+ * mirroring Python's try/except-Exception: pass exactly. */
+static int inject_custom_reactions(const CPRCustomNetwork *custom, CPRReactionTable *rxn_map,
+                                     CPRDetailedBalanceTable *db, const CPRConfig *cfg,
+                                     char **errmsg)
+{
+    if (!custom) return 0;
+    for (size_t t = 0; t < custom->n_tables; t++) {
+        const char *name = custom->tables[t].name;
+        if (find_reaction_entry(rxn_map, name)) continue; /* "replaced": already catalogued */
+
+        char rfield[64], pfield[64];
+        if (parse_reaction_name(name, rfield, sizeof(rfield), pfield, sizeof(pfield), errmsg))
+            return 1;
+
+        rxn_map->entries = realloc(rxn_map->entries, (rxn_map->n + 1) * sizeof(CPRReactionEntry));
+        CPRReactionEntry *e = &rxn_map->entries[rxn_map->n++];
+        snprintf(e->name, sizeof(e->name), "%s", name);
+        snprintf(e->reactants, sizeof(e->reactants), "%s", rfield);
+        snprintf(e->products, sizeof(e->products), "%s", pfield);
+        snprintf(e->source, sizeof(e->source), "custom");
+        e->ref[0] = '\0';
+
+        CPRSideCounts rs, ps; long ldz_r, ldz_p;
+        side_counts(rfield, &rs, &ldz_r);
+        side_counts(pfield, &ps, &ldz_p);
+        if (ldz_p - ldz_r != 0) continue; /* weak addition: no reverse rate */
+
+        const char *reactants[CPR_SIDE_MAX]; size_t nr = 0;
+        const char *products[CPR_SIDE_MAX]; size_t np = 0;
+        for (size_t k = 0; k < rs.n; k++)
+            for (long m = 0; m < rs.counts[k]; m++) reactants[nr++] = rs.names[k];
+        for (size_t k = 0; k < ps.n; k++)
+            for (long m = 0; m < ps.counts[k]; m++) products[np++] = ps.names[k];
+        double a, b, g; char *dberr = NULL;
+        if (cpr_compute_detailed_balance_coefficients(reactants, nr, products, np, cfg,
+                                                         &a, &b, &g, &dberr) == 0) {
+            db->entries = realloc(db->entries, (db->n + 1) * sizeof(CPRDetailedBalanceEntry));
+            CPRDetailedBalanceEntry *de = &db->entries[db->n++];
+            snprintf(de->reaction, sizeof(de->reaction), "%s", name);
+            de->Q_keV = 0.0; de->alpha = a; de->beta = b; de->gamma = g;
+        } else {
+            free(dberr); /* missing spin/mass data: forward-only fallback */
+        }
+    }
+    return 0;
+}
+
 int cpr_load_network(const CPRConfig *cfg, const char *era,
                       const char * const *reaction_names, size_t n_reaction_names,
+                      const CPRCustomNetwork *custom,
                       CPRNetworkDef *out, char **errmsg)
 {
     memset(out, 0, sizeof(*out));
@@ -703,10 +830,26 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
     }
     (void)have_file_list;
 
+    /* ---- 1b. Drop custom->removed names (GUI "Customise Reactions" toggle-
+     * off), mirroring UpdateNuclearRates.__init__'s `removed` set filter
+     * applied before load_network is even called. ---- */
+    if (custom && custom->n_removed) {
+        size_t kept = 0;
+        for (size_t i = 0; i < n_bare; i++) {
+            if (custom_is_removed(custom, bare_names[i])) continue;
+            if (kept != i) {
+                snprintf(bare_names[kept], 64, "%s", bare_names[i]);
+                snprintf(table_files[kept], 128, "%s", table_files[i]);
+            }
+            kept++;
+        }
+        n_bare = kept;
+    }
+
     /* ---- 2. Load the reaction catalog (reactions_large.csv, detailed_balance.csv). ---- */
     char base_dir[4200], tables_dir[4200];
-    snprintf(base_dir, sizeof(base_dir), "%s/rates/nuclear/data", cfg->data_dir);
-    snprintf(tables_dir, sizeof(tables_dir), "%s/rates/nuclear/tables", cfg->data_dir);
+    snprintf(base_dir, sizeof(base_dir), "%s/csv", cfg->data_dir);
+    snprintf(tables_dir, sizeof(tables_dir), "%s/nuclear/tables", cfg->data_dir);
     char rxn_path[4300];
     snprintf(rxn_path, sizeof(rxn_path), "%s/reactions_large.csv", base_dir);
     CPRReactionTable rxn_map;
@@ -715,6 +858,34 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
     snprintf(db_path, sizeof(db_path), "%s/detailed_balance.csv", base_dir);
     CPRDetailedBalanceTable db;
     if (cpr_load_detailed_balance(db_path, &db, errmsg)) { cpr_reaction_table_free(&rxn_map); return 1; }
+
+    /* ---- 2b. Inject custom->tables' "added" reactions into rxn_map/db, then
+     * append any not already selected to bare_names -- both must happen
+     * before the amax filter (step 3) so an added reaction is amax-filtered
+     * exactly like a shipped one (mirrors UpdateNuclearRates.__init__
+     * appending added_names to self._selected_names before calling
+     * load_network). ---- */
+    if (inject_custom_reactions(custom, &rxn_map, &db, cfg, errmsg)) {
+        cpr_reaction_table_free(&rxn_map); cpr_detailed_balance_free(&db);
+        return 1;
+    }
+    if (custom) {
+        for (size_t t = 0; t < custom->n_tables; t++) {
+            const char *name = custom->tables[t].name;
+            int already = 0;
+            for (size_t i = 0; i < n_bare; i++)
+                if (strcmp(bare_names[i], name) == 0) { already = 1; break; }
+            if (already) continue;
+            if (n_bare >= CPR_MAX_REACTIONS) {
+                *errmsg = strdup("cpr_load_network: too many reactions (raise CPR_MAX_REACTIONS)");
+                cpr_reaction_table_free(&rxn_map); cpr_detailed_balance_free(&db);
+                return 1;
+            }
+            snprintf(bare_names[n_bare], 64, "%s", name);
+            table_files[n_bare][0] = '\0'; /* unused: custom_find_table always wins in step 9 */
+            n_bare++;
+        }
+    }
 
     /* ---- 3. amax filter (any positive cfg->amax; -1 = None/disabled). ---- */
     char filtered[CPR_MAX_REACTIONS][64];
@@ -747,7 +918,16 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
     /* ---- 4. Era selection. ---- */
     char selected[CPR_MAX_REACTIONS][64];
     size_t n_selected = 0;
-    if (is_mt && strcmp(cfg->network, "small") != 0) {
+    if (is_mt) {
+        /* Intersect with the fixed historical MT order, for every network
+         * including "small": for the shipped (uncustomised) small.txt this
+         * intersection reproduces `filtered` unchanged (all 12 of its
+         * thermonuclear reactions are in CPR_ORDER_MT already), but doing
+         * the intersection unconditionally -- rather than special-casing
+         * "small" to skip it -- also correctly drops a custom-added
+         * reaction not in ORDER_MT from the MT era, mirroring Python's
+         * _select_era_reactions (which filters against ORDER_SMALL for
+         * "small", a subset of ORDER_MT in the same relative order). */
         for (size_t k = 0; k < CPR_N_ORDER_MT; k++)
             for (size_t i = 0; i < n_filtered; i++)
                 if (strcmp(filtered[i], CPR_ORDER_MT[k]) == 0) {
@@ -755,11 +935,6 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
                     break;
                 }
     } else {
-        /* MT for network="small": the historical ORDER_MT order coincides
-         * with small.txt's own order (its first thermonuclear reaction is
-         * n_p__d_g, matching ORDER_MT[13]), so the intersection is just
-         * `filtered` itself, unchanged -- see network_data.py's
-         * _select_era_reactions special case. LT: the full filtered list. */
         for (size_t i = 0; i < n_filtered; i++)
             snprintf(selected[n_selected++], 64, "%s", filtered[i]);
     }
@@ -904,7 +1079,18 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
         double *fwd_row = &out->fwd_median[i * n_grid];
         double *err_row = &out->fwd_expsigma[i * n_grid];
 
-        if (is_weak[i]) {
+        const CPRCustomTable *ct = custom_find_table(custom, selected[i]);
+        if (ct) {
+            /* GUI override ("replaced" or "added") wins even for a weak/
+             * decay reaction -- it is resampled like any other table, not
+             * broadcast as a constant (mirrors network_data.py's
+             * _build_rate_tables: the custom_tables branch is checked
+             * before the is_weak/decay branch). */
+            if (cpr_resample_rate_table(ct->T9, ct->rate, ct->n, out->grid, fwd_row, n_grid, errmsg) ||
+                cpr_resample_rate_table(ct->T9, ct->err, ct->n, out->grid, err_row, n_grid, errmsg)) {
+                load_fail = 1; break;
+            }
+        } else if (is_weak[i]) {
             /* Radioactive decay: T9-independent rate from decays.txt,
              * broadcast onto the master grid (no rate table to resample). */
             if (!have_decays) {
@@ -1072,11 +1258,12 @@ const double *cpr_network_fill_buffer(CPRNetworkDef *net, double T_t_K,
     return r;
 }
 
-int cpr_nuclear_rates_init(CPRNuclearRates *nr, const CPRConfig *cfg, char **errmsg)
+int cpr_nuclear_rates_init(CPRNuclearRates *nr, const CPRConfig *cfg,
+                             const CPRCustomNetwork *custom, char **errmsg)
 {
     memset(nr, 0, sizeof(*nr));
-    if (cpr_load_network(cfg, "MT", NULL, 0, &nr->mt_net, errmsg)) return 1;
-    if (cpr_load_network(cfg, "LT", NULL, 0, &nr->lt_net, errmsg)) {
+    if (cpr_load_network(cfg, "MT", NULL, 0, custom, &nr->mt_net, errmsg)) return 1;
+    if (cpr_load_network(cfg, "LT", NULL, 0, custom, &nr->lt_net, errmsg)) {
         cpr_network_def_free(&nr->mt_net);
         return 1;
     }

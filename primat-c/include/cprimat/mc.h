@@ -27,6 +27,7 @@
 #define CPRIMAT_MC_H
 
 #include "cprimat/config.h"
+#include "cprimat/network_data.h"
 #include <stddef.h>
 
 typedef struct {
@@ -49,7 +50,29 @@ typedef struct {
  * `quantities`/`n_quantities` name the result-dict keys or nuclide names
  * to collect (cpr_results_get_quantity); an unknown name is an error.
  * `seed` is the base RNG seed (sample i uses seed+i); `n_jobs` is the
- * number of worker threads (<=0 means "use all detected cores").
+ * number of worker threads (<=0 means "use all detected cores"). `custom`
+ * (may be NULL) is the GUI "Customise Reactions" override, forwarded
+ * verbatim to every worker's own cpr_nuclear_rates_init and to the central
+ * cprimat_run -- read-only and shared across threads (no copy needed since
+ * it is never mutated after cpr_mc_uncertainty's caller builds it).
+ *
+ * `prev_centrals`/`prev_values`/`n_prev` are the incremental-reuse
+ * counterpart of Python's `mc_uncertainty(..., prev=...)` (PyPRIMAT's
+ * `main.py`): pass `n_prev > 0` to reuse `n_prev` already-computed samples
+ * instead of recomputing them. `prev_centrals` (length `n_quantities`,
+ * parallel to `quantities`) supplies each quantity's central value (so it
+ * is not recomputed); `prev_values[q]` (length `n_prev`) supplies
+ * quantity q's first `n_prev` sample values, for sample indices
+ * `seed .. seed+n_prev-1` -- the caller is responsible for verifying that
+ * `seed`/`base_params`/`custom`/`quantities` are unchanged from the call
+ * that produced these values (this function does not check; mirrors
+ * Python's `mc_uncertainty` doing that check itself, but here the check is
+ * pushed to the caller -- see `primat/backend.py`'s `run_mc`). Only
+ * `min(n_prev, num_mc)` samples are actually reused: extra `prev_values`
+ * beyond `num_mc` are ignored (truncation, nothing solved), and any
+ * shortfall (`n_prev < num_mc`) is filled by solving samples
+ * `seed+n_prev .. seed+num_mc-1`. Pass `n_prev=0` (with `prev_centrals`/
+ * `prev_values` NULL) for an ordinary from-scratch run.
  *
  * Fills `out` (zeroed first; caller must cpr_mc_result_free). Returns 0 on
  * success, nonzero with *errmsg set (caller frees) on any config/init/
@@ -58,7 +81,9 @@ typedef struct {
 int cpr_mc_uncertainty(int num_mc, const char * const *quantities, size_t n_quantities,
                         const char *rates_dir,
                         const CPRParamSet *base_params, size_t n_base_params,
-                        int seed, int n_jobs,
+                        int seed, int n_jobs, const CPRCustomNetwork *custom,
+                        const double *prev_centrals, const double * const *prev_values,
+                        size_t n_prev,
                         CPRMCResult *out, char **errmsg);
 
 void cpr_mc_result_free(CPRMCResult *out);

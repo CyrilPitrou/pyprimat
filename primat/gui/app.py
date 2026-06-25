@@ -24,11 +24,12 @@ import types
 import streamlit as st
 
 from primat import PRIMAT
+from primat import backend
 from primat.config import PRIMATConfig
 from primat.gui import panels
 from primat.gui.params_form import render_sidebar_form
-from primat.main import mc_uncertainty
 from primat.gui.panels import _RATIO_FORMAT
+from primat.gui.run_view import GuiRun
 from primat.gui.session_keys import SessionKeys
 from primat.network_data import UpdateNuclearRates
 from primat.weak_rates.cache import thermal_cache_exists
@@ -70,38 +71,49 @@ def _solve(params_items):
 
     Returns
     -------
-    (primat.PRIMAT, float)
-        The solved instance -- ``run.primat_results()``, ``run.abundance_names``,
-        ``run[name](t)``, ``run.nuclear.evolution`` (the unified
-        ``primat.evolution.EvolutionResult``, populated in memory since
-        ``output_time_evolution=True`` is always requested below) and
-        ``run.background`` (for the background-evolution equivalent) are all
-        ready to use without triggering further computation -- together with
-        the wall-clock time (seconds) the actual solve took. The elapsed time
-        is measured *inside* this cached function (rather than by the caller
-        timing the call) specifically so that a cache *hit* -- a rerun with
-        unchanged parameters, which never re-executes this function body at
-        all -- still reports the original solve's real duration instead of
-        the ~0 s a caller-side timer would measure around an instant cache
-        lookup.
+    (run, float, str)
+        ``run`` exposes the same minimal read-only interface either way --
+        ``run.primat_results()``, ``run.abundance_names``, ``run[name](t)``,
+        ``run.T_of_t``, ``run.A``/``run.Z``/``run.N``, ``run.cfg``, ``run.nucl``
+        -- so the result/evolution panels never need to know which backend
+        actually ran (``PRIMAT.md`` S7.3, ``primat.backend``'s module
+        docstring). For the common case (no decay-era plotting requested) it
+        is a :class:`primat.gui.run_view.GuiRun` wrapping a plain
+        :func:`primat.backend.run_bbn` result dict -- letting this pick the C
+        backend by default. The "Show radioactive decays" toggle needs the
+        live, DT-era-extended ``Y_of_t`` interpolator that only the Python
+        ``PRIMAT`` object exposes (no ``EvolutionResult`` equivalent yet, see
+        ``primat.backend``'s ``decay_era`` gap) -- so for the large network
+        (the only network this toggle applies to) ``run`` is instead a
+        genuine, Python-backend ``primat.PRIMAT`` instance, exactly as
+        before. Together with the wall-clock time (seconds) the actual solve
+        took, and a short string naming which backend ran (for the caption in
+        ``app.main``). The elapsed time is measured *inside* this cached
+        function (rather than by the caller timing the call) specifically so
+        that a cache *hit* -- a rerun with unchanged parameters, which never
+        re-executes this function body at all -- still reports the original
+        solve's real duration instead of the ~0 s a caller-side timer would
+        measure around an instant cache lookup.
 
     Notes
     -----
-    Constructing ``PRIMAT`` (loading rate tables, computing the cosmological
-    background and weak rates) and then ``solve()``-ing the HT/MT/LT network
-    are both potentially expensive (seconds for the default config, much
-    longer at reference precision or for the large network). Caching on the
-    exact parameter set means re-running with unchanged parameters --
-    e.g. just toggling which nuclides are plotted in the evolution panel --
-    is instant.  ``cache_resource`` (rather than ``cache_data``) is required
-    because ``PRIMAT`` instances hold live SciPy interpolators that are not
-    picklable.
+    Solving the HT/MT/LT network (and, for the Python path, computing the
+    cosmological background and weak rates beforehand) is potentially
+    expensive (seconds for the default config, much longer at reference
+    precision or for the large network). Caching on the exact parameter set
+    means re-running with unchanged parameters -- e.g. just toggling which
+    nuclides are plotted in the evolution panel -- is instant.
+    ``cache_resource`` (rather than ``cache_data``) is required because a
+    live ``PRIMAT`` instance (the decay-era branch) holds SciPy interpolators
+    that are not picklable; ``GuiRun`` itself would be picklable (it only
+    holds plain arrays/dicts plus lazily-built interpolators) but is cached
+    the same way for a uniform return type across both branches.
 
     No disk I/O of any kind happens here any more (``PRIMAT.md`` S7.5): the
     download buttons (``panels.render_downloads_panel``) build their TSV text
-    lazily, at click time, straight from ``run.nuclear.evolution``/``run.background``
-    -- nothing is written to a server-side tempfile even transiently, which
-    matters for a hosted Streamlit deployment.
+    lazily, at click time, straight from ``run``'s in-memory data -- nothing
+    is written to a server-side tempfile even transiently, which matters for
+    a hosted Streamlit deployment.
     """
     t0 = time.time()
     params = dict(params_items)
@@ -148,25 +160,42 @@ def _solve(params_items):
         note += ("  \n*(includes finite-temperature thermal "
                  "corrections — this can take a while)*")
     status.markdown(note)
-    # output_file=None: build run.evolution in memory (PRIMAT.md S7.3)
+    # output_file=None: build the evolution data in memory (PRIMAT.md S7.3)
     # without writing anything to disk -- see
-    # NuclearNetwork._write_time_evolution's escape hatch. The
-    # background-evolution equivalent (run.background.time_evolution_text)
-    # needs no flag at all -- it is computed lazily, on demand, by
-    # panels.render_downloads_panel.
-    run = PRIMAT(params=dict(params,
-                           output_time_evolution=True,
-                           output_file=None,
-                           **decay_extras),
-               custom_network=custom_network)
+    # NuclearNetwork._write_time_evolution's escape hatch.
+    full_params = dict(params, output_time_evolution=True, output_file=None,
+                        **decay_extras)
+
+    if decay_extras:
+        # decay_era has no C-backend/EvolutionResult equivalent (see
+        # primat.backend's module docstring): the "Show radioactive decays"
+        # toggle (panels.render_evolution_panel) needs run.nuclear.Y_of_t.x
+        # and the live PRIMAT.__getitem__ interpolator, extended into the DT
+        # era -- only the Python PRIMAT object exposes that. decay_extras is
+        # only set for network="large" above, so this branch never affects
+        # the default ("small") network.
+        run = PRIMAT(params=full_params, custom_network=custom_network)
+        status.markdown("### Solving the BBN network…")
+        run.solve()
+        status.empty()
+        return run, time.time() - t0, "Python (decay-era plotting)"
+
     status.markdown("### Solving the BBN network…")
-    run.solve()
+    result = backend.run_bbn(full_params, custom_network=custom_network,
+                              log_backend=True)
     status.empty()
-    return run, time.time() - t0
+    # cfg/nucl are solve-free (PRIMATConfig + UpdateNuclearRates only --
+    # mirrors _build_preview below), so building them here costs nothing
+    # extra regardless of which backend just ran the actual solve.
+    cfg = PRIMATConfig(params)
+    nucl = UpdateNuclearRates(cfg, custom_network=custom_network)
+    run = GuiRun(result, cfg, nucl)
+    backend_used = "C" if backend.HAS_C_BACKEND else "Python (C extension unavailable)"
+    return run, time.time() - t0, backend_used
 
 
 def _quick_mc(params_items, num_mc, run):
-    """Run a quick :func:`primat.main.mc_uncertainty` for the standard ratios.
+    """Run a quick :func:`primat.backend.run_mc` for the standard ratios.
 
     Parameters
     ----------
@@ -198,20 +227,25 @@ def _quick_mc(params_items, num_mc, run):
     ``params_form.render_sidebar_form``.
 
     **Incremental reuse.** The previous result (for the *same* parameters) is
-    kept in ``st.session_state`` and passed to :func:`mc_uncertainty` as
-    ``prev``.  Because sample ``i`` is fully determined by ``seed + i``, raising
-    the sample count only solves the additional samples (e.g. 30 -> 50 runs 20
-    new ones); lowering it just truncates the stored samples without solving
-    anything.  We deliberately do *not* use ``st.cache_resource`` here so that a
-    larger request can extend the smaller cached one instead of being a plain
-    cache miss that recomputes everything.
+    kept in ``st.session_state`` and passed to :func:`primat.backend.run_mc`
+    as ``prev``.  Because sample ``i`` is fully determined by ``seed + i``,
+    raising the sample count only solves the additional samples (e.g. 30 -> 50
+    runs 20 new ones); lowering it just truncates the stored samples without
+    solving anything. ``run_mc`` reuses ``prev`` on whichever backend
+    (C or Python) actually computes this call -- a ``prev`` from the *other*
+    backend is silently ignored (full recompute) rather than mixed in, since
+    the two backends' RNG streams are not interchangeable (see
+    ``primat.backend``'s module docstring). We deliberately do *not* use
+    ``st.cache_resource`` here so that a larger request can extend the
+    smaller cached one instead of being a plain cache miss that recomputes
+    everything.
 
     **Customised networks.** ``params_items`` may include a JSON-encoded
     "custom_network" entry (the "Customise Reactions" override, see
     :class:`primat.main.PRIMAT`'s docstring).  It is decoded here and passed
-    through to :func:`mc_uncertainty` as its own ``custom_network`` kwarg
-    (and stripped from ``params`` so ``PRIMATConfig`` never sees an unknown
-    key): removed reactions are excluded from the varied rate set and
+    through to :func:`primat.backend.run_mc` as its own ``custom_network``
+    kwarg (and stripped from ``params`` so ``PRIMATConfig`` never sees an
+    unknown key): removed reactions are excluded from the varied rate set and
     replaced reactions are sampled using their own (possibly custom) error
     column, so quick MC's ± 1σ band reflects the same customisation as the
     central-value run, including any inflated/deflated rate uncertainty
@@ -219,16 +253,16 @@ def _quick_mc(params_items, num_mc, run):
     """
     cache = st.session_state.get("_quick_mc_cache")
     # Reuse the cached MCResult as a starting point only when it was computed
-    # for exactly these parameters; mc_uncertainty itself re-checks seed,
-    # quantities, params and custom_network before trusting ``prev``.
+    # for exactly these parameters; run_mc itself re-checks seed, quantities,
+    # params, custom_network and backend before trusting ``prev``.
     prev = cache[1] if (cache is not None and cache[0] == params_items) else None
     cn_json = dict(params_items).get("custom_network")
     custom_network = json.loads(cn_json) if cn_json else None
     mc_params = {k: v for k, v in params_items if k != "custom_network"}
     quantities = [q for q in _RATIO_FORMAT if q in run.results]
-    mc = mc_uncertainty(num_mc, quantities,
-                        params=mc_params, seed=0, prev=prev,
-                        custom_network=custom_network)
+    mc = backend.run_mc(num_mc, quantities,
+                         params=mc_params, seed=0, prev=prev,
+                         custom_network=custom_network)
     st.session_state["_quick_mc_cache"] = (params_items, mc)
     return mc
 
@@ -411,7 +445,7 @@ def main():
             # the button/tab visuals catch up), this call is an instant cache
             # *hit*, so timing it here would report ~0 s instead of how long
             # the actual solve took.
-            run, elapsed = _solve(params_items)
+            run, elapsed, backend_used = _solve(params_items)
     except (ValueError, RuntimeError) as exc:
         # PRIMATConfig validates e.g. `amax`/`network` and the
         # spectral_distortions/incomplete_decoupling/analytic_distortions
@@ -443,7 +477,15 @@ def main():
             mc = _quick_mc(params_items, num_mc, run)
 
     with tab_results:
-        st.caption(f"(solved in {elapsed:.2f} s)")
+        # `backend_used` (set by `_solve`) names whichever backend actually
+        # produced this run's numbers -- the C extension by default, falling
+        # back to Python only when it is unavailable or "Show radioactive
+        # decays" plotting was requested (see `_solve`'s docstring). Always
+        # shown so it is unambiguous which backend ran, for cross-checking
+        # against `primat.backend.run_bbn(..., force_backend=...)` results
+        # computed elsewhere.
+        mc_backend_note = f", quick MC: {mc.backend} backend" if mc is not None else ""
+        st.caption(f"(solved in {elapsed:.2f} s — BBN solve: {backend_used} backend{mc_backend_note})")
         panels.render_results_panel(run, mc=mc)
     with tab_evolution:
         panels.render_evolution_panel(run)
@@ -453,6 +495,14 @@ def main():
 
 def _render_footer():
     """Sidebar attribution footer, shown below the parameter form."""
+    st.sidebar.caption(
+        ("✅ Compiled C extension available (used by default for the BBN "
+         "solve and Quick MC; large-network \"Show radioactive decays\" "
+         "plotting still forces the Python backend)"
+         if backend.HAS_C_BACKEND else
+         "⚠️ Compiled C extension not available — the BBN solve and Quick "
+         "MC both run on the pure-Python backend (slower).")
+    )
     st.sidebar.caption(
         "PRIMAT is developed by [Cyril Pitrou](https://www2.iap.fr/users/pitrou/) "
         "and Julien Froustey. This GUI is developed by Cyril Pitrou."

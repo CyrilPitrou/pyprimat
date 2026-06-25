@@ -69,7 +69,7 @@ def resolve_nevo_path(cfg, override, default_filename):
     fname = override if override is not None else default_filename
     if os.path.isabs(fname):
         return fname
-    return os.path.join(cfg.data_dir, "rates", "NEVO", fname)
+    return os.path.join(cfg.data_dir, "data", "NEVO", fname)
 
 __all__ = ["NeutrinoHistory", "NEVOTable", "InstantaneousDecoupling",
            "AnalyticDistortion", "make_neutrino_history"]

@@ -8,20 +8,16 @@ He3, He4, Li7, and heavier nuclides.
 `primat` ships two interchangeable backends: a fast C engine (`primat-c/`,
 the default whenever its compiled extension is available) and a pure-Python
 implementation (`primat/`, used as a fallback and for development/
-extensibility — e.g. custom networks via the GUI, or any feature not yet
-ported to C such as `output_time_evolution`/`custom_network`/`background=`).
+extensibility).
 `pip install primat` pulls a pre-built wheel with the C backend already
 compiled on supported platforms — most users need nothing else; where no
 wheel is available, `pip` silently falls back to the pure-Python backend
-with no loss of functionality, just speed. The two backends are kept
-numerically in sync (see `CLAUDE.md`'s "Keeping primat-c and primat in
-sync") and agree on the same result-dict/output-format contract, so callers
-can switch backends transparently — see
-[Selecting a backend](#selecting-a-backend) below.
+with no loss of functionality, just speed. 
+See [Selecting a backend](#selecting-a-backend) below.
 
 For development, clone the repo and install in editable mode
 (`pip install -e .`); this builds the C extension in place if a C
-toolchain is available, and lets you edit `primat/rates/` directly without
+toolchain is available, and lets you edit `primat/data/` directly without
 reinstalling (see [Rates overlay](#rates-overlay-custom-networkstables-without-editing-the-install)
 for adding your own rate tables/networks without touching the installed
 package at all). To build/extend the standalone `primat-c` C-only binary
@@ -232,10 +228,10 @@ so all three agree on results for the same configuration.
 | `numerical_precision` | 1e-7 | ODE solver rtol |
 | `sampling_temperature_per_decade` | 400 | Background grid points per decade of T |
 | `sampling_nTOp_per_decade` | 80 | n↔p rate grid points per decade of T |
-| `weak_rate_cache` | True | If False, never load n↔p rates from `rates/weak/` (always recompute) |
-| `save_nTOp` | True | Save recomputed n↔p rates to `rates/weak/` with a fingerprint header |
+| `weak_rate_cache` | True | If False, never load n↔p rates from `data/weak/` (always recompute) |
+| `save_nTOp` | True | Save recomputed n↔p rates to `data/weak/` with a fingerprint header |
 | `thermal_corrections` | True | Include thermal radiative corrections (CCRTh) to the n↔p rates |
-| `save_nTOp_thermal` | True | Save recomputed thermal corrections to `rates/weak/` with a fingerprint header |
+| `save_nTOp_thermal` | True | Save recomputed thermal corrections to `data/weak/` with a fingerprint header |
 | `output_time_evolution` | False | Write time-evolution table to `output_file` |
 | `output_file` | `results/output_tables.tsv` | Output file path (relative paths resolve against the current working directory) |
 | `output_n_points` | 500 | Number of interpolated rows in output file |
@@ -243,9 +239,9 @@ so all three agree on results for the same configuration.
 ### n↔p weak rate workflow
 
 The n↔p weak rates are the most expensive part of initialisation (~1.8 s). The
-non-thermal rate (Born+FM+CCR+SD) is cached in `rates/weak/nTOp_<hash>.txt`
+non-thermal rate (Born+FM+CCR+SD) is cached in `data/weak/nTOp_<hash>.txt`
 (forward and backward columns together); the finite-temperature radiative
-correction (CCRTh) is cached separately in `rates/weak/nTOp_thermal_<hash>.txt`.
+correction (CCRTh) is cached separately in `data/weak/nTOp_thermal_<hash>.txt`.
 Each file is tagged with a *fingerprint* header: a hash of every config field
 that affects its numeric content (background thermodynamics,
 `sampling_nTOp_per_decade`/`sampling_nTOp_thermal_per_decade`,
@@ -258,10 +254,10 @@ that affects its numeric content (background thermodynamics,
 - Otherwise (fingerprint mismatch, missing file, or `weak_rate_cache=False`), the
   rates are recomputed from scratch by numerical integration (~1.8 s).
 - `save_nTOp` and `save_nTOp_thermal` (both default **`True`**) write the
-  (re)computed rates back to `rates/weak/` with a fresh fingerprint header, so
+  (re)computed rates back to `data/weak/` with a fresh fingerprint header, so
   future runs with the same configuration load the cache. The hash is part of
   the filename, so different configurations coexist without overwriting each
-  other — set either flag to `False` only to avoid littering `rates/weak/`
+  other — set either flag to `False` only to avoid littering `data/weak/`
   during throwaway experiments.
 
 Recomputing the thermal correction (`thermal_corrections=True`) requires a
@@ -283,9 +279,9 @@ PRIMAT({"sampling_nTOp_per_decade": 160}).solve()
 
 ### Custom NEVO tables
 
-The neutrino-decoupling history is read from `rates/NEVO/`. Three optional
+The neutrino-decoupling history is read from `data/NEVO/`. Three optional
 parameters point at alternative tables instead (filenames resolved relative
-to `rates/NEVO/`, or absolute paths): `nevo_file` (6/7-column thermo table),
+to `data/NEVO/`, or absolute paths): `nevo_file` (6/7-column thermo table),
 `nevo_spectral_file` (spectral-distortion table, used only when
 `spectral_distortions=True` and `analytic_distortions=False`), and
 `nevo_grid_file` (its y-grid, length must match `nevo_spectral_file`'s
@@ -299,7 +295,7 @@ Each nuclear reaction rate has a `p_<name>` parameter (e.g. `p_npTOdg`) for unce
 ### Rates overlay (custom networks/tables without editing the install)
 
 `user_rates_dir` points at a directory with the same `nuclear/networks/`
-and/or `nuclear/tables/<name>/` layout as the shipped `rates/` tree; any
+and/or `nuclear/tables/<name>/` layout as the shipped `data/` tree; any
 network file or per-reaction table found there is used instead of the
 shipped one, while everything not overridden still falls back to the
 shipped default (an additive overlay, not a takeover). `rates_dir` instead
@@ -351,16 +347,17 @@ primat/                    Core Python package (import as `from primat import PR
   evolution.py            Unified time-evolution TSV schema: EvolutionResult, load_evolution()
   cli.py                  `primat` console-script entry point (--backend {auto,c,python})
   gui/                    `primat-gui` Streamlit app (optional `gui` extra)
-  rates/                  Shipped default rates tree (overlaid by rates_dir/user_rates_dir)
+  data/                    Shipped default data tree (overlaid by rates_dir/user_rates_dir)
   _primat_c/               Compiled C-extension bridge wrapping primat-c
 
-rates/                     (inside primat/rates/, see above)
+data/                      (inside primat/data/, see above)
   plasma/                QED corrections pressure tables
   nuclear/
     tables/              Per-reaction rate tables, one folder per reaction:
                            tables/<name>/<name>.txt (+ sibling alternate tables)
     networks/            Network list files: small_parthenope.txt, large.txt, …
-    data/                nuclides.csv, reactions_large.csv, detailed_balance.csv
+  csv/                   nuclides.csv, reactions_large.csv, detailed_balance.csv
+                           (the reaction catalog; not overlay-aware, see config.py)
   weak/                  Pre-tabulated n↔p forward/backward rates
   NEVO/                  Non-instantaneous decoupling table
 

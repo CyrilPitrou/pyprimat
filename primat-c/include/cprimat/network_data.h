@@ -4,22 +4,23 @@
  * apply_variations, and UpdateNuclearRates, on top of network_builder.h's
  * generic stoichiometry-driven RHS/Jacobian.
  *
- * Deliberately not ported (CPLAN.md S0/S4: gui/ and plotting.py are out of
- * scope, and these are GUI-only call paths): the standalone
- * reaction_stoichiometry/_tokenise tokeniser and to_filename/
- * reaction_category/group_reactions_by_category (the GUI's "Customise
- * Reactions" name<->stoichiometry helpers); _inject_custom_reactions and
- * the custom_tables/custom_network override machinery (the GUI's per-
- * reaction rate-table upload); and the sources/files provenance lists on
- * NetworkDefinition (display-only, feeds describe_reactions()/the GUI
- * table). None of these affect a reaction already present in
- * reactions_large.csv/detailed_balance.csv -- every reaction in both
- * small.txt and large.txt is (verified: grep), so cpr_load_network below
- * resolves every shipped network's stoichiometry directly from
- * reactions_large.csv's "+"-joined reactant/product fields (the
- * Python _side_counts path), without needing the tokeniser at all.
- * compute_detailed_balance_coefficients (needed only when
- * cfg->decay_reverse_rates is set, default False) is still ported in full.
+ * custom_network (the GUI's "Customise Reactions" per-reaction rate-table
+ * override -- removed/replaced/added) *is* ported: see CPRCustomNetwork
+ * below and cpr_load_network's `custom` parameter. A minimal port of
+ * Python's reaction_stoichiometry tokeniser (parse_reaction_name in
+ * network_data.c) derives an "added" reaction's stoichiometry from its
+ * "a_b__c_d" name; it only supports the "spaced" syntax (the one
+ * _RATE_SYNTAX_ and every GUI-generated name use), not the legacy
+ * "compact" ("abTOcd") syntax.
+ *
+ * Still deliberately not ported (CPLAN.md S0/S4: gui/ and plotting.py are
+ * out of scope, and these are GUI-only call paths): to_filename/
+ * reaction_category/group_reactions_by_category (display/lookup helpers
+ * with no effect on a run's numerics), and the sources/files provenance
+ * lists on NetworkDefinition (display-only, feeds describe_reactions()/the
+ * GUI table). compute_detailed_balance_coefficients is ported in full (used
+ * both for cfg->decay_reverse_rates and for an "added" reaction's reverse
+ * rate, mirroring Python's _inject_custom_reactions).
  */
 #ifndef CPRIMAT_NETWORK_DATA_H
 #define CPRIMAT_NETWORK_DATA_H
@@ -118,6 +119,34 @@ void cpr_reaction_table_free(CPRReactionTable *t);
  * ========================================================================
  */
 
+/* One GUI-uploaded/edited rate table (port of Python's custom_tables dict
+ * value: a verbatim 2/3-column "T9 rate [err]" text, already parsed into
+ * arrays here). `name` is looked up against the network's selected
+ * reaction names: if already present in reactions_large.csv this overrides
+ * that reaction's forward rate ("replaced"); otherwise the reaction is
+ * brand-new ("added") and its stoichiometry is derived from `name` itself
+ * (see parse_reaction_name in network_data.c). `err` may be all-zero when
+ * the uploaded table had no third column (mirrors Python's
+ * np.zeros_like(rate) fallback). */
+typedef struct {
+    char name[64];
+    double *T9, *rate, *err;
+    size_t n;
+} CPRCustomTable;
+
+/* The GUI "Customise Reactions" override (port of the custom_network dict
+ * passed to UpdateNuclearRates.__init__): `removed` names are dropped from
+ * the selected network outright; `tables` (replaced + added, merged exactly
+ * as Python merges custom_network["replaced"]/["added"] into one
+ * custom_tables dict) supplies forward-rate overrides/new reactions. The
+ * GUI's `"filenames"` key is display-only and has no C-side counterpart. */
+typedef struct {
+    char (*removed)[64];
+    size_t n_removed;
+    CPRCustomTable *tables;
+    size_t n_tables;
+} CPRCustomNetwork;
+
 /* Reverse-rate coefficients (alpha, beta, gamma) of backward(T9) =
  * alpha * T9^beta * exp(gamma/T9) * forward(T9), derived from nuclide
  * masses/spins/mass-excesses alone (port of compute_detailed_balance_coefficients,
@@ -188,13 +217,18 @@ typedef struct {
  * files here, unlike Python's hardcoded ORDER_SMALL, since CPRIMAT's
  * rates/ tree already ships small.txt with identical content).
  *
- * custom_tables/custom_network (GUI rate-table overrides) are not
- * supported -- see this header's top-of-file docstring.
+ * `custom` (may be NULL) applies the GUI's "Customise Reactions" override
+ * (see CPRCustomNetwork above): removed names are dropped from the
+ * resolved bare-name list before the amax/era filters run, and added/
+ * replaced names get their forward rate (and, for an added reaction, its
+ * stoichiometry/reverse-rate coefficients) from `custom->tables` instead of
+ * the shipped catalog/tables tree.
  *
  * Returns 0 on success (caller must cpr_network_def_free), nonzero with
  * *errmsg set (caller frees) otherwise. */
 int cpr_load_network(const CPRConfig *cfg, const char *era,
                       const char * const *reaction_names, size_t n_reaction_names,
+                      const CPRCustomNetwork *custom,
                       CPRNetworkDef *out, char **errmsg);
 void cpr_network_def_free(CPRNetworkDef *net);
 
@@ -238,7 +272,8 @@ typedef struct {
     CPRCompiledNetwork mt_compiled, lt_compiled;
 } CPRNuclearRates;
 
-int cpr_nuclear_rates_init(CPRNuclearRates *nr, const CPRConfig *cfg, char **errmsg);
+int cpr_nuclear_rates_init(CPRNuclearRates *nr, const CPRConfig *cfg,
+                             const CPRCustomNetwork *custom, char **errmsg);
 void cpr_nuclear_rates_free(CPRNuclearRates *nr);
 void cpr_nuclear_rates_apply_variations(CPRNuclearRates *nr, const CPRConfig *cfg);
 

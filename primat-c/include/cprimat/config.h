@@ -222,7 +222,7 @@ typedef struct {
 
     CPRNuclideTable nuclides;
 
-    char data_dir[4096]; /* directory containing rates/ (mirrors PyPRConfig.data_dir) */
+    char data_dir[4096]; /* the data folder itself (NEVO/, weak/, plasma/, nuclear/, csv/) */
 } CPRConfig;
 
 /* True iff cfg->network == "small" / "large" (mirrors is_small/is_large). */
@@ -238,18 +238,18 @@ double cpr_config_T_end(const CPRConfig *cfg);         /* [K] */
 
 /* Fills `cfg` with every DEFAULT_PARAMS value (string fields strdup'd so
  * the whole struct can later be freed uniformly by cpr_config_free).
- * `rates_dir` is the directory containing rates/ (passed in rather than
- * derived from argv[0], since CPRIMAT supports --rates-dir / the
- * CPRIMAT_RATES_DIR env var ahead of the executable-relative default --
- * see cli.c). Loads nuclides.csv from `rates_dir`. Returns 0 on success,
- * nonzero (with *errmsg set, caller frees) if nuclides.csv is missing or
- * malformed. */
-int cpr_config_init_defaults(CPRConfig *cfg, const char *rates_dir, char **errmsg);
+ * `data_dir` is the data folder itself (e.g. .../primat/data, containing
+ * NEVO/, weak/, plasma/, nuclear/, csv/) -- passed in rather than derived
+ * from argv[0], since CPRIMAT supports --data-dir / the CPRIMAT_DATA_DIR
+ * env var ahead of the executable-relative default -- see cli.c). Loads
+ * nuclides.csv from `data_dir`/csv/. Returns 0 on success, nonzero (with
+ * *errmsg set, caller frees) if nuclides.csv is missing or malformed. */
+int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg);
 
 /* Resolves `relpath` (e.g. "nuclear/networks/large.txt" or
  * "nuclear/tables/<rxn>/<file>.txt") through the same overlay chain as
  * PyPRConfig.resolve_rates_path: cfg->rates_dir (full takeover) ->
- * cfg->user_rates_dir (additive overlay) -> cfg->data_dir + "/rates"
+ * cfg->user_rates_dir (additive overlay) -> cfg->data_dir + "/" + relpath
  * (shipped default, tried last so it is never unreachable). The first
  * candidate that exists on disk wins; if none exist, the shipped-default
  * path is written anyway (so callers get a "missing file" error pointing at

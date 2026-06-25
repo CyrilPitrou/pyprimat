@@ -34,8 +34,9 @@ int main(void)
 
     char *err = NULL;
     CPRMCResult res;
-    int rc = cpr_mc_uncertainty(60, quantities, 2, "../primat",
-                                 base_params, 1, /*seed=*/12345, /*n_jobs=*/4,
+    int rc = cpr_mc_uncertainty(60, quantities, 2, "../primat/data",
+                                 base_params, 1, /*seed=*/12345, /*n_jobs=*/4, NULL,
+                                 NULL, NULL, 0,
                                  &res, &err);
     if (rc) {
         printf("FAIL: cpr_mc_uncertainty returned an error: %s\n", err ? err : "(null)");
@@ -62,8 +63,9 @@ int main(void)
      * statistically. */
     CPRMCResult res_serial;
     char *err2 = NULL;
-    int rc2 = cpr_mc_uncertainty(60, quantities, 2, "../primat",
-                                  base_params, 1, /*seed=*/12345, /*n_jobs=*/1,
+    int rc2 = cpr_mc_uncertainty(60, quantities, 2, "../primat/data",
+                                  base_params, 1, /*seed=*/12345, /*n_jobs=*/1, NULL,
+                                  NULL, NULL, 0,
                                   &res_serial, &err2);
     CHECK(rc2 == 0, "serial (n_jobs=1) re-run also succeeds");
     if (rc2 == 0) {
@@ -76,6 +78,70 @@ int main(void)
         cpr_mc_result_free(&res_serial);
     } else {
         free(err2);
+    }
+
+    /* prev reuse: extending a 30-sample run to 60 must reproduce the
+     * 60-sample from-scratch run exactly (same seeds, same RNG draws),
+     * and truncating back down to 30 must reproduce the original 30-sample
+     * run exactly -- mirrors tests/test_mc.py's
+     * test_extend_matches_full_run/test_extend_truncates_when_fewer_requested. */
+    CPRMCResult res_part;
+    char *err3 = NULL;
+    int rc3 = cpr_mc_uncertainty(30, quantities, 2, "../primat/data",
+                                  base_params, 1, /*seed=*/12345, /*n_jobs=*/4, NULL,
+                                  NULL, NULL, 0,
+                                  &res_part, &err3);
+    CHECK(rc3 == 0, "30-sample run for prev-reuse setup succeeds");
+    if (rc3 == 0) {
+        const double *prev_values[2] = { res_part.items[0].values, res_part.items[1].values };
+        double prev_centrals[2] = { res_part.items[0].central, res_part.items[1].central };
+
+        CPRMCResult res_ext;
+        char *err4 = NULL;
+        int rc4 = cpr_mc_uncertainty(60, quantities, 2, "../primat/data",
+                                      base_params, 1, /*seed=*/12345, /*n_jobs=*/4, NULL,
+                                      prev_centrals, prev_values, 30,
+                                      &res_ext, &err4);
+        CHECK(rc4 == 0, "60-sample extension of 30-sample prev succeeds");
+        if (rc4 == 0) {
+            for (size_t q = 0; q < res.n; q++) {
+                char msg[128];
+                snprintf(msg, sizeof(msg), "%s: extended-from-prev matches full from-scratch run sample-for-sample",
+                         res.items[q].name);
+                int ok = 1;
+                for (int i = 0; i < 60; i++)
+                    if (res_ext.items[q].values[i] != res.items[q].values[i]) ok = 0;
+                CHECK(ok, msg);
+            }
+            cpr_mc_result_free(&res_ext);
+        } else {
+            free(err4);
+        }
+
+        CPRMCResult res_trunc;
+        char *err5 = NULL;
+        int rc5 = cpr_mc_uncertainty(20, quantities, 2, "../primat/data",
+                                      base_params, 1, /*seed=*/12345, /*n_jobs=*/4, NULL,
+                                      prev_centrals, prev_values, 30,
+                                      &res_trunc, &err5);
+        CHECK(rc5 == 0, "20-sample truncation of 30-sample prev succeeds");
+        if (rc5 == 0) {
+            for (size_t q = 0; q < res.n; q++) {
+                char msg[128];
+                snprintf(msg, sizeof(msg), "%s: truncated-from-prev matches the prev prefix", res.items[q].name);
+                int ok = 1;
+                for (int i = 0; i < 20; i++)
+                    if (res_trunc.items[q].values[i] != res_part.items[q].values[i]) ok = 0;
+                CHECK(ok, msg);
+            }
+            cpr_mc_result_free(&res_trunc);
+        } else {
+            free(err5);
+        }
+
+        cpr_mc_result_free(&res_part);
+    } else {
+        free(err3);
     }
 
     cpr_mc_result_free(&res);

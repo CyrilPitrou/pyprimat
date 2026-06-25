@@ -10,6 +10,8 @@ readme = "README.md"
 license = { file = "LICENCE" }
 authors = [
     { name = "Cyril Pitrou", email = "pitrou@iap.fr" },
+]
+maintainers = [
     { name = "Julien Froustey" },
 ]
 requires-python = ">=3.10"
@@ -47,4 +49,4 @@ gui = [
 packages = ["primat", "primat.gui", "primat.weak_rates"]
 
 [tool.setuptools.package-data]
-"primat" = ["rates/**/*", "gui/.streamlit/*"]
+"primat" = ["data/**/*", "gui/.streamlit/*"]

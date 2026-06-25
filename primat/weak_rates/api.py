@@ -158,7 +158,7 @@ def InterpolateWeakRates(cfg):
         [frwrd, bkwrd] : two scipy interp1d objects (extrapolating), each mapping
                          T in Kelvin → rate in units of 1/tau_n.
     """
-    nd      = os.path.join(cfg.data_dir, "rates", "weak", "")
+    nd      = os.path.join(cfg.data_dir, "data", "weak", "")
     fp_hash = fingerprint_hash(_weak_rate_fingerprint(cfg))
     path    = nd + "nTOp_" + fp_hash + ".txt"
     tab     = np.loadtxt(path)
@@ -225,7 +225,7 @@ def RecomputeWeakRates(Tvec, cfg, dFDneu_func=None, dFDneu_moments=None):
     """
     forced_recompute = cfg.spectral_distortions and cfg.analytic_distortions
 
-    nd       = os.path.join(cfg.data_dir, "rates", "weak", "")
+    nd       = os.path.join(cfg.data_dir, "data", "weak", "")
     fp       = _weak_rate_fingerprint(cfg)
     fp_hash  = fingerprint_hash(fp)
     path     = nd + "nTOp_" + fp_hash + ".txt"

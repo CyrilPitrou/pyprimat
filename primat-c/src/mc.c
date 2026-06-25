@@ -26,6 +26,7 @@ typedef struct {
     size_t n_base_params;
     int seed_lo, seed_hi; /* this worker's seed range [lo, hi) */
     int base_seed;         /* out->items[q]->values index = seed - base_seed */
+    const CPRCustomNetwork *custom; /* GUI override, shared read-only across workers */
     const char * const *quantities;
     size_t n_quantities;
     CPRMCResult *out;       /* shared; each worker only writes its own index range */
@@ -52,7 +53,7 @@ static int worker_setup(const CPRMCWorker *w, CPRConfig *cfg, CPRPlasma *pl,
     if (cpr_config_validate(cfg, errmsg)) { cpr_config_free(cfg); return 1; }
 
     if (cpr_plasma_init(pl, cfg, errmsg)) { cpr_config_free(cfg); return 1; }
-    if (cpr_nuclear_rates_init(nr, cfg, errmsg)) {
+    if (cpr_nuclear_rates_init(nr, cfg, w->custom, errmsg)) {
         cpr_plasma_free(pl); cpr_config_free(cfg);
         return 1;
     }
@@ -156,72 +157,111 @@ static void *worker_main(void *arg)
 int cpr_mc_uncertainty(int num_mc, const char * const *quantities, size_t n_quantities,
                         const char *rates_dir,
                         const CPRParamSet *base_params, size_t n_base_params,
-                        int seed, int n_jobs,
+                        int seed, int n_jobs, const CPRCustomNetwork *custom,
+                        const double *prev_centrals, const double * const *prev_values,
+                        size_t n_prev,
                         CPRMCResult *out, char **errmsg)
 {
     memset(out, 0, sizeof(*out));
 
-    /* Central value (all p_<rxn>=0, tau_n=cfg.tau_n): one ordinary
-     * cprimat_run, exactly mirroring mc_uncertainty's `central_inst`. */
-    CPRConfig central_cfg;
-    if (cpr_config_init_defaults(&central_cfg, rates_dir, errmsg)) return 1;
-    for (size_t i = 0; i < n_base_params; i++) {
-        char *set_err = NULL;
-        if (cpr_config_set_by_name(&central_cfg, base_params[i].key, base_params[i].value, &set_err)) {
-            *errmsg = set_err;
-            cpr_config_free(&central_cfg);
-            return 1;
-        }
-        free(set_err);
-    }
-    if (cpr_config_validate(&central_cfg, errmsg)) { cpr_config_free(&central_cfg); return 1; }
-    CPRResults central_results;
-    if (cprimat_run(&central_cfg, &central_results, errmsg)) {
-        cpr_config_free(&central_cfg);
-        return 1;
-    }
+    /* Reuse guard: n_prev_eff samples (capped at num_mc, mirroring
+     * mc_uncertainty's `min(len(prev), num_mc)`) are taken verbatim from
+     * prev_values/prev_centrals instead of recomputing the central value or
+     * solving those samples. */
+    size_t n_prev_eff = (prev_values != NULL && n_prev > 0 && num_mc > 0)
+        ? (n_prev < (size_t)num_mc ? n_prev : (size_t)num_mc)
+        : 0;
 
     out->n = n_quantities;
     out->items = calloc(n_quantities, sizeof(CPRMCQuantity));
     for (size_t q = 0; q < n_quantities; q++) {
         snprintf(out->items[q].name, sizeof(out->items[q].name), "%s", quantities[q]);
-        int found;
-        out->items[q].central = cpr_results_get_quantity(&central_results, quantities[q], &found);
-        if (!found) {
-            *errmsg = strdup("cpr_mc_uncertainty: unknown quantity name");
-            cprimat_results_free(&central_results);
+        out->items[q].values = malloc((size_t)num_mc * sizeof(double));
+    }
+
+    if (n_prev_eff > 0) {
+        /* Central values and the first n_prev_eff samples come straight
+         * from the caller-supplied prev arrays -- no cprimat_run needed. */
+        for (size_t q = 0; q < n_quantities; q++) {
+            out->items[q].central = prev_centrals[q];
+            memcpy(out->items[q].values, prev_values[q], n_prev_eff * sizeof(double));
+        }
+    } else {
+        /* Central value (all p_<rxn>=0, tau_n=cfg.tau_n): one ordinary
+         * cprimat_run, exactly mirroring mc_uncertainty's `central_inst`. */
+        CPRConfig central_cfg;
+        if (cpr_config_init_defaults(&central_cfg, rates_dir, errmsg)) {
+            cpr_mc_result_free(out);
+            return 1;
+        }
+        for (size_t i = 0; i < n_base_params; i++) {
+            char *set_err = NULL;
+            if (cpr_config_set_by_name(&central_cfg, base_params[i].key, base_params[i].value, &set_err)) {
+                *errmsg = set_err;
+                cpr_config_free(&central_cfg);
+                cpr_mc_result_free(out);
+                return 1;
+            }
+            free(set_err);
+        }
+        if (cpr_config_validate(&central_cfg, errmsg)) {
             cpr_config_free(&central_cfg);
             cpr_mc_result_free(out);
             return 1;
         }
-        out->items[q].values = malloc((size_t)num_mc * sizeof(double));
+        CPRResults central_results;
+        if (cprimat_run(&central_cfg, custom, &central_results, errmsg)) {
+            cpr_config_free(&central_cfg);
+            cpr_mc_result_free(out);
+            return 1;
+        }
+        for (size_t q = 0; q < n_quantities; q++) {
+            int found;
+            out->items[q].central = cpr_results_get_quantity(&central_results, quantities[q], &found);
+            if (!found) {
+                *errmsg = strdup("cpr_mc_uncertainty: unknown quantity name");
+                cprimat_results_free(&central_results);
+                cpr_config_free(&central_cfg);
+                cpr_mc_result_free(out);
+                return 1;
+            }
+        }
+        cprimat_results_free(&central_results);
+        cpr_config_free(&central_cfg);
     }
-    cprimat_results_free(&central_results);
-    cpr_config_free(&central_cfg);
 
-    if (num_mc <= 0) return 0;
+    if ((size_t)num_mc <= n_prev_eff) return 0;
+
+    /* Only the samples beyond the reused prefix need solving: seeds
+     * [seed+n_prev_eff, seed+num_mc), written into out->items[q].values at
+     * the same [n_prev_eff, num_mc) index range (mirrors
+     * mc_uncertainty's `new_seeds = range(n_prev, num_mc)`). */
+    int solve_seed_lo = seed + (int)n_prev_eff;
+    int n_to_solve = num_mc - (int)n_prev_eff;
 
     if (n_jobs <= 0) {
         long ncpu = sysconf(_SC_NPROCESSORS_ONLN);
         n_jobs = (ncpu > 0) ? (int)ncpu : 1;
     }
-    if (n_jobs > num_mc) n_jobs = num_mc;
+    if (n_jobs > n_to_solve) n_jobs = n_to_solve;
 
     pthread_t *threads = malloc((size_t)n_jobs * sizeof(pthread_t));
     CPRMCWorker *workers = calloc((size_t)n_jobs, sizeof(CPRMCWorker));
 
-    /* Split [seed, seed+num_mc) into n_jobs contiguous chunks (mirrors
-     * _mc_collect_samples' np.array_split): chunk sizes differ by at most
-     * 1, and since each sample is fully determined by its own seed (not
-     * by which chunk it landed in), the result is identical regardless of
-     * n_jobs -- only the wall-clock parallelism changes. */
-    int base = num_mc / n_jobs, rem = num_mc % n_jobs;
-    int cursor = seed;
+    /* Split [solve_seed_lo, solve_seed_lo+n_to_solve) into n_jobs contiguous
+     * chunks (mirrors _mc_collect_samples' np.array_split): chunk sizes
+     * differ by at most 1, and since each sample is fully determined by its
+     * own seed (not by which chunk it landed in), the result is identical
+     * regardless of n_jobs -- only the wall-clock parallelism changes.
+     * `base_seed` stays `seed` (not `solve_seed_lo`) so run_one_sample's
+     * `idx = seed - base_seed` lands at the correct absolute sample index. */
+    int base = n_to_solve / n_jobs, rem = n_to_solve % n_jobs;
+    int cursor = solve_seed_lo;
     for (int j = 0; j < n_jobs; j++) {
         int chunk = base + (j < rem ? 1 : 0);
         workers[j] = (CPRMCWorker){
             .rates_dir = rates_dir, .base_params = base_params, .n_base_params = n_base_params,
-            .seed_lo = cursor, .seed_hi = cursor + chunk, .base_seed = seed,
+            .seed_lo = cursor, .seed_hi = cursor + chunk, .base_seed = seed, .custom = custom,
             .quantities = quantities, .n_quantities = n_quantities, .out = out, .errmsg = NULL,
         };
         cursor += chunk;
