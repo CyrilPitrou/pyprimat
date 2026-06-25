@@ -80,11 +80,11 @@ class optional_build_ext(build_ext):
                   f"falling back to the pure-Python backend.")
 
 
-setup(
-    ext_modules=ext_modules,
-)
-#           
 #setup(
 #    ext_modules=ext_modules,
-#    cmdclass={"build_ext": optional_build_ext},
 #)
+           
+setup(
+    ext_modules=ext_modules,
+    cmdclass={"build_ext": optional_build_ext},
+)
