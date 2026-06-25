@@ -148,8 +148,8 @@ typedef struct {
     int tau_n_normalization;
     double tau_n;
     double std_tau_n;
-    int vegas_n_eval;     /* unused: C side uses deterministic quadrature only (S3.3/S7b) */
-    int vegas_n_itn;      /* unused, ditto */
+    int vegas_n_eval;     /* evaluations per VEGAS iteration, see vegas.h */
+    int vegas_n_itn;      /* VEGAS warmup/measure iterations, see vegas.h */
     double epsrel_thermal;
 
     /* ---- output options ---- */

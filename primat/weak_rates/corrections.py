@@ -1176,9 +1176,12 @@ def _L_CCRTh_interpolants(ctx):
 
         if cfg.save_nTOp_thermal:
             os.makedirs(_td, exist_ok=True)
-            write_cache_with_fingerprint(_th_path, _th_fp,
-                                          [_T_th, L_nTh_data, L_pTh_data],
-                                          col_header="T[K] L_nTOpCCRTh L_pTOnCCRTh")
+            _algo = "vegas" if _have_vegas else "scipy.dblquad"
+            write_cache_with_fingerprint(
+                _th_path, _th_fp, [_T_th, L_nTh_data, L_pTh_data],
+                col_header="T[K] L_nTOpCCRTh L_pTOnCCRTh",
+                provenance=f"backend=python algorithm={_algo} "
+                           f"vegas_n_eval={cfg.vegas_n_eval} vegas_n_itn={cfg.vegas_n_itn}")
 
         if cfg.verbose:
             print("[weak-py] n <--> p thermal corrections computed")

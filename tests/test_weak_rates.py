@@ -283,10 +283,8 @@ def test_nevo_file_with_custom_copy_reproduces_default(tmp_path):
     from primat.main import PRIMAT
 
     cfg_default = PRIMATConfig({"network": "small"})
-    src = os.path.join(cfg_default.data_dir, "rates", "NEVO",
-                        "NEVOPRIMAT_col_1_7.csv")
-    dst = os.path.join(cfg_default.data_dir, "rates", "NEVO",
-                        "NEVOPRIMAT_col_1_7_test_copy.csv")
+    src = cfg_default.resolve_rates_path("NEVO", "NEVOPRIMAT_col_1_7.csv")
+    dst = cfg_default.resolve_rates_path("NEVO", "NEVOPRIMAT_col_1_7_test_copy.csv")
     shutil.copy(src, dst)
     try:
         # weak_rate_cache=False on *both* runs: the shipped rates/weak/*.txt
@@ -361,7 +359,7 @@ def test_nevo_file_prefix_reproduces_default(tmp_path):
     from primat.main import PRIMAT
 
     cfg_default = PRIMATConfig({"network": "small"})
-    nevo_dir = os.path.join(cfg_default.data_dir, "rates", "NEVO")
+    nevo_dir = cfg_default.resolve_rates_path("NEVO")
     pairs = [
         ("NEVOPRIMAT_col_1_7.csv", "MYPREFIX_col_1_7.csv"),
         ("NEVOPRIMAT.csv",         "MYPREFIX.csv"),

@@ -84,7 +84,7 @@ int main(void)
     double col1[3] = {0.1, 0.2, 0.3};
     double *cols[2] = {col0, col1};
     const char *out_path = "/tmp/cprimat_test_cache.txt";
-    if (cpr_cache_write(out_path, wfields, nw, "T[K] rate", cols, 2, 3)) {
+    if (cpr_cache_write(out_path, wfields, nw, "T[K] rate", cols, 2, 3, NULL)) {
         printf("FAIL cpr_cache_write\n");
         failures++;
     } else {

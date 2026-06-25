@@ -6,12 +6,14 @@
  * file matches the current configuration's fingerprint, or loaded directly
  * from rates/weak/nTOp_<hash>.txt otherwise (cache.c already ports the
  * fingerprint/hash/cache-file machinery, see cache.h). The finite-
- * temperature radiative correction (CCRTh, Brown & Sawyer 2001) is S7b
- * (Phase 3b, not yet ported): cpr_weak_rates_init only ever *loads* its
- * cache file (rates/weak/nTOp_thermal_<hash>.txt) when
- * cfg->thermal_corrections is set and a matching file exists; it does NOT
- * recompute it from scratch (that needs a deterministic 2D adaptive
- * quadrature replacing Python's vegas/dblquad, left for Phase 3b).
+ * temperature radiative correction (CCRTh, Brown & Sawyer 2001) is S7b:
+ * cpr_weak_rates_init *loads* its cache file
+ * (rates/weak/nTOp_thermal_<hash>.txt) when cfg->thermal_corrections is set
+ * and a matching file exists, and otherwise recomputes it from scratch via
+ * the same algorithm Python's `corrections.py` uses -- VEGAS adaptive
+ * Monte Carlo (vegas.h) for the three 2D sub-integrals, deterministic 1D
+ * quadrature for the one 1D sub-integral -- see weak_rates.c's CCRTh
+ * section.
  *
  * The SD-FM correction terms (_L_SD_FMCCR/_L_SD_FMNoCCR in the Python
  * source) are analytic-distortion-mode only (cfg->analytic_distortions)

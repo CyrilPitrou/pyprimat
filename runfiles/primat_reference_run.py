@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-PyPRIMAT_reference_run.py
-=========================
+primat_reference_run.py
+=======================
 High-precision reference run for updating validation benchmarks in CLAUDE.md.
 
 This script is NOT intended for routine use.  It is designed to produce the
@@ -27,16 +27,16 @@ Key choices versus the standard run:
 
 Usage::
 
-    python runfiles/PyPRIMAT_reference_run.py
+    python runfiles/primat_reference_run.py
 """
 
 import sys
 import os
 import time
 
-_pyprimat_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-if _pyprimat_path not in sys.path:
-    sys.path.insert(0, _pyprimat_path)
+_primat_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if _primat_path not in sys.path:
+    sys.path.insert(0, _primat_path)
 
 from primat import backend
 

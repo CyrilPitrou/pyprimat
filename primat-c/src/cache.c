@@ -356,7 +356,7 @@ char *cpr_cache_read_fingerprint_hash(const char *path)
 
 int cpr_cache_write(const char *path, const CPRFPField *fields, size_t n_fields,
                      const char *col_header, double **columns, size_t n_cols,
-                     size_t n_rows)
+                     size_t n_rows, const char *provenance)
 {
     char *json = cpr_fingerprint_json(fields, n_fields);
     char *hash = cpr_sha256_hex16(json);
@@ -371,6 +371,8 @@ int cpr_cache_write(const char *path, const CPRFPField *fields, size_t n_fields,
         fprintf(f, "# %s\n", col_header);
     fprintf(f, "# fingerprint_hash: %s\n", hash);
     fprintf(f, "# fingerprint: %s\n", json);
+    if (provenance && *provenance)
+        fprintf(f, "# provenance: %s\n", provenance);
     for (size_t r = 0; r < n_rows; r++) {
         for (size_t c = 0; c < n_cols; c++) {
             if (c > 0) fputc(' ', f);

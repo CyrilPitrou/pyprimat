@@ -47,17 +47,36 @@ deletions recorded)::
 
     git add -f rates/weak/nTOp_*.txt rates/weak/nTOp_thermal_*.txt
     git add -u rates/weak/                       # record pruned deletions
+
+Cross-backend agreement check (thermal cache only): for each combo, after
+the Python (vegas) thermal table is written and shipped, this script also
+recomputes the same table via the C backend (force_backend="c") into a
+scratch copy, diffs the two, prints a summary, and discards the C copy --
+the file actually shipped is always the Python one written above (see
+write_cache_with_fingerprint's `provenance` field, which stamps which
+backend produced the file on disk). This is purely an informational
+regression check: both backends use independent Monte-Carlo (vegas)
+estimates of the same integral with their own noise floor, so some
+disagreement -- especially near a zero-crossing of L_nTOpCCRTh/L_pTOnCCRTh,
+where any noise is amplified in *relative* terms -- is expected and not by
+itself a bug; see weak_rates.c's CCRTh section and
+tests/unit/test_weak_rates_thermal.c for the tolerances already accepted
+elsewhere for this term. Skipped automatically if the C extension isn't
+built (``primat.backend.HAS_C_BACKEND`` False).
 """
 import sys
 import os
 import subprocess
 import time
 
+import numpy as np
+
 _primat_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if _primat_path not in sys.path:
     sys.path.insert(0, _primat_path)
 
 from primat import PRIMAT
+from primat.backend import run_bbn, HAS_C_BACKEND
 from primat.cache_utils import fingerprint_hash, weak_cache_dir
 from primat.weak_rates.cache import (_weak_rate_fingerprint,
                                        _thermal_fingerprint)
@@ -123,6 +142,56 @@ def _tracked_cache_files(cache_dir):
     return tracked
 
 
+def _thermal_cache_path(extra):
+    """Path to the thermal-cache file the given combo's `extra` flags map to."""
+    cfg = PRIMAT(params=dict(extra, verbose=False, weak_rate_cache=False,
+                           save_nTOp=False, save_nTOp_thermal=False)).cfg
+    return os.path.join(weak_cache_dir(cfg),
+                         "nTOp_thermal_" + fingerprint_hash(_thermal_fingerprint(cfg)) + ".txt")
+
+
+def _compare_thermal_with_c(extra, th_path):
+    """Recomputes `th_path` via the C backend into a scratch copy, diffs it
+    against the just-shipped Python (vegas) table, prints a summary, and
+    restores the Python file -- see this file's module docstring. No-op
+    (prints a note) if the C extension isn't built.
+    """
+    if not HAS_C_BACKEND:
+        print("    [cross-backend check skipped: primat._primat_c not built]")
+        return
+
+    with open(th_path, "rb") as f:
+        py_bytes = f.read()
+    py_table = np.loadtxt(th_path)
+
+    try:
+        os.remove(th_path)  # force a cache miss so the C backend recomputes from scratch
+        t0 = time.time()
+        run_bbn(params=dict(extra, verbose=False, save_nTOp_thermal=True),
+                force_backend="c")
+        c_dt = time.time() - t0
+        c_table = np.loadtxt(th_path)
+    finally:
+        # Always restore the shipped (Python-generated) file, whether or not
+        # the C recompute above succeeded.
+        with open(th_path, "wb") as f:
+            f.write(py_bytes)
+
+    if py_table.shape != c_table.shape:
+        print(f"    [cross-backend check: grid shape mismatch "
+              f"py={py_table.shape} c={c_table.shape}, skipping diff]")
+        return
+
+    # Absolute floor avoids relative error blowing up near a zero-crossing
+    # of L_nTOpCCRTh/L_pTOnCCRTh (see this file's module docstring) -- 1e-8
+    # is two decades below the smallest physically-meaningful value checked
+    # in test_weak_rates_thermal.c.
+    for col, name in ((1, "L_nTOpCCRTh"), (2, "L_pTOnCCRTh")):
+        rel = np.abs(py_table[:, col] - c_table[:, col]) / (np.abs(py_table[:, col]) + 1e-8)
+        print(f"    {name}: max rel diff (python vs c) = {rel.max():.3f}, "
+              f"median = {np.median(rel):.4f}  (C recompute took {c_dt:.1f} s)")
+
+
 if __name__ == "__main__":
     for label, extra in _COMBOS:
         print(f"--- {label} ---")
@@ -133,6 +202,9 @@ if __name__ == "__main__":
         PRIMAT(params=dict(extra, verbose=False, save_nTOp=True,
                           save_nTOp_thermal=True))
         print(f"    done in {time.time() - t0:.1f} s")
+
+        if extra.get("thermal_corrections", True):
+            _compare_thermal_with_c(extra, _thermal_cache_path(extra))
 
     # ---- prune git-tracked files that are no longer part of the shipped set --
     # (stale after a fingerprint change: their hash no longer matches any combo).

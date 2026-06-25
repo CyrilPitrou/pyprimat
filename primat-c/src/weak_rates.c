@@ -12,6 +12,7 @@
 #include "cprimat/table_io.h"
 #include "cprimat/spline.h"
 #include "cprimat/quad.h"
+#include "cprimat/vegas.h"
 #include "cprimat/log.h"
 
 #include <math.h>
@@ -722,17 +723,25 @@ static double nonthermal_rate_term(const RateCtx *ctx, double T_K, double sgnq,
  * Thermal radiative correction (CCRTh, Brown & Sawyer 2001), from scratch.
  *
  * Port of corrections._L_CCRTh_interpolants's compute-from-scratch branch.
- * Python uses vegas (Monte-Carlo importance sampling) when available, else
- * falls back to scipy.integrate.dblquad/quad (deterministic nested adaptive
- * quadrature) -- weak_rates.h's design note anticipated replacing both with
- * "a deterministic 2D adaptive quadrature"; this ports that dblquad/quad
- * fallback path exactly (same integrands, same rectangular domains), via
- * cpr_quad_adaptive nested inside itself for the 2D integrals. Every helper
- * below is scalar-at-a-time (the Python originals are numpy-vectorised over
- * a Monte-Carlo/quadrature batch; the formulas are otherwise identical
- * term-for-term, including the Fp/Fm asymmetry quirk in
- * IPENCCRDiffBremsstrahlung's res2 subtraction -- ported faithfully rather
- * than "fixed", since the goal is to reproduce Python's numbers).
+ * Python uses vegas (Monte-Carlo importance sampling) for its three 2D
+ * sub-integrals (TruePhoton, DiffBremsstrahlung, Thermal_2_3) and plain
+ * scipy.integrate.quad for the one 1D sub-integral (Thermal_1). This file
+ * mirrors that split: the 2D sub-integrals go through cpr_vegas_integrate
+ * (vegas.h, an in-tree port of the Lepage VEGAS algorithm), the 1D one
+ * stays on cpr_quad_adaptive via quad_adaptive_relative below. An earlier
+ * version of this file ported scipy's *fallback* dblquad/quad path
+ * (deterministic nested adaptive quadrature) for the 2D terms instead --
+ * correct, but 100x+ slower than vegas for a from-scratch thermal-table
+ * build (multi-minute in Python with vegas vs. tens of minutes or more
+ * with nested deterministic quadrature), so it was replaced; that
+ * deterministic 2D path is gone, but quad_adaptive_relative/_n and
+ * cpr_quad_adaptive remain in use for the 1D terms here and for the
+ * non-thermal Fn integrals above. Every helper below is scalar-at-a-time
+ * (the Python originals are numpy-vectorised over a Monte-Carlo/quadrature
+ * batch; the formulas are otherwise identical term-for-term, including the
+ * Fp/Fm asymmetry quirk in IPENCCRDiffBremsstrahlung's res2 subtraction --
+ * ported faithfully rather than "fixed", since the goal is to reproduce
+ * Python's numbers).
  * ------------------------------------------------------------------------ */
 
 /* Wrapper around cpr_quad_adaptive for the CCRTh sub-integrals below.
@@ -776,24 +785,19 @@ static double nonthermal_rate_term(const RateCtx *ctx, double T_K, double sgnq,
  * original per-leaf accuracy intact, at n_panels times the function-
  * evaluation cost of a single top-level call.
  *
- * That multiplier matters here because two call sites below
- * (th2d_E_integrand and c23_outer_integrand) are themselves the per-sample
- * integrand of an *outer* quad_adaptive_relative call: paneling both
- * levels multiplies the panel counts together (n_panels_outer *
- * n_panels_inner), which made an earlier across-the-board choice of 32
- * panels at every call site cost tens of thousands of leaf evaluations
- * per (T, sgnq) point -- correct, but turning a single from-scratch
- * thermal-table build into a multi-minute run. Only the *outer* integral
- * of each nested pair is where the false-convergence failure above was
- * actually diagnosed (a feature narrow compared to the full domain); the
- * corresponding *inner* integral at fixed outer-sample (k at fixed E for
- * th2d_E_integrand; e1me2 at fixed e1pe2 for c23_outer_integrand) is a
- * single smooth, non-cancelling peak that cpr_quad_adaptive's own
- * recursive refinement already resolves correctly on its own (no panels
- * needed there, n_panels=1 is just a plain adaptive call). The 1D drivers
- * (L_thermal_1, L_thermal_2d's outer E, L_thermal_2_3's outer e1pe2) keep
- * a modest n_panels=8 -- enough margin over the few-unit feature widths
- * diagnosed above without the unnecessary 32x cost. */
+ * The two integrands this was originally diagnosed against (IPENCCRT's
+ * E-direction, and Thermal_2_3's e1pe2-direction) are now integrated by
+ * cpr_vegas_integrate instead (see below), which sidesteps this failure
+ * mode differently: VEGAS samples the whole 2D rectangle from the start
+ * and adaptively concentrates more samples wherever the running f^2
+ * histogram says the integrand actually has support, rather than relying
+ * on a fixed a-priori panel count to not miss a feature -- so it is not
+ * vulnerable to a feature narrow enough to fall between two pre-set
+ * sample points the way single-pass quadrature is. What remains on
+ * quad_adaptive_relative[_n] below (the 1D L_thermal_1 driver, and the
+ * non-thermal Fn integrals above) is smooth, non-cancelling, and was never
+ * implicated in that failure mode; their modest n_panels=8 default is
+ * just a safety margin, not a fix for anything diagnosed there. */
 static double quad_adaptive_relative_n(CPRQuadFunc f, void *ctx, double a, double b,
                                          double epsrel, int max_depth, int n_panels)
 {
@@ -968,38 +972,47 @@ static double th_c2de1de2(const RateCtx *ctx, double e1, double e2, double x,
     return g_const.alphaem / (2.0 * M_PI) * chi_sum * term;
 }
 
-/* ---- Driver integrals (one nested-quadrature evaluation per (T,sgnq)). ---- */
+/* ---- Driver integrals (one quadrature/VEGAS evaluation per (T,sgnq)). ---- */
 
-typedef struct { const RateCtx *ctx; double E, x, znu, sgnq; } ThInnerCtx;
-static double truephoton_k_integrand(double k, void *ctx_)
+/* Derives a seed for cpr_vegas_integrate deterministically from this
+ * sub-integral's (T_K, sgnq, tag): tag distinguishes the several VEGAS
+ * call sites below (TruePhoton/DiffBremsstrahlung/Thermal_2_3's two
+ * halves) so they don't all draw the same sample sequence at a given
+ * (T_K, sgnq). Re-running the same configuration therefore always
+ * reproduces the same CCRTh table -- unlike Python's unseeded vegas. */
+static uint64_t th_vegas_seed(double T_K, double sgnq, uint64_t tag)
 {
-    ThInnerCtx *c = ctx_;
-    return ipen_ccrt(c->ctx, c->E, k, c->x, c->znu, c->sgnq);
-}
-static double brems_k_integrand(double k, void *ctx_)
-{
-    ThInnerCtx *c = ctx_;
-    return ipen_ccr_diff_brems(c->ctx, c->E, k, c->x, c->znu, c->sgnq);
+    uint64_t bits;
+    memcpy(&bits, &T_K, sizeof(bits));
+    uint64_t sgn_bit = (sgnq > 0.0) ? 1u : 0u;
+    return (bits ^ (sgn_bit << 1) ^ (tag << 2)) * 0x9E3779B97F4A7C15ULL;
 }
 
-typedef struct { const RateCtx *ctx; double x, znu, sgnq, k_max; int is_brems; } Th2DCtx;
-static double th2d_E_integrand(double E, void *ctx_)
+typedef struct { const RateCtx *ctx; double x, znu, sgnq; int is_brems; } Th2DCtx;
+static double th2d_vegas_f(const double pt[2], void *ctx_)
 {
     Th2DCtx *c = ctx_;
-    ThInnerCtx ic = { c->ctx, E, c->x, c->znu, c->sgnq };
-    CPRQuadFunc f = c->is_brems ? brems_k_integrand : truephoton_k_integrand;
-    return quad_adaptive_relative_n(f, &ic, 0.001, c->k_max, c->ctx->cfg->epsrel_thermal, 15, 1);
+    double E = pt[0], k = pt[1];
+    return c->is_brems ? ipen_ccr_diff_brems(c->ctx, E, k, c->x, c->znu, c->sgnq)
+                        : ipen_ccrt(c->ctx, E, k, c->x, c->znu, c->sgnq);
 }
 
 /* _L_ThermalTruePhoton (is_brems=0) / _L_ThermalDiffBremsstrahlung (is_brems=1):
  * both integrate over the same rectangular (E,k) domain, [1.001,E_max] x
- * [0.001,k_max] with E_max=k_max=max(10, 20/x). */
-static double L_thermal_2d(const RateCtx *ctx, double x, double znu, double sgnq, int is_brems)
+ * [0.001,k_max] with E_max=k_max=max(10, 20/x), via VEGAS (mirrors
+ * corrections.py's vegas.Integrator branch for these two terms). */
+static double L_thermal_2d(const RateCtx *ctx, double T_K, double x, double znu, double sgnq,
+                             int is_brems)
 {
     double E_max = fmax(10.0, 20.0 / x);
     double k_max = E_max;
-    Th2DCtx c = { ctx, x, znu, sgnq, k_max, is_brems };
-    return quad_adaptive_relative(th2d_E_integrand, &c, 1.001, E_max, ctx->cfg->epsrel_thermal, 15);
+    Th2DCtx c = { ctx, x, znu, sgnq, is_brems };
+    double lo[2] = { 1.001, 0.001 }, hi[2] = { E_max, k_max };
+    uint64_t seed = th_vegas_seed(T_K, sgnq, is_brems ? 2 : 1);
+    CPRVegasResult r = cpr_vegas_integrate(th2d_vegas_f, &c, lo, hi,
+                                             ctx->cfg->vegas_n_eval, ctx->cfg->vegas_n_itn,
+                                             ctx->cfg->vegas_n_itn, seed);
+    return r.mean;
 }
 
 typedef struct { const RateCtx *ctx; double x, znu, sgnq; } C1Ctx;
@@ -1022,39 +1035,40 @@ static double L_thermal_1(const RateCtx *ctx, double T_K, double x, double znu, 
     return quad_adaptive_relative(c1_integrand_p, &c, 0.0, p_hi, 1.0e-2, 15);
 }
 
-typedef struct { const RateCtx *ctx; double x, znu, sgnq; double e1pe2; } C23InnerCtx;
-static double c23_inner_integrand(double e1me2, void *ctx_)
+typedef struct { const RateCtx *ctx; double x, znu, sgnq; } C23VegasCtx;
+static double c23_vegas_f(const double pt[2], void *ctx_)
 {
-    C23InnerCtx *c = ctx_;
-    double e1 = (c->e1pe2 + e1me2) / 2.0, e2 = (c->e1pe2 - e1me2) / 2.0;
+    C23VegasCtx *c = ctx_;
+    double e1pe2 = pt[0], e1me2 = pt[1];
+    double e1 = (e1pe2 + e1me2) / 2.0, e2 = (e1pe2 - e1me2) / 2.0;
     return 0.5 * th_c2de1de2(c->ctx, e1, e2, c->x, c->znu, c->sgnq);
-}
-typedef struct { const RateCtx *ctx; double x, znu, sgnq, me2_lo, me2_hi; } C23OuterCtx;
-static double c23_outer_integrand(double e1pe2, void *ctx_)
-{
-    C23OuterCtx *c = ctx_;
-    C23InnerCtx ic = { c->ctx, c->x, c->znu, c->sgnq, e1pe2 };
-    return quad_adaptive_relative_n(c23_inner_integrand, &ic, c->me2_lo, c->me2_hi,
-                                      c->ctx->cfg->epsrel_thermal, 15, 1);
 }
 
 /* _L_Thermal_2_3: sum of two 2D integrals (e1me2 < 0 and e1me2 > 0 halves),
  * sharing the same (e1pe2) outer rectangle bound -- see this file's CPLAN
  * derivation comment (in the corresponding Python docstring) for why both
  * branches reduce to the same outer limits despite the differing min/max
- * passed to dblquad in the Python source. */
-static double L_thermal_2_3(const RateCtx *ctx, double x, double znu, double sgnq)
+ * passed to dblquad in the Python source. Both halves go through VEGAS
+ * (mirrors corrections.py's vegas.Integrator branch for this term). */
+static double L_thermal_2_3(const RateCtx *ctx, double T_K, double x, double znu, double sgnq)
 {
     double half = fmax(10.0, 15.0 / x);
     double lims_lo = 2.002, lims_hi = 2.0 + half;
+    C23VegasCtx c = { ctx, x, znu, sgnq };
 
-    C23OuterCtx oc_neg = { ctx, x, znu, sgnq, -half, -0.001 };
-    double res2 = quad_adaptive_relative(c23_outer_integrand, &oc_neg, lims_lo, lims_hi,
-                                           ctx->cfg->epsrel_thermal, 15);
+    double lo_neg[2] = { lims_lo, -half }, hi_neg[2] = { lims_hi, -0.001 };
+    CPRVegasResult r2 = cpr_vegas_integrate(c23_vegas_f, &c, lo_neg, hi_neg,
+                                              ctx->cfg->vegas_n_eval, ctx->cfg->vegas_n_itn,
+                                              ctx->cfg->vegas_n_itn,
+                                              th_vegas_seed(T_K, sgnq, 3));
+    double res2 = r2.mean;
 
-    C23OuterCtx oc_pos = { ctx, x, znu, sgnq, 0.001, half };
-    double res3 = quad_adaptive_relative(c23_outer_integrand, &oc_pos, lims_lo, lims_hi,
-                                           ctx->cfg->epsrel_thermal, 15);
+    double lo_pos[2] = { lims_lo, 0.001 }, hi_pos[2] = { lims_hi, half };
+    CPRVegasResult r3 = cpr_vegas_integrate(c23_vegas_f, &c, lo_pos, hi_pos,
+                                              ctx->cfg->vegas_n_eval, ctx->cfg->vegas_n_itn,
+                                              ctx->cfg->vegas_n_itn,
+                                              th_vegas_seed(T_K, sgnq, 4));
+    double res3 = r3.mean;
 
     return res2 + res3;
 }
@@ -1071,10 +1085,10 @@ static double L_CCRTh_compute(const RateCtx *ctx, double T_K, double sgnq,
     double x = ctx->me / (g_const.kB * T_K);
     double Tnu_K = T_K * tnu_over_t(tnu_ctx, T_K);
     double znu = ctx->me / (g_const.kB * Tnu_K);
-    return L_thermal_2d(ctx, x, znu, sgnq, 0)
-         + L_thermal_2d(ctx, x, znu, sgnq, 1)
+    return L_thermal_2d(ctx, T_K, x, znu, sgnq, 0)
+         + L_thermal_2d(ctx, T_K, x, znu, sgnq, 1)
          + L_thermal_1(ctx, T_K, x, znu, sgnq)
-         + L_thermal_2_3(ctx, x, znu, sgnq);
+         + L_thermal_2_3(ctx, T_K, x, znu, sgnq);
 }
 
 /* ------------------------------------------------------------------------
@@ -1193,7 +1207,7 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
             mkdir(mkdir_cmd, 0755);
             cpr_cache_write(path, fp_fields, n_fp,
                              "T[K] Gamma_nTOp[1/tau_n] Gamma_pTOn[1/tau_n]",
-                             cols, 3, wr->n);
+                             cols, 3, wr->n, NULL);
         }
     }
     free(fp_hash);
@@ -1228,13 +1242,14 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
             memcpy(wr->Lpth, tab.cols[2], wr->n_th * sizeof(double));
             cpr_table_free(&tab);
         } else {
-            /* No matching cache file: compute CCRTh from scratch (deterministic
-             * nested adaptive quadrature, see L_CCRTh_compute above) -- this is
-             * the multi-minute-class computation the Python docstring warns
-             * about, hence the same "may take a while" notice. */
+            /* No matching cache file: compute CCRTh from scratch (VEGAS Monte
+             * Carlo for the 2D sub-integrals, deterministic quadrature for the
+             * 1D one, see L_CCRTh_compute above) -- this is the same
+             * multi-minute-class computation Python's vegas-based fallback
+             * warns about, hence the same "may take a while" notice. */
             fprintf(stderr,
                     "[weak-c] Re-evaluating n <--> p thermal corrections "
-                    "(deterministic adaptive quadrature). This may take a while ...\n");
+                    "(vegas). This may take a while ...\n");
             int n_th_pts = n_points_per_decade(cfg->sampling_nTOp_thermal_per_decade,
                                                  CCRTH_T_MIN, T_start);
             wr->n_th = (size_t)n_th_pts;
@@ -1258,8 +1273,13 @@ int cpr_weak_rates_init(CPRWeakRates *wr, const double *Tg_MeV, const double *Tn
                     if (*p == '/') { *p = '\0'; mkdir(nd, 0755); *p = '/'; }
                 }
                 mkdir(nd, 0755);
+                char provenance[128];
+                snprintf(provenance, sizeof(provenance),
+                         "backend=c algorithm=vegas vegas_n_eval=%d vegas_n_itn=%d",
+                         cfg->vegas_n_eval, cfg->vegas_n_itn);
                 cpr_cache_write(th_path, th_fields, n_th_fp,
-                                 "T[K] L_nTOpCCRTh L_pTOnCCRTh", th_cols, 3, wr->n_th);
+                                 "T[K] L_nTOpCCRTh L_pTOnCCRTh", th_cols, 3, wr->n_th,
+                                 provenance);
             }
             cpr_log(cfg, "weak", "n <--> p thermal corrections computed");
         }

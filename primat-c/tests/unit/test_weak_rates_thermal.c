@@ -12,7 +12,7 @@
  * something a unit test should pay on every run. The individual T points
  * checked below are themselves cheap (E_max of a few tens), so calling
  * L_CCRTh_compute directly at just those points keeps this test fast
- * while still exercising the real nested-adaptive-quadrature code path.
+ * while still exercising the real VEGAS/quadrature code path.
  *
  * Reference values: /tmp/th_py_check.py, a line-by-line port of
  * corrections.py's dblquad/quad fallback formulas (IPENCCRT,
@@ -25,7 +25,12 @@
  * L_CCRTh_compute's return value enters Gamma_nTOp/pTOn the same way the
  * Born/CCR rate does (see corrections.py's _L_CCRTh_compute docstring),
  * so a relative tolerance on L_CCRTh_compute itself is the right check,
- * not on the (here unbuilt) downstream Gamma_nTOp/pTOn. */
+ * not on the (here unbuilt) downstream Gamma_nTOp/pTOn. The reference
+ * values were generated against the deterministic dblquad fallback
+ * formulas, not vegas, but the tolerances below were already loose
+ * relative-error/factor-of-N bounds (not bit-matches), and remain loose
+ * enough to also absorb cpr_vegas_integrate's Monte-Carlo noise floor at
+ * its default vegas_n_eval/vegas_n_itn budget. */
 #include "cprimat/constants.h"
 #include "cprimat/config.h"
 #include "cprimat/neutrino_history.h"
@@ -56,6 +61,11 @@ int main(void)
     memset(&cfg, 0, sizeof(cfg));
     cfg.epsrel_thermal = 1.0e-3;
     cfg.munuOverTnu = 0.0;
+    /* Production defaults (config.c's cpr_config_default): the 2D
+     * sub-integrals now go through cpr_vegas_integrate, which needs these
+     * set (memset above leaves them 0, i.e. zero MC samples). */
+    cfg.vegas_n_eval = 20000;
+    cfg.vegas_n_itn = 20;
 
     double me = g_const.me * g_const.MeV;
     double mn = g_const.mn * g_const.MeV;
@@ -103,8 +113,12 @@ int main(void)
     CHECK(pn_1e9 > 2.82e-10 / 5.0 && pn_1e9 < 2.82e-10 * 5.0,
           "L_CCRTh_compute(1e9 K, p->n) within a factor of 5 of Python (suppressed regime)");
 
-    /* T=1e9 K, n->p: Python sum=0.0001854915. */
-    CHECK(close_rel(L_CCRTh_compute(&ctx, 1.0e9, +1.0, &tnu_ctx), 0.0001854915, 1e-2),
+    /* T=1e9 K, n->p: Python (deterministic dblquad) sum=0.0001854915.
+     * cpr_vegas_integrate's own MC noise floor at the default
+     * vegas_n_eval/vegas_n_itn budget pushes this to ~1.7% here (verified
+     * directly), looser than the 1e-2 used at the other matching points
+     * below -- this point alone gets a 3e-2 tolerance. */
+    CHECK(close_rel(L_CCRTh_compute(&ctx, 1.0e9, +1.0, &tnu_ctx), 0.0001854915, 3e-2),
           "L_CCRTh_compute(1e9 K, n->p) matches Python");
 
     /* T=1e10 K: Python sum=-1.6784941 (n->p) / 0.48664922 (p->n) -- the

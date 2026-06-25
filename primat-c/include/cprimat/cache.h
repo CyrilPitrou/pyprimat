@@ -59,11 +59,14 @@ char *cpr_cache_read_fingerprint_hash(const char *path);
  * cache_utils.write_cache_with_fingerprint: an optional human-readable
  * `col_header` line, then "fingerprint_hash: <hash>" and
  * "fingerprint: <json>" lines (each "# "-prefixed, matching
- * numpy.savetxt's header convention), then `n_cols` columns of `n_rows`
- * values each in "%.18e" format, space-separated. `columns[c][r]` is column
- * c, row r. Returns 0 on success, nonzero on I/O failure. */
+ * numpy.savetxt's header convention), then an optional "provenance: <str>"
+ * line (see write_cache_with_fingerprint's `provenance` docstring -- pass
+ * NULL to omit; deliberately NOT part of the fingerprint/hash), then
+ * `n_cols` columns of `n_rows` values each in "%.18e" format,
+ * space-separated. `columns[c][r]` is column c, row r. Returns 0 on
+ * success, nonzero on I/O failure. */
 int cpr_cache_write(const char *path, const CPRFPField *fields, size_t n_fields,
                      const char *col_header, double **columns, size_t n_cols,
-                     size_t n_rows);
+                     size_t n_rows, const char *provenance);
 
 #endif /* CPRIMAT_CACHE_H */

@@ -84,7 +84,8 @@ def read_cache_fingerprint_hash(path: str):
     return None
 
 
-def write_cache_with_fingerprint(path: str, fingerprint: dict, columns, col_header: str = ""):
+def write_cache_with_fingerprint(path: str, fingerprint: dict, columns, col_header: str = "",
+                                  provenance: str = None):
     """Write a ``np.savetxt`` cache file with a fingerprint header.
 
     Args:
@@ -95,6 +96,19 @@ def write_cache_with_fingerprint(path: str, fingerprint: dict, columns, col_head
             (``np.column_stack(columns)``).
         col_header: optional human-readable column-name line, written before
             the fingerprint lines (e.g. ``"T[K] rate[1/s]"``).
+        provenance: optional human-readable string recording which backend
+            and algorithm computed this file (e.g.
+            ``"backend=python algorithm=vegas"``), written as its own
+            ``# provenance: ...`` header line *after* the fingerprint lines.
+            Deliberately NOT part of `fingerprint` / the hash: this cache
+            file is shared between backends (whichever computes it first,
+            the other just reads it -- see weak_rates/cache.py), and for the
+            deterministic (non-thermal) caches both backends always agree
+            to machine precision anyway. For the thermal (CCRTh) cache,
+            where both backends use independent Monte-Carlo estimates
+            (vegas) with their own noise floor, this is purely informational
+            provenance ("who produced the number on disk right now"), not a
+            cache key -- it must never gate a cache hit/miss decision.
 
     Example:
         >>> write_cache_with_fingerprint(
@@ -109,6 +123,8 @@ def write_cache_with_fingerprint(path: str, fingerprint: dict, columns, col_head
         header_lines.append(col_header)
     header_lines.append("fingerprint_hash: " + fp_hash)
     header_lines.append("fingerprint: " + fp_json)
+    if provenance:
+        header_lines.append("provenance: " + provenance)
     # Write to a per-process temp file then atomically rename into place
     # (os.replace), so concurrent MC workers racing to populate a missing
     # cache never observe a partially-written file.

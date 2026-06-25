@@ -292,7 +292,7 @@ static int build_electron_tables(CPRPlasma *pl, const CPRConfig *cfg, char **err
          * continue): the tables we just built in memory are still valid
          * for this run, only the on-disk cache for future runs is stale. */
         cpr_cache_write(cache_path, fields, 3, "grid rho_e p_e drho_e_dT dp_e_dT",
-                         columns, 5, npts);
+                         columns, 5, npts, NULL);
     }
 
     free(grid); free(rho_e_arr); free(p_e_arr); free(drho_e_dT_arr); free(dp_e_dT_arr);

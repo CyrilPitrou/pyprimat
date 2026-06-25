@@ -270,7 +270,7 @@ class Background(object):
         (e.g. :class:`StandardBackground`) extend this with ``a``, ``H``,
         individual neutrino temperatures, energy densities, etc.
         """
-        return OrderedDict([("T", self.T_of_t(t_out)), ("t", t_out)])
+        return OrderedDict([("T [MeV]", self.T_of_t(t_out)), ("t [s]", t_out)])
 
     def time_evolution_text(self, n_points):
         """Return this background's time-evolution TSV as text, with no
@@ -912,7 +912,7 @@ class StandardBackground(Background):
         cfg    = self.cfg
         thermo = self.plasma
         cols = super()._background_columns(t_out)
-        T_out = cols["T"]
+        T_out = cols["T [MeV]"]
 
         a_out = self.a_of_t(t_out)
 
@@ -924,11 +924,11 @@ class StandardBackground(Background):
             for i in range(t_out.size)
         ])
 
-        cols["a"]      = a_out
-        cols["H"]      = H_out
-        cols["Tnue"]   = Tnue_out
-        cols["Tnumu"]  = Tnumu_out
-        cols["Tnutau"] = Tnutau_out
+        cols["a [1]"]          = a_out
+        cols["H [s^-1]"]       = H_out
+        cols["Tnue [MeV]"]     = Tnue_out
+        cols["Tnumu [MeV]"]    = Tnumu_out
+        cols["Tnutau [MeV]"]   = Tnutau_out
 
         # The "Nheating" column is the NEVO heating function N(T_gamma) that
         # drives the a(T_gamma) ODE (see _setup_background_and_cosmo).  It is
@@ -938,7 +938,7 @@ class StandardBackground(Background):
         # entropy conservation, so writing it out would just be a column of
         # zeros masquerading as data.
         if self.has_heating_table:
-            cols["Nheating"] = self.N_NEVO_of_Tg(T_out)
+            cols["Nheating [1]"]  = self.N_NEVO_of_Tg(T_out)
 
         # Energy densities [MeV^4]: plasma (photons + e+- pairs, with QED
         # corrections), total neutrino sector (three flavours + extra +
@@ -962,15 +962,15 @@ class StandardBackground(Background):
             Tnu_avg_out = ((Tnue_out**4 + Tnumu_out**4 + Tnutau_out**4) / 3.)**0.25
             rho_nu_tot = rho_nu_tot + self.rho_nu_SD(Tnu_avg_out)
 
-        cols["rho_plasma"] = rho_plasma
-        cols["rho_nu_tot"] = rho_nu_tot
+        cols["rho_plasma [MeV^4]"] = rho_plasma
+        cols["rho_nu_tot [MeV^4]"] = rho_nu_tot
 
         rho_tot = rho_plasma + rho_nu_tot
         if self.extra_rho:
             rho_extra = sum(rho_extra_fn(T_out) for rho_extra_fn in self.extra_rho)
-            cols["rho_extra"] = rho_extra
+            cols["rho_extra [MeV^4]"] = rho_extra
             rho_tot = rho_tot + rho_extra
-        cols["rho_tot"] = rho_tot
+        cols["rho_tot [MeV^4]"] = rho_tot
 
         return cols
 

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-PyPRIMAT_compare.py
-===================
+primat_compare.py
+=================
 Compares primordial abundance predictions between the built-in 12-reaction
 small network, the small_parthenope network, the large network restricted to
 A <= 8 (68 reactions, equivalent to the old "medium" network), and the full
@@ -9,16 +9,16 @@ large network.
 
 Usage::
 
-    python runfiles/PyPRIMAT_compare.py
+    python runfiles/primat_compare.py
 """
 
 import sys
 import os
 import time
 
-_pyprimat_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-if _pyprimat_path not in sys.path:
-    sys.path.insert(0, _pyprimat_path)
+_primat_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if _primat_path not in sys.path:
+    sys.path.insert(0, _primat_path)
 
 from primat import backend
 

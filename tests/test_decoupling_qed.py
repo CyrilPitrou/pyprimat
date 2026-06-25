@@ -334,7 +334,7 @@ def test_nheating_column_present_only_with_heating_table(tmp_path):
         "output_background_file": str(out_nevo),
     }).solve()
     header_nevo = out_nevo.read_text().splitlines()[0].split("\t")
-    assert "Nheating" in header_nevo
+    assert any("Nheating" in col for col in header_nevo)
 
     out_inst = tmp_path / "inst_background.tsv"
     PRIMAT({
@@ -347,7 +347,7 @@ def test_nheating_column_present_only_with_heating_table(tmp_path):
         "output_background_file": str(out_inst),
     }).solve()
     header_inst = out_inst.read_text().splitlines()[0].split("\t")
-    assert "Nheating" not in header_inst
+    assert not any("Nheating" in col for col in header_inst)
 
 
 @pytest.mark.slow
