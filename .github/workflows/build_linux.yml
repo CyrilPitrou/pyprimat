@@ -2,7 +2,7 @@ name: Build Linux Wheel
 
 on:
   push:
-    branches: [ master ]  # Updated to master branch
+    branches: [ master ]
 
 jobs:
   build:
@@ -16,7 +16,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install wheel
+        run: pip install wheel setuptools  # Added setuptools here
 
       - name: Build the C extension
         run: python setup.py bdist_wheel
