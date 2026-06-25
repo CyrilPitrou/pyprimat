@@ -314,6 +314,18 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
     nn->Y_final = malloc(n_lt * sizeof(double));
     memcpy(nn->Y_final, Yi_LT, n_lt * sizeof(double));
 
+    /* Mirrors nuclear_network.py's solve() verbose dump of the final
+     * abundances (same header/format, no cpr_log tag prefix -- that block
+     * isn't tagged on the Python side either). */
+    if (cfg->verbose) {
+        printf("--------------------------------------------------\n");
+        printf("Predicted primordial abundances at the end of BBN "
+               "(%zu numerically solved nuclides)\n", n_lt);
+        printf("--------------------------------------------------\n");
+        for (size_t i = 0; i < n_lt; i++)
+            printf("  Y%-5s= %.6e\n", nn->abundance_names[i], nn->Y_final[i]);
+    }
+
     /* ---- Concatenated HT+MT+LT history, embedding each era's narrower
      * vector into the common n_lt columns by species name (mirrors
      * solve()'s _embed/Y_of_t construction; DT-era extension not ported,

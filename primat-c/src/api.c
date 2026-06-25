@@ -186,6 +186,51 @@ void cpr_assemble_results(CPRResults *results, const CPRConfig *cfg,
     }
 }
 
+/* Mirrors NetworkDefinition.reaction_equation/print_reactions: renders
+ * reaction `i`'s stoichiometry as "a + b <-> c + d" and dumps the whole LT
+ * network. No source/provenance column here -- network_data.h's module
+ * docstring documents that the sources/files provenance lists are
+ * deliberately not ported (display-only on the Python side); the equation
+ * list itself is cheap to derive from CPRReaction and worth having so a
+ * verbose C run shows the same reaction set as the Python side. */
+static void print_reactions(const CPRNetworkDef *lt)
+{
+    size_t width = 0;
+    char **equations = malloc(lt->n_reac * sizeof(*equations));
+    for (size_t i = 0; i < lt->n_reac; i++) {
+        char buf[256];
+        size_t off = 0;
+        const CPRStoichSide *sides[2] = { &lt->network[i].reactants, &lt->network[i].products };
+        for (int side = 0; side < 2; side++) {
+            const CPRStoichSide *s = sides[side];
+            int first = 1;
+            for (size_t k = 0; k < s->n; k++)
+                for (long m = 0; m < s->mult[k]; m++) {
+                    int n = snprintf(buf + off, sizeof(buf) - off, "%s%s",
+                                      first ? "" : " + ",
+                                      lt->species[s->species_idx[k]]);
+                    if (n > 0) off += (size_t)n;
+                    first = 0;
+                }
+            if (side == 0) {
+                int n = snprintf(buf + off, sizeof(buf) - off, " <-> ");
+                if (n > 0) off += (size_t)n;
+            }
+        }
+        equations[i] = malloc(off + 1);
+        memcpy(equations[i], buf, off + 1);
+        if (off > width) width = off;
+    }
+    printf("------------------------------------------------------------\n");
+    printf("Loaded %zu reactions (LT network):\n", lt->n_reac);
+    printf("------------------------------------------------------------\n");
+    for (size_t i = 0; i < lt->n_reac; i++) {
+        printf("  %-*s\n", (int)width, equations[i]);
+        free(equations[i]);
+    }
+    free(equations);
+}
+
 int cprimat_run(const CPRConfig *cfg, const CPRCustomNetwork *custom,
                   CPRResults *results, char **errmsg)
 {
@@ -216,6 +261,7 @@ int cprimat_run(const CPRConfig *cfg, const CPRCustomNetwork *custom,
             if (n > 0) off += (size_t)n;
         }
         cpr_log(cfg, "rates", "LT nuclides: %s", buf);
+        print_reactions(&nr.lt_net);
     }
     /* Mirrors NuclearNetwork.solve()'s own nucl.apply_variations(cfg) call
      * (p_<rxn>/NP_delta_<rxn> rate-variation knobs); cpr_nuclear_network_solve's

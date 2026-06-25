@@ -509,48 +509,12 @@ class StandardBackground(Background):
         ``self.extra_rho`` (which used ``a ≈ T0CMB/T`` radiation-domination)
         with the exact ``rho_CDM = rhocdm_a3 / self.a_of_T(T)^3``.
 
-        Also prints a sanity check: the matter-radiation equality scale factor
-        ``a_eq`` (where ρ_CDM + ρ_b = ρ_r) should be ≈ 1/3400 ≈ 2.94e-4 for
-        the Planck 2018 fiducial cosmology. This confirms that CDM and baryon
-        density parameters are physically consistent. The formula is:
-
-            a_eq = Ω_r h² / (Ω_b h² + Ω_c h²)
-
-        where Ω_r h² = ρ_γ,0 × (1 + N_eff × 7/8 × (4/11)^{4/3}) / ρ_crit100,
-        i.e. photons plus standard-model neutrinos at Neff ≈ 3.044. This is
-        verified at verbose output level and emits a warning if a_eq deviates
-        from 1/3400 by more than 10%.
-
         The replacement is a no-op when ``_setup_LCDM`` was not called (e.g.
         when ``Omegach2``/``h`` are absent from the config).
         """
         if not hasattr(self, "_lcdm_cdm_idx"):
             return
         self.extra_rho[self._lcdm_cdm_idx] = self._lcdm_cdm_exact
-
-        # ---- matter-radiation equality sanity check ----
-        cfg = self.cfg
-        Omegach2 = cfg.Omegach2
-        # Radiation energy density today: photons + 3.044 standard neutrinos.
-        # ρ_γ,0 = (π²/15) T0CMB^4 (in the plasma module); rho_g uses MeV units.
-        T0CMB_MeV = cfg.T0CMB / cfg.MeV_to_Kelvin   # [MeV]
-        rho_gamma0 = self.plasma.rho_g(T0CMB_MeV)   # [MeV^4]
-        # Include standard neutrinos at their decoupled temperature T_ν = (4/11)^{1/3} T_γ,
-        # at the standard-model value of Neff (cfg.Neff_SM, not recomputed here).
-        rho_nu0    = cfg.Neff_SM * (7./8.) * (4./11.)**(4./3.) * rho_gamma0  # [MeV^4]
-        rho_rad0   = rho_gamma0 + rho_nu0                                  # [MeV^4]
-        rhocrit100 = cfg.rhocOverh2
-        Omegarh2   = rho_rad0 / rhocrit100   # Ω_r h² (dimensionless)
-        Omegamh2   = cfg.Omegabh2 + Omegach2 # Ω_m h² (baryons + CDM)
-        a_eq       = Omegarh2 / Omegamh2
-        a_eq_ref   = 1.0 / 3400.0
-        ratio      = a_eq / a_eq_ref
-
-        if cfg.verbose:
-            print(f"[bg-py] matter-radiation equality: a_eq = {a_eq:.4g} "
-                  f"(Ω_r h²={Omegarh2:.4g}, Ω_m h²={Omegamh2:.4g}; "
-                  f"expected ~1/3400 = {a_eq_ref:.3g}, ratio = {ratio:.3f})")
-
 
     # ======================================================================
     # Early Dark Energy setup

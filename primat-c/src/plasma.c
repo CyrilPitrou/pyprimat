@@ -5,6 +5,7 @@
 #include "cprimat/quad.h"
 #include "cprimat/table_io.h"
 #include "cprimat/cache.h"
+#include "cprimat/log.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -91,6 +92,8 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
          * build not-a-knot cubic-spline interpolants directly from the
          * computed arrays -- smoother than the linear interpolation used
          * when loading from a file (mirrors Python's choice exactly). */
+        cpr_log(cfg, "init", "Computing QED plasma-pressure tables (%s)...",
+                 recompute ? "recompute requested" : "files not found");
         CPRQEDTables t;
         if (cpr_qed_compute_tables(1e-3, 1e2, 500, g_const.alphaem, g_const.me, &t, errmsg))
             return 1;
@@ -250,6 +253,9 @@ static int build_electron_tables(CPRPlasma *pl, const CPRConfig *cfg, char **err
                       || cpr_cubic_spline_fit_notaknot(tab.cols[0], tab.cols[4], tab.n_rows, &pl->dp_e_dT_tab, errmsg);
                 cpr_table_free(&tab);
                 free(fp_hash);
+                if (rc == 0)
+                    cpr_log(cfg, "init", "Electron-thermo tables loaded from cache (%d points).",
+                             cfg->n_electron_table);
                 return rc;
             }
             /* Fall through to recompute if the cache file turned out to
@@ -291,6 +297,8 @@ static int build_electron_tables(CPRPlasma *pl, const CPRConfig *cfg, char **err
 
     free(grid); free(rho_e_arr); free(p_e_arr); free(drho_e_dT_arr); free(dp_e_dT_arr);
     free(fp_hash);
+    if (rc == 0)
+        cpr_log(cfg, "init", "Electron-thermo tables built (%d points).", cfg->n_electron_table);
     return rc;
 }
 
@@ -309,6 +317,7 @@ int cpr_plasma_init(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
         cpr_interp1d_free(&pl->d2P_QED);
         return 1;
     }
+    cpr_log(cfg, "init", "Tables loaded.");
     return 0;
 }
 

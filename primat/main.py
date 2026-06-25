@@ -180,6 +180,12 @@ class PRIMAT:
                 )
             self.cfg = background.cfg
             cfg = self.cfg
+            if cfg.verbose:
+                print(_banner())
+                print(_options_recap(cfg, backend="python"))
+                for msg in cfg._init_messages:
+                    print(msg)
+                self._t0 = time.time()
             # A per-instance Plasma object (rather than the module-level
             # default) so that several PRIMAT instances coexisting in the same
             # process (e.g. QED_corrections=True/False comparisons, MC
@@ -189,18 +195,21 @@ class PRIMAT:
         else:
             self.cfg = PRIMATConfig(params or {})
             cfg = self.cfg
+            # Print the banner/options-recap *before* building Plasma(cfg)
+            # below: Plasma.__init__ emits its own "[init] ..." progress
+            # messages (table loading/computing) gated on cfg.verbose, and
+            # those must appear after the banner, not before it.
+            if cfg.verbose:
+                print(_banner())
+                print(_options_recap(cfg, backend="python"))
+                for msg in cfg._init_messages:
+                    print(msg)
+                self._t0 = time.time()
             self.plasma = primat_thermo.Plasma(cfg)
 
         self.N = {name: NZ[0]           for name, NZ in cfg.Nuclides.items()}
         self.Z = {name: NZ[1]           for name, NZ in cfg.Nuclides.items()}
         self.A = {name: NZ[0] + NZ[1]   for name, NZ in cfg.Nuclides.items()}
-
-        if cfg.verbose:
-            print(_banner())
-            print(_options_recap(cfg, backend="python"))
-            for msg in cfg._init_messages:
-                print(msg)
-            self._t0 = time.time()
 
         # ------------------------------------------------------------------
         # 3. Initialize nuclear network (MT/LT eras)
