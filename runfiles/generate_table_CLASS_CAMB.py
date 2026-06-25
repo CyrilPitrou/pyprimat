@@ -63,7 +63,7 @@ repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if repo_root not in sys.path:
     sys.path.insert(0, repo_root)
 
-from primat.main import PRIMAT
+from primat import backend
 from primat.config import DEFAULT_PARAMS, PRIMATConfig
 
 # ---------------------------------------------------------------------------
@@ -218,13 +218,8 @@ def _run_central(Ombh2, DeltaN):
             'Omegabh2': float(Ombh2),
             'DeltaNeff': float(DeltaN),
         }
-        inst = PRIMAT(params=params)
-        inst.solve()
-        return (
-            inst.get_quantity('YPBBN'),
-            inst.get_quantity('YPCMB'),
-            inst.get_quantity('DoH'),
-        )
+        res = backend.run_bbn(params)
+        return (res['YPBBN'], res['YPCMB'], res['DoH'])
     except Exception as exc:
         print(f"\n  [warn] central failed at Ombh2={Ombh2}, DeltaN={DeltaN}: {exc}",
               file=sys.stderr, flush=True)
@@ -246,9 +241,8 @@ def _run_mc_sample(Ombh2, DeltaN, p_vals, tau_n_val):
         }
         for k, v in zip(RATE_KEYS, p_vals):
             params[k] = float(v)
-        inst = PRIMAT(params=params)
-        inst.solve()
-        return inst.get_quantity('YPBBN'), inst.get_quantity('DoH')
+        res = backend.run_bbn(params)
+        return res['YPBBN'], res['DoH']
     except Exception:
         return np.nan, np.nan
 
@@ -292,14 +286,18 @@ for i_dN, DeltaN in enumerate(DeltaN_grid):
     # ------------------------------------------------------------------
     # 1. Compute n<->p weak-rate tables for this DeltaN and save to disk.
     #    Ombh2 does not affect these tables (only the nuclear-network ODE).
+    #    Python-backend-specific optimisation: the C backend computes its own
+    #    weak rates independently of this cache, so priming it would just be
+    #    wasted work whenever run_bbn actually dispatches to the C backend.
     # ------------------------------------------------------------------
-    _seed_params = {
-        **BASE_OPTS,
-        'save_nTOp':    True,
-        'Omegabh2': 0.022425,
-        'DeltaNeff': float(DeltaN),
-    }
-    _ = PRIMAT(params=_seed_params)   # side-effect: saves rates/weak/*.txt
+    if not backend.HAS_C_BACKEND:
+        _seed_params = {
+            **BASE_OPTS,
+            'save_nTOp':    True,
+            'Omegabh2': 0.022425,
+            'DeltaNeff': float(DeltaN),
+        }
+        backend.run_bbn(_seed_params, force_backend="python")   # side-effect: saves rates/weak/*.txt
     print(f"  [weak {time.time()-t0:.0f}s]", end='', flush=True)
 
     # ------------------------------------------------------------------

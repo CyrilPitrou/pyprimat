@@ -20,7 +20,7 @@ _pyprimat_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if _pyprimat_path not in sys.path:
     sys.path.insert(0, _pyprimat_path)
 
-from primat import PRIMAT
+from primat import backend
 
 # ---------------------------------------------------------------------------
 # Cosmological parameters
@@ -58,8 +58,7 @@ for label, extra in networks:
     print("=" * 60)
     t0 = time.time()
     params = {**_base_opts, "network": "small", **extra}
-    run = PRIMAT(params=params)
-    results[label] = run.primat_results()
+    results[label] = backend.run_bbn(params, log_backend=True)
     print(f"{label.capitalize()} network finished in {time.time()-t0:.1f} s\n")
 
 # ---------------------------------------------------------------------------

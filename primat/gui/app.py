@@ -24,6 +24,8 @@ import types
 import streamlit as st
 
 from primat import backend
+from primat import plasma as primat_thermo
+from primat.background import StandardBackground, CustomBackground
 from primat.config import PRIMATConfig
 from primat.gui import panels
 from primat.gui.params_form import render_sidebar_form
@@ -263,6 +265,46 @@ def _build_preview(params_items):
     return types.SimpleNamespace(cfg=cfg, nucl=nucl)
 
 
+@st.cache_resource(show_spinner=False)
+def _build_background(params_items):
+    """Build a Python ``StandardBackground``/``CustomBackground`` for the
+    "Output tables" downloads, regardless of which backend actually solved
+    the BBN network.
+
+    The C backend has no in-memory or on-disk equivalent of
+    ``output_background.tsv``/``nTOp_total.tsv`` at all (``primat-c/src/api.c``
+    doesn't write either), so :func:`primat.gui.panels.render_downloads_panel`
+    needs its own, separately-built Python background object to offer these
+    two downloads -- this mirrors ``primat.main.PRIMAT.__init__``'s steps 1+2+4
+    (``PRIMATConfig`` + ``Plasma`` + ``StandardBackground``/``CustomBackground``),
+    deliberately skipping step 3+5 (``UpdateNuclearRates``/``NuclearNetwork``,
+    i.e. the actual BBN solve) since neither download needs it.
+
+    This still runs the n<->p weak-rate computation (``StandardBackground.__init__``),
+    so it is not free -- but it is the same cost ``PRIMAT.__init__`` would pay
+    on the Python backend anyway, and ``st.cache_resource`` means it is only
+    paid once per distinct parameter set (shared with ``_solve`` only by cache
+    key, not by object identity, since the two are independently cached).
+
+    Parameters
+    ----------
+    params_items : tuple of (str, value) pairs
+        Same hashable encoding as :func:`_solve`'s (a ``"custom_network"``
+        entry, if present, is irrelevant here and ignored).
+
+    Returns
+    -------
+    primat.background.StandardBackground or primat.background.CustomBackground
+    """
+    params = dict(params_items)
+    params.pop("custom_network", None)
+    cfg = PRIMATConfig(params)
+    plasma = primat_thermo.Plasma(cfg)
+    if cfg.custom_background is not None:
+        return CustomBackground(cfg, plasma, cfg.custom_background)
+    return StandardBackground(cfg, plasma)
+
+
 def main():
     st.title("⚛️ PRIMAT")
     st.caption(
@@ -444,7 +486,12 @@ def main():
     with tab_evolution:
         panels.render_evolution_panel(run)
     with tab_downloads:
-        panels.render_downloads_panel(run, mc=mc)
+        try:
+            background = _build_background(params_items)
+        except (ValueError, RuntimeError) as exc:
+            st.error(f"Could not build the background for these downloads: {exc}")
+            background = None
+        panels.render_downloads_panel(run, mc=mc, background=background)
 
 
 def _render_footer():

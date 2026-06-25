@@ -160,6 +160,31 @@ def T_gamma_interpolator(result):
     return interp1d(result.t, T, bounds_error=False, fill_value=(T[0], T[-1]))
 
 
+def t_of_T_interpolator(result):
+    """Build a ``T_gamma -> t`` [s] inverse-lookup callable, backend-agnostic.
+
+    The counterpart of :func:`T_gamma_interpolator`, useful e.g. to add a
+    secondary x-axis labelled in ``T_gamma`` on a plot whose primary axis is
+    cosmic time ``t`` (see ``notebooks/AbundanceEvolution.ipynb``). Backend-
+    agnostic replacement for ``primat.main.PRIMAT.t_of_T``, the live-instance,
+    Python-only method this used to require.
+
+    ``T_gamma`` decreases monotonically with ``t`` over a BBN run, so the
+    ``(T_gamma, t)`` pairs are reversed into ascending order and interpolated
+    with :func:`numpy.interp` (clamped at the ends, matching the monotone
+    extrapolation behaviour of :func:`T_gamma_interpolator`).
+
+    Args:
+        result: EvolutionResult.
+
+    Returns:
+        callable: ``T_gamma [MeV] -> t [s]`` (accepts a scalar or array).
+    """
+    T_asc = result.T_gamma[::-1]
+    t_asc = result.t[::-1]
+    return lambda T: np.interp(T, T_asc, t_asc)
+
+
 def load_evolution(path):
     """Parse the shared TSV schema written by either backend's
     ``dump_evolution``/equivalent writer, returning the same

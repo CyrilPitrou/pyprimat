@@ -21,7 +21,7 @@ _pyprimat_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if _pyprimat_path not in sys.path:
     sys.path.insert(0, _pyprimat_path)
 
-from primat import PRIMAT
+from primat import backend
 
 # ---------------------------------------------------------------------------
 # Cosmological parameters
@@ -55,8 +55,7 @@ MyOptions = {
 # ---------------------------------------------------------------------------
 start_time = time.time()
 
-primat_run = PRIMAT(params=MyOptions)
-res = primat_run.primat_results()
+res = backend.run_bbn(MyOptions, log_backend=True)
 
 print(" ")
 print(" Neff = ",             res['Neff'])
@@ -75,8 +74,8 @@ if MyOptions.get("network", "small") != "small":
     print(" Final nuclide mass-fraction abundances Y_i:")
     print(f"  {'Nuclide':<10}  {'Y_i':>14}")
     print("  " + "-" * 26)
-    for name in primat_run.abundance_names:
-        print(f"  {name:<10}  {primat_run.nuclear.Y_final[name]:14.6e}")
+    for name in res['Y_final']:
+        print(f"  {name:<10}  {res['Y_final'][name]:14.6e}")
     print(" ")
 
 print("--- running time: %s seconds ---" % (time.time() - start_time))

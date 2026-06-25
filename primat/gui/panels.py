@@ -323,7 +323,7 @@ def _render_reaction_downloads(run):
         )
 
 
-def weak_rates_text(run):
+def weak_rates_text(cfg, background):
     """Return a TSV string (T[K], Gamma_nTOp[1/s], Gamma_pTOn[1/s]) for n↔p rates.
 
     Evaluates the normalised forward and backward weak rates on a 500-point
@@ -332,27 +332,28 @@ def weak_rates_text(run):
 
     Parameters
     ----------
-    run : primat.PRIMAT or primat.gui.run_view.GuiRun
-        An already-solved run. Requires a live ``run.background`` (only a
-        genuine Python ``PRIMAT`` instance has one -- see ``primat.gui.app``'s
-        ``_solve``); callers must check ``hasattr(run, "background")`` first.
+    cfg : primat.config.PRIMATConfig
+    background : primat.background.StandardBackground or CustomBackground
+        A Python background object (e.g. ``primat.gui.app._build_background``'s
+        result) -- built separately from whichever backend actually solved
+        the BBN network, since only the Python background exposes
+        ``weak_nTOp_frwrd``/``weak_nTOp_bkwrd``.
 
     Returns
     -------
     str
         Tab-separated text with one header line and 500 data rows.
     """
-    cfg = run.cfg
     T_K = np.logspace(np.log10(cfg.T_end), np.log10(cfg.T_start_cosmo), 500)
-    frwrd = run.background.weak_nTOp_frwrd(T_K)
-    bkwrd = run.background.weak_nTOp_bkwrd(T_K)
+    frwrd = background.weak_nTOp_frwrd(T_K)
+    bkwrd = background.weak_nTOp_bkwrd(T_K)
     lines = ["T[K]\tGamma_nTOp[1/s]\tGamma_pTOn[1/s]"]
     for t, f, b in zip(T_K, frwrd, bkwrd):
         lines.append(f"{t:.6e}\t{f:.6e}\t{b:.6e}")
     return "\n".join(lines)
 
 
-def render_downloads_panel(run, mc=None):
+def render_downloads_panel(run, mc=None, background=None):
     """Render the Output tab: the standard, network-independent output files.
 
     Collects every file a user might want to export from a completed run in one
@@ -365,11 +366,12 @@ def render_downloads_panel(run, mc=None):
       lazily here via :func:`primat.evolution.dump_evolution` on
       ``run.evolution`` -- no disk I/O happens until this download button is
       actually clicked (``PRIMAT.md`` S7.5). Populated on either backend.
-    * **output_background.tsv**, **nTOp_total.tsv** (weak rates) -- need a
-      live ``run.background`` (genuine Python ``PRIMAT`` instance only -- see
-      ``primat.gui.app``'s ``_solve``); skipped with an explanatory note when
-      ``run`` is a backend-agnostic :class:`primat.gui.run_view.GuiRun`
-      (the default, C-backend path) instead.
+    * **output_background.tsv**, **nTOp_total.tsv** (weak rates) -- built from
+      ``background``, a separately-constructed Python
+      ``StandardBackground``/``CustomBackground`` (``primat.gui.app``'s
+      ``_build_background``), so these are available regardless of which
+      backend actually solved the BBN network (the C backend has no
+      equivalent of either file -- see ``CLAUDE.md``).
     * **decays.txt** (large network only) -- the consolidated beta-decay /
       electron-capture rate table used by the large network
       (``rates/nuclear/tables/decays.txt``).
@@ -393,6 +395,11 @@ def render_downloads_panel(run, mc=None):
         ``None`` if no quick MC has been run for this result -- in which case
         no MC-samples download button is shown, and ``final_abundances_text``
         falls back to its plain two-column form.
+    background : primat.background.StandardBackground or CustomBackground or None, optional
+        A separately-built Python background (``primat.gui.app._build_background``),
+        used only for the ``output_background.tsv``/``nTOp_total.tsv``
+        downloads. ``None`` (e.g. if building it failed) skips those two
+        downloads with an explanatory note.
     """
     # Each file gets its own subsection title directly above its download
     # button (rather than a blanket "Output"/"Output files" header), stacked
@@ -424,27 +431,23 @@ def render_downloads_panel(run, mc=None):
         data=dump_evolution(run.evolution), file_name="output_time_evolution.tsv",
         mime="text/tab-separated-values", key="dl_evolution",
     )
-    if hasattr(run, "background"):
+    if background is not None:
         _file_download(
             "Background evolution", "output_background.tsv",
-            data=run.background.time_evolution_text(run.cfg.output_n_points),
+            data=background.time_evolution_text(run.cfg.output_n_points),
             file_name="output_background.tsv",
             mime="text/tab-separated-values", key="dl_background",
         )
         _file_download(
             "Weak rates", "nTOp_total.tsv",
-            data=weak_rates_text(run), file_name="nTOp_total.tsv",
+            data=weak_rates_text(run.cfg, background), file_name="nTOp_total.tsv",
             mime="text/tab-separated-values", key="dl_weak_rates",
             help="Total normalised n↔p weak rates: T[K], Γ_{n→p}[s⁻¹], Γ_{p→n}[s⁻¹].",
         )
     else:
-        # GuiRun (C-backend path, the default) has no live background object
-        # to introspect -- these two downloads need a genuine Python PRIMAT
-        # instance (see weak_rates_text's docstring, primat.backend's module
-        # docstring on the decay_era/extra_rho-style Python-only gap).
         st.caption(
-            "*(Background evolution / weak-rates downloads need the Python "
-            "backend -- unavailable for this C-backend run.)*"
+            "*(Background evolution / weak-rates downloads are unavailable -- "
+            "see the error above.)*"
         )
     if run.cfg.network == "large":
         decays_path = os.path.join(

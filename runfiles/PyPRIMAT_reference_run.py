@@ -38,7 +38,7 @@ _pyprimat_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if _pyprimat_path not in sys.path:
     sys.path.insert(0, _pyprimat_path)
 
-from primat import PRIMAT
+from primat import backend
 
 # ---------------------------------------------------------------------------
 # Cosmological parameters (standard values)
@@ -92,7 +92,12 @@ def run_network(label, network, amax=None):
     extra = {"network": network}
     if amax is not None:
         extra["amax"] = amax
-    res = PRIMAT(params={**MyOptions, **extra}).primat_results()
+    # force_backend="python": CLAUDE.md's reference table is the source of
+    # truth this script regenerates, and there is a documented ~1.7e-8
+    # unresolved C-vs-Python D/H gap (tests/test_backend_parity.py) -- the
+    # reference values must stay pinned to the Python backend regardless of
+    # whether a compiled C extension happens to be available.
+    res = backend.run_bbn({**MyOptions, **extra}, force_backend="python")
     elapsed = time.time() - t0
     print(" ")
     print(f" Neff               --> {res['Neff']}")
