@@ -1,9 +1,9 @@
 """
 Generate a PRIMAT-style BBN table with Monte Carlo uncertainties.
 
-Reproduces PRIMAT_Yp_DH_ErrorMC_100_<year>.dat using PyPRIMAT.
+Reproduces PRIMAT_Yp_DH_ErrorMC_100_<year>.dat using PRIMAT.
 
-Output: results/PyPRIMAT_Yp_DH_ErrorMC_<N_MC>_<year>.dat
+Output: results/PRIMAT_Yp_DH_ErrorMC_<N_MC>_<year>.dat
 
 Columns: Ombh2, eta10, DeltaN, Yp(CMB), Yp^BBN, sig(Yp^BBN), D/H, sig(D/H)
 
@@ -102,11 +102,6 @@ N_JOBS    = -1     # joblib workers; -1 = all cores.  Lower this (e.g. 4) if the
 _cfg0 = PRIMATConfig()
 OMBH2_TO_ETA10 = 1e10 * _cfg0.Omegabh2_to_eta0b
 print(f"eta10 / (Omega_b h^2) = {OMBH2_TO_ETA10:.6f}")
-
-# The 12 nuclear rate variation keys used in the small network
-ALL_P_KEYS = [k for k in DEFAULT_PARAMS if k.startswith('p_')]
-RATE_KEYS  = ALL_P_KEYS[:12]
-print(f"Rate keys ({len(RATE_KEYS)}): {RATE_KEYS}")
 
 # Options shared by every PRIMAT call (weak-rate tables are loaded from disk:
 # the per-DeltaN seed run below writes a fingerprint that these calls match)
@@ -226,24 +221,31 @@ def _run_central(Ombh2, DeltaN):
         return (np.nan, np.nan, np.nan)
 
 
-def _run_mc_sample(Ombh2, DeltaN, p_vals, tau_n_val):
-    """One MC sample: randomised nuclear rates and tau_n.
+def _run_mc_sigma(Ombh2, DeltaN, n_mc, seed):
+    """sigma(YPBBN), sigma(D/H) from an N_MC-sample run_mc uncertainty propagation.
 
-    As with _run_central, failures return NaN so one bad sample does not abort
-    the block; the NaN is excluded from the std via np.nanstd below.
+    Uses the same ``seed`` for every (Ombh2, DeltaN) grid point on purpose: each
+    MC sample's nuclear-rate/tau_n perturbation is drawn from
+    ``np.random.default_rng(seed + i)`` independently of the BBN parameters (see
+    ``primat.main._mc_run_batch``), so a shared seed reproduces the *same*
+    sequence of perturbations at every grid point -- removing the MC noise that
+    would otherwise make sigma jitter between neighbouring points (with
+    N_MC=100 that noise is ~7% if samples differ per point; unlike the data
+    itself, this seed is not varied with the grid). On any failure the point's
+    sigma is returned as NaN rather than raising, so one bad grid point cannot
+    abort (and discard) the whole DeltaN block.
     """
     try:
         params = {
             **BASE_OPTS,
             'Omegabh2': float(Ombh2),
             'DeltaNeff': float(DeltaN),
-            'tau_n':     float(tau_n_val),
         }
-        for k, v in zip(RATE_KEYS, p_vals):
-            params[k] = float(v)
-        res = backend.run_bbn(params)
-        return res['YPBBN'], res['DoH']
-    except Exception:
+        mc = backend.run_mc(n_mc, ['YPBBN', 'DoH'], params=params, seed=seed, n_jobs=1)
+        return mc['YPBBN'].std, mc['DoH'].std
+    except Exception as exc:
+        print(f"\n  [warn] MC failed at Ombh2={Ombh2}, DeltaN={DeltaN}: {exc}",
+              file=sys.stderr, flush=True)
         return np.nan, np.nan
 
 # ---------------------------------------------------------------------------
@@ -315,37 +317,20 @@ for i_dN, DeltaN in enumerate(DeltaN_grid):
     print(f"  [central {time.time()-t1:.0f}s]", end='', flush=True)
 
     # ------------------------------------------------------------------
-    # 3. MC samples: parallel over all (Ombh2, i_mc) pairs.
-    #    Draw nuclear rate offsets p_i ~ N(0,1) and
-    #    tau_n ~ N(BASE_OPTS['tau_n'], BASE_OPTS['std_tau_n']).
+    # 3. MC sigma(YPBBN)/sigma(D/H): one run_mc(N_MC, ...) call per Ombh2,
+    #    parallel over Ombh2 (each call itself runs single-threaded -- see
+    #    _run_mc_sigma -- so the available cores are spent on grid points,
+    #    matching the granularity N_JOBS was tuned for).  SEED_BASE is reused
+    #    identically for every Ombh2/DeltaN -- see _run_mc_sigma's docstring.
     # ------------------------------------------------------------------
     t2 = time.time()
-    # Draw ONE shared set of MC samples for all Ombh2 points and reuse the same
-    # seed for every DeltaN.  This removes the MC noise that would otherwise cause
-    # sigma estimates to vary erratically between neighbouring grid points or
-    # between DeltaN values (with N_MC=100 the noise on std is ~7% if samples
-    # differ per point).
-    rng     = np.random.default_rng(SEED_BASE)
-    p_all   = rng.standard_normal((N_MC, len(RATE_KEYS)))   # shared across Ombh2
-    tau_all = (BASE_OPTS['tau_n']
-               + BASE_OPTS['std_tau_n'] * rng.standard_normal(N_MC))
-
-    mc_raw = Parallel(n_jobs=N_JOBS)(
-        delayed(_run_mc_sample)(
-            Ombh2_grid[i_om], DeltaN,
-            p_all[i_mc],
-            tau_all[i_mc]
-        )
-        for i_om in range(n_omega)
-        for i_mc in range(N_MC)
+    sig_raw = Parallel(n_jobs=N_JOBS)(
+        delayed(_run_mc_sigma)(Ombh2, DeltaN, N_MC, SEED_BASE)
+        for Ombh2 in Ombh2_grid
     )
-
-    mc_arr   = np.array(mc_raw).reshape(n_omega, N_MC, 2)
-    mc_YPBBN = mc_arr[:, :, 0]   # (n_omega, N_MC)
-    mc_DoH   = mc_arr[:, :, 1]
-    # nanstd: a failed (NaN) sample is excluded rather than poisoning the sigma.
-    sig_YPBBN = np.nanstd(mc_YPBBN, axis=1)
-    sig_DoH   = np.nanstd(mc_DoH,   axis=1)
+    sig_arr   = np.array(sig_raw)   # (n_omega, 2): sigma(YPBBN), sigma(D/H)
+    sig_YPBBN = sig_arr[:, 0]
+    sig_DoH   = sig_arr[:, 1]
     print(f"  [MC {time.time()-t2:.0f}s]", flush=True)
 
     # ------------------------------------------------------------------
@@ -360,7 +345,7 @@ for i_dN, DeltaN in enumerate(DeltaN_grid):
     # 5. Release this block's memory and recycle the worker pool so memory
     #    cannot accumulate across the (long) outer loop.
     # ------------------------------------------------------------------
-    del central_raw, central_arr, mc_raw, mc_arr, mc_YPBBN, mc_DoH, p_all, tau_all
+    del central_raw, central_arr, sig_raw, sig_arr
     gc.collect()
     _recycle_worker_pool()
 
@@ -373,7 +358,7 @@ print(f"\nTotal wall time: {(time.time()-t_wall)/60:.1f} min")
 os.makedirs(os.path.join(repo_root, 'results'), exist_ok=True)
 year    = datetime.date.today().year
 outfile = os.path.join(repo_root, 'results',
-                       f'PyPRIMAT_Yp_DH_ErrorMC_{N_MC}_{year}.dat')
+                       f'PRIMAT_Yp_DH_ErrorMC_{N_MC}_{year}.dat')
 
 # Fixed column widths (chars, left-aligned).
 # Data rows are prefixed with "  " to align with the "# " on the header line.
@@ -416,7 +401,7 @@ HEADER = f"""\
 # $\\Delta N=0$ is the number of extra relativistic species (which mimic decoupled neutrinos).
 # If $\\Delta N=0$, then $N_{{eff}} = 3.0440$ because of QED effects and Incomplete Neutrino decoupling (arXiv:2008.01074).
 #
-# Computation performed with PyPRIMAT (Python port of PRIMAT by Cyril Pitrou 2018-{year})
+# Computation performed with PRIMAT (Python port by Cyril Pitrou 2018-{year})
 # Details on arXiv:1801.08023 and update arXiv:2011.11320
 # Last update {year} (notably including the LUNA rate for the d(p,g)He3 reaction)
 #
