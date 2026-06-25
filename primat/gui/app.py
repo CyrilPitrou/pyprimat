@@ -171,10 +171,11 @@ def _quick_mc(params_items, num_mc, run):
 
     Returns
     -------
-    primat.main.MCResult
-        Indexed by whichever ``_RATIO_FORMAT`` keys are valid for this run's
-        network (Neff, YPBBN, YPCMB, DoH, He3oH, He3oHe4, Li7oH, and
-        Li6oLi7/YCNO when applicable); each entry has ``.mean`` and ``.std``.
+    (primat.main.MCResult, float)
+        MCResult is indexed by whichever ``_RATIO_FORMAT`` keys are valid for
+        this run's network (Neff, YPBBN, YPCMB, DoH, He3oH, He3oHe4, Li7oH,
+        and Li6oLi7/YCNO when applicable); each entry has ``.mean`` and ``.std``.
+        The float is the elapsed wall-clock time (seconds) the MC computation took.
 
     Notes
     -----
@@ -208,6 +209,8 @@ def _quick_mc(params_items, num_mc, run):
     central-value run, including any inflated/deflated rate uncertainty
     uploaded for a replaced reaction.
     """
+    t0 = time.time()
+    status = st.empty()
     cache = st.session_state.get("_quick_mc_cache")
     # Reuse the cached MCResult as a starting point only when it was computed
     # for exactly these parameters; run_mc itself re-checks seed, quantities,
@@ -217,11 +220,14 @@ def _quick_mc(params_items, num_mc, run):
     custom_network = json.loads(cn_json) if cn_json else None
     mc_params = {k: v for k, v in params_items if k != "custom_network"}
     quantities = [q for q in _RATIO_FORMAT if q in run.results]
+    status.markdown("### Running BBN error estimation…")
     mc = backend.run_mc(num_mc, quantities,
                          params=mc_params, seed=0, prev=prev,
                          custom_network=custom_network)
+    status.empty()
+    elapsed = time.time() - t0
     st.session_state["_quick_mc_cache"] = (params_items, mc)
-    return mc
+    return mc, elapsed
 
 
 @st.cache_resource(show_spinner=False)
@@ -468,10 +474,11 @@ def main():
         st.rerun()
 
     mc = None
+    mc_elapsed = None
     if st.session_state.get(SessionKeys.quick_mc, False):
         num_mc = st.session_state.get(SessionKeys.mc_samples, 30)
-        with st.spinner(f"Running {num_mc}-sample quick MC uncertainty…"):
-            mc = _quick_mc(params_items, num_mc, run)
+        with st.spinner(""):
+            mc, mc_elapsed = _quick_mc(params_items, num_mc, run)
 
     with tab_results:
         # `backend_used` (set by `_solve`) names whichever backend actually
@@ -480,7 +487,9 @@ def main():
         # unambiguous which backend ran, for cross-checking against
         # `primat.backend.run_bbn(..., force_backend=...)` results computed
         # elsewhere.
-        mc_backend_note = f", quick MC: {mc.backend} backend" if mc is not None else ""
+        mc_backend_note = ""
+        if mc is not None:
+            mc_backend_note = f", quick MC: {mc.backend} backend ({mc_elapsed:.2f} s)"
         st.caption(f"(solved in {elapsed:.2f} s — BBN solve: {backend_used} backend{mc_backend_note})")
         panels.render_results_panel(run, mc=mc)
     with tab_evolution:
