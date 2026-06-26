@@ -13,6 +13,7 @@ import re
 import pytest
 
 from primat.cli import main
+from primat.credits import cli_credits_text
 from tests.reference_values import (
     DOH_ABS_TOL,
     DOH_REFERENCE,
@@ -87,3 +88,98 @@ def test_cli_network_rejects_unknown_name():
     """An unknown --network name surfaces PRIMATConfig's ValueError."""
     with pytest.raises(ValueError, match="network must be"):
         main(["--network", "no_such_network"])
+
+
+def test_cli_network_error_mentions_data_tree():
+    """The missing-network error should point at data/nuclear/networks."""
+    with pytest.raises(ValueError, match=r"data/nuclear/networks"):
+        main(["--network", "no_such_network"])
+
+
+def test_cli_network_error_lists_overlay_candidates(tmp_path):
+    """A custom overlay should be named explicitly in the missing-network error."""
+    overlay = tmp_path / "overlay"
+    overlay.mkdir()
+    expected = overlay / "networks" / "custom.txt"
+
+    with pytest.raises(ValueError, match=re.escape(str(expected))):
+        main(["--set", f"user_rates_dir={overlay}", "--network", "custom"])
+
+
+def test_cli_set_expands_tilde_in_path_values(monkeypatch, tmp_path, capsys):
+    """Quoted ``~`` paths passed through ``--set`` should resolve to HOME.
+
+    The CLI forwards ``--set`` values as raw strings, so path parameters must
+    normalize home-directory prefixes inside the config layer rather than
+    relying on shell expansion.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / "custom").mkdir()
+
+    rc = main(["--set", "user_rates_dir=~/custom", "--json"])
+    assert rc == 0
+    err = capsys.readouterr().err
+    assert "tables and networks located in" in err
+    assert str((tmp_path / "custom").resolve()) in err
+
+
+def test_cli_help_shows_named_output_path_flags(capsys):
+    """``primat --help`` documents the four output-path flags as basic options.
+
+    These paths are user-facing CLI knobs, so they must appear in the printed
+    help instead of being buried under the hidden ``--set KEY=VALUE`` escape
+    hatch.
+    """
+    with pytest.raises(SystemExit) as excinfo:
+        main(["--help"])
+    assert excinfo.value.code == 0
+    out = capsys.readouterr().out
+    assert "--output_file FILE" in out
+    assert "--output_final_file FILE" in out
+    assert "--output_background_file FILE" in out
+    assert "--output_mc_file FILE" in out
+    assert not re.search(r"(?m)^\s+--set\b", out)
+
+
+def test_cli_credits_prints_short_text(capsys):
+    """--credits prints the attribution text without install/run guidance."""
+    rc = main(["--credits"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert out.rstrip("\n") == cli_credits_text()
+    assert "pip install primat" not in out
+
+
+def test_cli_mc_output_announces_path(capsys, tmp_path):
+    """The MC TSV writer must also emit a visible [output] line."""
+    out_path = tmp_path / "mc_samples.tsv"
+    rc = main(["--mc", "1", "--output_mc_samples", "--output_mc_file", str(out_path)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "[output] MC samples (1 sample) written to" in out
+    assert str(out_path.resolve()) in out
+
+
+def test_cli_mc_output_file_without_enable_flag_does_not_write(capsys, tmp_path):
+    """The filename option alone should not force MC sample output."""
+    out_path = tmp_path / "mc_samples.tsv"
+    rc = main(["--mc", "1", "--output_mc_file", str(out_path)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "[output] MC samples" not in out
+    assert not out_path.exists()
+
+
+def test_cli_mc_summary_includes_all_displayed_sigmas(capsys):
+    """The human-readable MC summary should print sigma for every displayed
+    ratio, not only the first few observables.
+
+    This exercises a network that actually produces Li6/Li7 and CNO so the
+    optional lines are present in the output.
+    """
+    rc = main(["--network", "large", "--mc", "1"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert re.search(r"He3/He4\s*=\s*[\d.eE+-]+\s+\+/-\s+[\d.eE+-]+", out)
+    assert re.search(r"Li6/Li7\s*=\s*[\d.eE+-]+\s+\+/-\s+[\d.eE+-]+", out)
+    assert re.search(r"CNO \(mass\)\s*=\s*[\d.eE+-]+\s+\+/-\s+[\d.eE+-]+", out)

@@ -3,7 +3,7 @@
 Unified nuclear-network construction and use.
 
 This module is the single place where PyPRIMAT turns a named reaction list into
-ODE equations.  The lists in ``rates/nuclear/networks/{small_parthenope,large}.txt``
+ODE equations.  The lists in ``data/nuclear/networks/{small_parthenope,large}.txt``
 (plus the hardcoded ``small``) name the thermonuclear reactions to keep; an
 ``amax`` cutoff (any positive integer >= 1) further filters any of these by
 maximum nuclide mass number, regardless of which named network it is applied to.  The weak ``n <-> p`` conversion is
@@ -235,7 +235,7 @@ _KEY12_REACTIONS = ORDER_SMALL[1:]
 def _network_dir_from_cwd() -> str:
     """Return the package's network-list directory for import-time defaults.
 
-    ``rates/`` lives inside the ``primat`` package (it is shipped as package
+    ``data/`` lives inside the ``primat`` package (it is shipped as package
     data), so the path is resolved relative to this file — never the current
     working directory — and works for both editable and regular installs.
     """
@@ -245,7 +245,7 @@ def _network_dir_from_cwd() -> str:
 
 
 def load_reaction_names(cfg_or_dir, network: str | None = None) -> list[str]:
-    """Read a thermonuclear reaction list from ``rates/nuclear/networks``.
+    """Read a thermonuclear reaction list from ``data/nuclear/networks``.
 
     Parameters
     ----------
@@ -256,7 +256,7 @@ def load_reaction_names(cfg_or_dir, network: str | None = None) -> list[str]:
     network : str, optional
         Which list to read.  ``"small"`` is special and returns
         :data:`ORDER_SMALL` without touching the filesystem.  Any other value
-        is interpreted as ``<network>.txt`` inside ``rates/nuclear/networks``
+        is interpreted as ``<network>.txt`` inside ``data/nuclear/networks``
         unless it already ends in ``.txt``.
 
     Returns
@@ -802,7 +802,7 @@ class NetworkDefinition:
     # (e.g. directly from ``reaction_names`` in a test).
     sources: list[str] | None = None
     # Per-reaction rate-table path (aligned with ``names``): the on-disk
-    # ``rates/nuclear/tables/<name>.txt`` each forward rate was loaded from.
+    # ``data/nuclear/tables/<name>.txt`` each forward rate was loaded from.
     # ``None`` for entries with no rate table (``n__p``, whose weak rates are
     # supplied at solve time) and ``None`` for the whole list when the network
     # was built without source bookkeeping. Used by the GUI reactions table to
@@ -971,8 +971,7 @@ def _reaction_catalog(data_dir: str):
     Parameters
     ----------
     data_dir : str
-        Package data root, i.e. ``cfg.data_dir`` (the directory containing
-        ``rates/``).  This is a fixed path for a given PyPRIMAT installation,
+        Package data root, i.e. ``cfg.data_dir`` (the directory ``data/``).  This is a fixed path for a given primat installation,
         so the result is cached with :func:`functools.lru_cache`: the three
         CSV files under ``data/csv/`` are read at most once per
         process instead of on every :func:`load_network`,
@@ -1133,7 +1132,7 @@ def _qed_nuclear_rescale(name, T9_grid):
 def _reaction_source_from_lines(lines):
     """Extract the data source label from a rate table's first ``#`` line.
 
-    Every rate table under ``rates/nuclear/tables/`` starts with a header such
+    Every rate table under ``data/nuclear/tables/`` starts with a header such
     as ``# n + p > d + g   [n_p__d_g]   ref=And06``.  The ``ref=`` field names the
     experimental/theoretical compilation the rate was taken from (here the
     ``And06`` = Ando et al. 2006 evaluation).  Shared by :func:`_read_reaction_source`
@@ -1173,7 +1172,7 @@ def _read_reaction_source(table_path):
     """Extract the data source label from an on-disk rate table's header.
 
     Thin wrapper around :func:`_reaction_source_from_lines` for a shipped
-    ``rates/nuclear/tables/<name>/<file>.txt`` file. See that function for the
+    ``data/nuclear/tables/<name>/<file>.txt`` file. See that function for the
     header format.
 
     Parameters
@@ -1196,7 +1195,7 @@ def _read_reaction_source(table_path):
 
 
 def _load_decay_table(tables_dir):
-    """Parse ``rates/nuclear/tables/decays.txt`` into a per-reaction dict.
+    """Parse ``data/nuclear/tables/decays.txt`` into a per-reaction dict.
 
     Radioactive-decay reactions (Bm/Bp on the products side) have a rate that
     is, by construction, independent of temperature: ``rate_s^-1 =
@@ -1211,7 +1210,7 @@ def _load_decay_table(tables_dir):
     Parameters
     ----------
     tables_dir : str
-        Path to ``rates/nuclear/tables`` (where ``decays.txt`` lives).
+        Path to ``data/nuclear/tables`` (where ``decays.txt`` lives).
 
     Returns
     -------
@@ -1541,7 +1540,7 @@ def _build_rate_tables(parsed, idx, custom_tables, tables_dir, grid, cfg, db):
             net_lepton_dZ)`` tuples from :func:`_parse_reaction_sides`.
         idx: dict, species name -> index in the solver's abundance vector.
         custom_tables: dict, see load_network's docstring.
-        tables_dir: str, path to rates/nuclear/tables/.
+        tables_dir: str, path to data/nuclear/tables/.
         grid: np.ndarray, master T9 grid (log-spaced).
         cfg: PRIMATConfig instance.
         db: dict, bare name -> (alpha, beta, gamma) detailed-balance triple.
@@ -1645,7 +1644,7 @@ def _build_rate_tables(parsed, idx, custom_tables, tables_dir, grid, cfg, db):
             fwd_median.append(np.full(grid.shape, rate_s))
             fwd_expsigma.append(np.full(grid.shape, f))
         else:
-            # Per-reaction folder layout: rates/nuclear/tables/<name>/<filename>
+            # Per-reaction folder layout: data/nuclear/tables/<name>/<filename>
             # (the PRIMAT default table is <name>/<name>.txt; sibling files in
             # the same folder are alternate candidate tables, e.g. a
             # "_parthenope3.0.txt" variant -- see available_rate_tables()).
@@ -1788,7 +1787,7 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
         bare name is a key of this dict, its forward-rate table is taken from
         these arrays (run through the same :func:`_resample_rate_table` log-log
         cubic interpolation as the on-disk tables) instead of from
-        ``rates/nuclear/tables/<name>.txt``.  Used by the GUI's "Customise
+        ``data/nuclear/tables/<name>.txt``.  Used by the GUI's "Customise
         Reactions" panel to substitute a user-uploaded rate table without
         writing anything to disk.
 
@@ -1897,7 +1896,7 @@ def group_reactions_by_category(names) -> dict:
 
 
 # True maximum nuclide mass number reachable in the large network's catalog
-# (measured: the heaviest nuclide referenced by any rates/nuclear/networks/
+# (measured: the heaviest nuclide referenced by any data/nuclear/networks/
 # large.txt reaction is Na23, A=23). Used by the GUI popup (CUSTOMPOPUP.md
 # §6.2/§7.1) to detect "this kept-reaction list used every reaction up to the
 # top of the catalog", i.e. equivalent to "no amax filter" (amax=None).

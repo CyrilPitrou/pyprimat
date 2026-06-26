@@ -255,7 +255,7 @@ def effective_table_text(cfg, T9, rate, err, name="custom", source_header=()):
     (``cfg.rate_grid_{npts,T9_min,T9_max}``) with the exact same
     :func:`primat.network_data._resample_rate_table` log-log cubic
     interpolation used by ``load_network``, then formats it as a 3-column text
-    table mirroring the shipped ``rates/nuclear/tables/*.txt`` files. This is
+    table mirroring the shipped ``data/nuclear/tables/*.txt`` files. This is
     what the Download tab offers for a replaced reaction, so the user can
     verify exactly what was used (as opposed to the raw upload).
 
@@ -586,7 +586,7 @@ def kept_to_custom_network(cfg, kept, replaced, decay_overrides=None, filenames=
     Parameters
     ----------
     cfg : PRIMATConfig
-        Used only to resolve ``rates/nuclear/networks/large.txt``.
+        Used only to resolve ``data/nuclear/networks/large.txt``.
     kept : sequence[str]
         Reaction names kept in the imported network.
     replaced : dict[str, str]

@@ -22,6 +22,88 @@ from .constants import CONST
 
 __all__ = ['DEFAULT_PARAMS', 'PRIMATConfig']
 
+# String-valued config keys that represent filesystem paths.
+# These are normalized with os.path.expanduser() so CLI users can pass
+# quoted "~/" prefixes through --set and still get the expected home-dir
+# expansion.
+_PATH_PARAMS = {
+    "nevo_file",
+    "nevo_spectral_file",
+    "nevo_grid_file",
+    "custom_background",
+    "rates_dir",
+    "user_rates_dir",
+    "output_file",
+    "output_final_file",
+    "output_background_file",
+    "output_mc_file",
+    "output_decay_file",
+}
+
+
+def _expanduser_path(value):
+    """Expand a user-home prefix in a path-like config value.
+
+    Parameters
+    ----------
+    value : str | os.PathLike | None
+        Raw path value supplied by the caller. ``None`` is passed through
+        unchanged so optional path parameters keep their sentinel value.
+
+    Returns
+    -------
+    str | None
+        The same path with a leading ``~`` resolved against the current
+        user home directory, or ``None`` if that was the input.
+
+    Example
+    -------
+        >>> _expanduser_path("~/Downloads/custom")
+        '/home/user/Downloads/custom'
+    """
+    if value is None:
+        return None
+    return os.path.expanduser(os.fspath(value))
+
+
+def _rates_overlay_notice(field: str, path: str) -> str:
+    """Render the startup note for a custom rates overlay directory.
+
+    Parameters
+    ----------
+    field : str
+        Either ``"rates_dir"`` or ``"user_rates_dir"``.
+    path : str
+        Directory path already accepted by the config validator.
+
+    Returns
+    -------
+    str
+        Human-readable notice explaining that nuclear networks and rate
+        tables under that directory participate in selection.
+    """
+    label = "full-takeover" if field == "rates_dir" else "additive"
+    return (
+        f"[init]  {field} {label} overlay: tables and networks under "
+        f"{os.path.abspath(os.path.expanduser(os.fspath(path)))!r} are available for selection."
+    )
+
+
+def _overlay_candidates(base: str, relpath: str) -> list[str]:
+    """Return overlay lookup candidates for a rates-relative path.
+
+    The shipped tree is rooted at ``primat/data`` and therefore uses paths
+    such as ``nuclear/networks/small.txt``.  Overlay directories are treated
+    as the equivalent of ``primat/data/nuclear`` instead, so the primary
+    lookup drops a leading ``nuclear/`` component when present and then
+    falls back to the legacy nested layout for compatibility.
+    """
+    candidates = []
+    if relpath.startswith("nuclear/"):
+        candidates.append(os.path.join(base, relpath[len("nuclear/"):]))
+    candidates.append(os.path.join(base, relpath))
+    return candidates
+
 # ---------------------------------------------------------------------------
 # Default parameter values exposed as a plain dict so callers can inspect them
 # ---------------------------------------------------------------------------
@@ -90,7 +172,9 @@ DEFAULT_PARAMS: dict = {
     # alternate rates tree) -> user_rates_dir (additive overlay for a user's
     # own networks/tables, without touching the installed package) -> the
     # shipped primat/data/ tree (so "small"/"large" never disappear even if
-    # only user_rates_dir is set and it doesn't contain them).
+    # only user_rates_dir is set and it doesn't contain them). Overlay roots
+    # are treated as the equivalent of primat/data/nuclear, so they should
+    # contain `networks/` and `tables/` directly.
     "rates_dir":                  None, # Full-takeover override directory (must exist if set)
     "user_rates_dir":             None, # Additive overlay directory, checked before the shipped defaults (must exist if set)
 
@@ -214,7 +298,7 @@ DEFAULT_PARAMS: dict = {
     "rate_grid_T9_max":          10.0,       # maximum T9 [GK] on the master grid
 
     # Network selector.  "small" is the built-in ORDER_SMALL network.  Any other
-    # value loads rates/nuclear/networks/<network>.txt -- shipped options are
+    # value loads data/nuclear/networks/<network>.txt -- shipped options are
     # "small_parthenope" and "large"; any other name loads a custom network
     # file of the same form.
     "network":                    "small",
@@ -446,6 +530,7 @@ class PRIMATConfig:
         # network actually requested by the caller.
         object.__setattr__(self, "p_rxn", {})
         object.__setattr__(self, "NP_delta_rxn", {})
+        object.__setattr__(self, "_init_messages", [])
 
         user_keys = set(params.keys()) if params else set()
 
@@ -499,13 +584,28 @@ class PRIMATConfig:
             _value = getattr(self, _field)
             if _value is not None and not os.path.isdir(_value):
                 raise ValueError(f"{_field}={_value!r} is not an existing directory")
+            if _value is not None:
+                self._init_messages.append(_rates_overlay_notice(_field, _value))
 
         if self.network != "small":
             path = self.resolve_rates_path("nuclear", "networks", f"{self.network}.txt")
             if not os.path.exists(path):
+                searched = []
+                if self.rates_dir is not None:
+                    searched.extend(_overlay_candidates(
+                        self.rates_dir,
+                        os.path.join("nuclear", "networks", f"{self.network}.txt"),
+                    ))
+                if self.user_rates_dir is not None:
+                    searched.extend(_overlay_candidates(
+                        self.user_rates_dir,
+                        os.path.join("nuclear", "networks", f"{self.network}.txt"),
+                    ))
+                searched.append(path)
                 raise ValueError(
                     f"network must be 'small' or name an existing file in "
-                    f"rates/nuclear/networks; missing {path!r}"
+                    f"data/nuclear/networks; missing {path!r}"
+                    + (f" (searched: {', '.join(repr(p) for p in searched)})" if searched else "")
                 )
 
         # Default every reaction of the *configured* network (self.network,
@@ -553,7 +653,6 @@ class PRIMATConfig:
 
         # Detect optional libraries for flags not explicitly set by the caller.
         # Messages are stored for deferred printing (after the banner).
-        self._init_messages = []
 
         if self.numba_installed:
             try:
@@ -691,6 +790,10 @@ class PRIMATConfig:
         elif name.startswith("NP_delta_"):
             object.__getattribute__(self, 'NP_delta_rxn')[name[9:]] = float(value)
         else:
+            if name in _PATH_PARAMS:
+                # Normalize "~" immediately so both direct assignment and
+                # --set KEY=VALUE route through the same resolved path.
+                value = _expanduser_path(value)
             object.__setattr__(self, name, value)
             if name == "Omegabh2":
                 self._update_derived()
@@ -792,7 +895,11 @@ class PRIMATConfig:
             bases.append(self.user_rates_dir)
         bases.append(os.path.join(self.data_dir, "data"))  # shipped default, always last
         for base in bases:
-            candidate = os.path.join(base, relpath) if relpath else base
-            if os.path.exists(candidate):
-                return candidate
+            if relpath:
+                for candidate in _overlay_candidates(base, relpath):
+                    if os.path.exists(candidate):
+                        return candidate
+            else:
+                if os.path.exists(base):
+                    return base
         return os.path.join(bases[-1], relpath) if relpath else bases[-1]

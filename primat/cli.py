@@ -12,6 +12,13 @@ need (baryon density, extra relativistic species, network choice) so a
 
     primat --Omegabh2 0.02242 --network large --amax 8
 
+The output filenames are exposed as named flags as well
+(``--output_file``, ``--output_final_file``, ``--output_background_file``,
+``--output_mc_file``) so they show up in ``primat --help`` alongside the
+other basic options. Monte-Carlo sample dumping is controlled by the
+standard config flag ``--output_mc_samples`` and the filename is taken from
+``--output_mc_file``.
+
 Anything not exposed as a named flag here can still be set without writing a
 script, via the (intentionally undocumented in ``--help``, to keep the
 printed help short) ``--set KEY=VALUE`` escape hatch, repeatable for any
@@ -32,9 +39,10 @@ import sys
 import time
 
 from . import PRIMAT, __version__
+from .credits import cli_credits_text
 from .backend import HAS_C_BACKEND, dump_mc_samples, run_bbn, run_mc
 from .cache_utils import clear_weak_cache, list_weak_cache_files
-from .config import PRIMATConfig
+from .config import PRIMATConfig, _rates_overlay_notice
 
 
 def _parse_set_value(raw: str):
@@ -75,11 +83,18 @@ def _build_parser():
                      "primat and print the resulting Neff/abundances.",
         epilog="Any other PRIMATConfig parameter (including p_<reaction>/"
                "NP_delta_<reaction> rate variations) can be set with "
-               "repeated --set KEY=VALUE, e.g. --set T_end_MeV=1e-4.",
+               "repeated --set KEY=VALUE, e.g. --set T_end_MeV=1e-4. "
+               "The output-path options are available as named flags: "
+               "--output_file, --output_final_file, --output_background_file, "
+               "--output_mc_file.",
     )
     # `version` action prints the string and exits before any computation;
     # the version itself comes from the installed distribution metadata via
     # primat.__version__ (single source of truth in pyproject.toml).
+    parser.add_argument(
+        "--credits", action="store_true",
+        help="Print the project credits and exit.",
+    )
     parser.add_argument(
         "--version", action="version",
         version=f"%(prog)s {__version__}",
@@ -99,7 +114,7 @@ def _build_parser():
         help="Nuclear reaction network used in the LT era "
              "(PRIMATConfig default: small). Built-in choices are 'small', "
              "'small_parthenope' and 'large', but any name for which "
-             "rates/nuclear/networks/<NAME>.txt exists is accepted; "
+             "data/nuclear/networks/<NAME>.txt exists is accepted; "
              "PRIMATConfig raises a ValueError if no such file is found.",
     )
     parser.add_argument(
@@ -117,6 +132,26 @@ def _build_parser():
         "--munuOverTnu", type=float, default=None, metavar="XI",
         help="Reduced neutrino chemical potential mu/T, same for all flavours "
              "(PRIMATConfig default: 0).",
+    )
+    parser.add_argument(
+        "--output_file", default=None, metavar="FILE",
+        help="Write the full time-evolution TSV to FILE when "
+             "--output_time_evolution is enabled.",
+    )
+    parser.add_argument(
+        "--output_final_file", default=None, metavar="FILE",
+        help="Write the final-abundance table to FILE when "
+             "--output_final_result is enabled.",
+    )
+    parser.add_argument(
+        "--output_background_file", default=None, metavar="FILE",
+        help="Write the background time-evolution TSV to FILE when "
+             "--output_background_evolution is enabled.",
+    )
+    parser.add_argument(
+        "--output_mc_file", default=None, metavar="FILE",
+        help="Write Monte-Carlo samples to FILE when --mc is used and "
+             "--output_mc_samples is enabled.",
     )
     # Boolean PRIMATConfig flags exposed as --flag/--no-flag pairs (argparse's
     # BooleanOptionalAction), so they don't need the --set escape hatch.
@@ -144,8 +179,7 @@ def _build_parser():
         ("output_background_evolution", False,
          "Write the cosmological background time series to disk."),
         ("output_mc_samples", False,
-         "Write --mc samples to output_mc_file (overridden by --mc-output "
-         "when that flag is given)."),
+         "Write --mc samples to output_mc_file."),
     ):
         parser.add_argument(
             f"--{flag_name}", action=argparse.BooleanOptionalAction, default=None,
@@ -173,13 +207,6 @@ def _build_parser():
         "--mc-jobs", type=int, default=-1, metavar="N",
         help="Parallel worker count for --mc (default: -1, all CPUs; Python "
              "backend only -- the C backend always uses one pthread per sample).",
-    )
-    parser.add_argument(
-        "--mc-output", default=None, metavar="FILE",
-        help="Write the --mc samples (one column per quantity, one row per "
-             "sample) to FILE as TSV. Without this flag, the samples file is "
-             "only written when output_mc_samples=True (--set "
-             "output_mc_samples=True), to output_mc_file.",
     )
     parser.add_argument(
         "--json", action="store_true",
@@ -243,6 +270,10 @@ def main(argv=None):
     parser = _build_parser()
     args = parser.parse_args(argv)
 
+    if args.credits:
+        print(cli_credits_text())
+        return 0
+
     if args.cache_info or args.cache_clear:
         cfg = PRIMATConfig({})
         if args.cache_clear:
@@ -262,6 +293,8 @@ def main(argv=None):
         "radiative_corrections", "finite_mass_corrections", "thermal_corrections",
         "spectral_distortions", "output_time_evolution", "output_final_result",
         "output_background_evolution", "output_mc_samples",
+        "output_file", "output_final_file", "output_background_file",
+        "output_mc_file",
     ):
         value = getattr(args, key)
         if value is not None:
@@ -273,6 +306,10 @@ def main(argv=None):
             parser.error(f"--set {entry!r}: expected KEY=VALUE")
         key, _, raw_value = entry.partition("=")
         params[key] = _parse_set_value(raw_value)
+
+    for key in ("rates_dir", "user_rates_dir"):
+        if params.get(key) is not None:
+            print(_rates_overlay_notice(key, params[key]), file=sys.stderr)
 
     start_time = time.time()
     results = run_bbn(params=params, force_backend=args.backend)
@@ -300,30 +337,32 @@ def main(argv=None):
               (f" +/- {mc['DoH'].std:.7e}" if mc is not None and "DoH" in mc.quantity_names() else ""))
         print(f"He3/H      = {results['He3oH']:.7e}" +
               (f" +/- {mc['He3oH'].std:.7e}" if mc is not None and "He3oH" in mc.quantity_names() else ""))
-        print(f"He3/He4    = {results['He3oHe4']:.7e}")
+        print(f"He3/He4    = {results['He3oHe4']:.7e}" +
+              (f" +/- {mc['He3oHe4'].std:.7e}" if mc is not None and "He3oHe4" in mc.quantity_names() else ""))
         print(f"Li7/H      = {results['Li7oH']:.6e}" +
               (f" +/- {mc['Li7oH'].std:.6e}" if mc is not None and "Li7oH" in mc.quantity_names() else ""))
         if "Li6oLi7" in results:
-            print(f"Li6/Li7    = {results['Li6oLi7']:.6e}")
+            print(f"Li6/Li7    = {results['Li6oLi7']:.6e}" +
+                  (f" +/- {mc['Li6oLi7'].std:.6e}" if mc is not None and "Li6oLi7" in mc.quantity_names() else ""))
         if "YCNO" in results:
-            print(f"CNO (mass) = {results['YCNO']:.6e}")
+            print(f"CNO (mass) = {results['YCNO']:.6e}" +
+                  (f" +/- {mc['YCNO'].std:.6e}" if mc is not None and "YCNO" in mc.quantity_names() else ""))
         if mc is not None:
             print(f"--- Monte-Carlo: {args.mc} samples ---")
         print(f"--- running time: {elapsed:.2f} seconds ---")
 
     if mc is not None:
-        mc_output_path = args.mc_output
-        if mc_output_path is None:
-            cfg_check = PRIMATConfig(params)
-            if cfg_check.output_mc_samples:
-                mc_output_path = cfg_check.output_mc_file
+        cfg_check = PRIMATConfig(params)
+        mc_output_path = cfg_check.output_mc_file if cfg_check.output_mc_samples else None
         if mc_output_path:
-            out_dir = os.path.dirname(mc_output_path)
+            out_path = os.path.abspath(mc_output_path)
+            out_dir = os.path.dirname(out_path)
             if out_dir:
                 os.makedirs(out_dir, exist_ok=True)
-            with open(mc_output_path, "w") as f:
+            with open(out_path, "w") as f:
                 f.write(dump_mc_samples(mc))
-            print(f"MC samples written to {mc_output_path}")
+            sample_word = "sample" if args.mc == 1 else "samples"
+            print(f"[output] MC samples ({args.mc} {sample_word}) written to {out_path}")
 
     return 0
 

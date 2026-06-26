@@ -26,6 +26,8 @@ docstring.
 """
 import numpy as np
 import pytest
+import subprocess
+import sys
 
 from primat.backend import HAS_C_BACKEND, run_bbn
 from primat.evolution import dump_evolution, load_evolution
@@ -87,6 +89,62 @@ def test_backend_large_amax8_numerical_agreement():
     assert r_c["YPBBN"] == pytest.approx(r_py["YPBBN"], abs=1e-5)
     assert r_c["Neff"] == pytest.approx(r_py["Neff"], abs=1e-3)
     assert r_c["DoH"] == pytest.approx(r_py["DoH"], rel=1e-3)
+
+
+@pytest.mark.parametrize("force_backend", [
+    "python",
+    pytest.param("c", marks=requires_c_backend),
+])
+def test_output_files_announce_their_paths(force_backend, capfd, tmp_path):
+    """Every solve-time output file should announce its path with [output].
+
+    The time-evolution and final-abundance writers are backend-specific
+    (Python and C both implement them), so this checks the shared user-facing
+    console contract for both backends.
+    """
+    out_time = tmp_path / f"evolution_{force_backend}.tsv"
+    out_final = tmp_path / f"final_{force_backend}.dat"
+    params = {
+        "network": "small",
+        "output_time_evolution": True,
+        "output_file": str(out_time),
+        "output_final_result": True,
+        "output_final_file": str(out_final),
+    }
+    if force_backend == "c":
+        script = (
+            "from primat.backend import run_bbn\n"
+            f"run_bbn({params!r}, force_backend='c')\n"
+        )
+        proc = subprocess.run(
+            [sys.executable, "-c", script],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        out = proc.stdout
+    else:
+        run_bbn(params, force_backend=force_backend)
+        out = capfd.readouterr().out
+
+    assert "[output] Time-evolution data" in out
+    assert str(out_time.resolve()) in out
+    assert "[output] Final abundances" in out
+    assert str(out_final.resolve()) in out
+
+
+def test_python_backend_background_output_announces_path(capfd, tmp_path):
+    """The Python-only background TSV writer also uses the [output] prefix."""
+    out_background = tmp_path / "background.tsv"
+    run_bbn({
+        "network": "small",
+        "output_background_evolution": True,
+        "output_background_file": str(out_background),
+    }, force_backend="python")
+    out = capfd.readouterr().out
+
+    assert "[output] Background time-evolution data" in out
+    assert str(out_background.resolve()) in out
 
 
 @pytest.mark.parametrize("params", [
@@ -229,7 +287,7 @@ def test_run_bbn_c_backend_honors_rates_overlay(tmp_path):
     primat-c's cpr_config_resolve_rates_path, primat-c/src/config.c): a
     user_rates_dir-supplied network file is loadable end-to-end through
     force_backend="c" exactly like a shipped one."""
-    net_dir = tmp_path / "nuclear" / "networks"
+    net_dir = tmp_path / "networks"
     net_dir.mkdir(parents=True)
     (net_dir / "overlaynet.txt").write_text(
         "n_p__d_g, n_p__d_g_primat.txt\nd_p__He3_g, d_p__He3_g_primat.txt\n"

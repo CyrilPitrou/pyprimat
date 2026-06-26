@@ -217,7 +217,7 @@ def render_reactions_panel(run):
       symbols (e.g. ``²H + ²H ↔ ³He + n``);
     * **Source** -- the ``ref=`` provenance from the rate table's header line
       (e.g. ``And06``), or ``weak n<->p`` for the tabulated ``n__p`` weak rate.
-    * **File** -- the rate table's filename (``rates/nuclear/tables/<name>.txt``),
+    * **File** -- the rate table's filename (``data/nuclear/tables/<name>.txt``),
       or ``--`` for the weak ``n__p`` entry (its rates are supplied at solve time
       and have no on-disk table).
 
@@ -374,7 +374,7 @@ def render_downloads_panel(run, mc=None, background=None):
       equivalent of either file -- see ``CLAUDE.md``).
     * **decays.txt** (large network only) -- the consolidated beta-decay /
       electron-capture rate table used by the large network
-      (``rates/nuclear/tables/decays.txt``).
+      (``data/nuclear/tables/decays.txt``).
 
     The per-reaction "Custom network" export and "Reaction rate tables"
     downloads instead live at the top of the Reactions tab

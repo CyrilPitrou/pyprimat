@@ -30,7 +30,7 @@
 
 #include <stddef.h>
 
-/* One line of a rates/nuclear/networks/<name>.txt file: either
+/* One line of a data/nuclear/networks/<name>.txt file: either
  * "<rxn_name>, <rate_table_filename>" (a tabulated reaction; `rxn_name` is
  * also the lookup key used against detailed_balance.csv/
  * reactions_large.csv and the tables/<rxn_name>/ directory, and
@@ -50,14 +50,14 @@ typedef struct {
     size_t n;
 } CPRNetworkList;
 
-/* Loads a rates/nuclear/networks/<name>.txt file. Rejects (nonzero return,
+/* Loads a data/nuclear/networks/<name>.txt file. Rejects (nonzero return,
  * *errmsg set) a network file that lists the same reaction name twice --
  * mirrors load_network's ValueError on duplicate entries (CLAUDE.md
  * "Adding a new reaction", step 5). */
 int cpr_load_network_list(const char *path, CPRNetworkList *out, char **errmsg);
 void cpr_network_list_free(CPRNetworkList *list);
 
-/* One row of rates/nuclear/tables/decays.txt: a T9-independent beta-decay/
+/* One row of data/nuclear/tables/decays.txt: a T9-independent beta-decay/
  * electron-capture rate (see CLAUDE.md "Adding a new reaction", the
  * decays.txt exception). `ref` is the trailing free-text citation. */
 typedef struct {
@@ -76,7 +76,7 @@ typedef struct {
 int cpr_load_decays(const char *path, CPRDecayTable *out, char **errmsg);
 void cpr_decay_table_free(CPRDecayTable *t);
 
-/* One row of rates/nuclear/data/detailed_balance.csv: the alpha/beta/gamma
+/* One row of data/nuclear/data/detailed_balance.csv: the alpha/beta/gamma
  * detailed-balance coefficients and Q-value [keV] used to derive each
  * reaction's reverse rate (Phys. Rep. detailed-balance formula -- ported
  * with the physics in Phase 4, not here). */
@@ -94,7 +94,7 @@ int cpr_load_detailed_balance(const char *path, CPRDetailedBalanceTable *out,
                                 char **errmsg);
 void cpr_detailed_balance_free(CPRDetailedBalanceTable *t);
 
-/* One row of rates/nuclear/data/reactions_large.csv: reactants/products as
+/* One row of data/nuclear/data/reactions_large.csv: reactants/products as
  * raw "+"-joined strings (e.g. "B10+He3" / "C11+H2") -- left untokenised
  * here; reaction_stoichiometry's "TO"-splitting logic is Phase 4 physics. */
 typedef struct {
@@ -212,10 +212,10 @@ typedef struct {
  * see CLAUDE.md "Key configuration flags") or "LT" (the full selected
  * list). `reaction_names`/`n_reaction_names` mirror load_network's
  * `reaction_names` override parameter: pass NULL/0 to read
- * cfg->network's own file (rates/nuclear/networks/<network>.txt, or
+ * cfg->network's own file (data/nuclear/networks/<network>.txt, or
  * small.txt's 12 reactions for network="small" -- both are real on-disk
  * files here, unlike Python's hardcoded ORDER_SMALL, since CPRIMAT's
- * rates/ tree already ships small.txt with identical content).
+ * data/ tree already ships small.txt with identical content).
  *
  * `custom` (may be NULL) applies the GUI's "Customise Reactions" override
  * (see CPRCustomNetwork above): removed names are dropped from the

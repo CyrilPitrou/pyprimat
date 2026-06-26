@@ -247,9 +247,11 @@ int main(void)
         /* Build a throwaway user_rates_dir containing only a custom
          * 2-reaction network file (referencing two shipped rate tables by
          * name, so this stays an *additive* overlay, not a full takeover --
-         * mirrors CLAUDE.md's "true additive overlay" note). */
-        system("rm -rf build/test_user_rates_dir && mkdir -p build/test_user_rates_dir/nuclear/networks");
-        FILE *nf = fopen("build/test_user_rates_dir/nuclear/networks/overlaynet.txt", "w");
+         * mirrors CLAUDE.md's "true additive overlay" note). Overlay roots
+         * behave like primat/data/nuclear, so networks/ lives directly under
+         * the overlay directory. */
+        system("rm -rf build/test_user_rates_dir && mkdir -p build/test_user_rates_dir/networks");
+        FILE *nf = fopen("build/test_user_rates_dir/networks/overlaynet.txt", "w");
         CHECK(nf != NULL, "overlay: created temp user_rates_dir network file");
         if (nf) {
             fprintf(nf, "n_p__d_g\nd_d__He3_n\n");
@@ -260,7 +262,7 @@ int main(void)
         ocfg.user_rates_dir = strdup("build/test_user_rates_dir");
 
         cpr_config_resolve_rates_path(&ocfg, "nuclear/networks/overlaynet.txt", path, sizeof(path));
-        CHECK(strstr(path, "test_user_rates_dir/nuclear/networks/overlaynet.txt") != NULL,
+        CHECK(strstr(path, "test_user_rates_dir/networks/overlaynet.txt") != NULL,
               "resolve_rates_path prefers user_rates_dir when the file exists there");
         /* A name only present in the shipped tree still resolves there,
          * since user_rates_dir is additive, not a full takeover. */

@@ -6,6 +6,9 @@
  * literal (17 significant digits, well beyond double precision) is the
  * simplest faithful port. */
 #define ZETA3 1.2020569031595942854
+#ifndef M_PI
+#  define M_PI  3.141592653589793238462643383279502884
+#endif
 
 CPRConstants g_const;
 

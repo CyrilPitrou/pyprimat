@@ -4,11 +4,11 @@
  * rate (Born/CCR + finite-nucleon-mass + spectral-distortion corrections),
  * computed from scratch via fixed Gauss-Legendre quadrature when no cache
  * file matches the current configuration's fingerprint, or loaded directly
- * from rates/weak/nTOp_<hash>.txt otherwise (cache.c already ports the
+ * from data/weak/nTOp_<hash>.txt otherwise (cache.c already ports the
  * fingerprint/hash/cache-file machinery, see cache.h). The finite-
  * temperature radiative correction (CCRTh, Brown & Sawyer 2001) is S7b:
  * cpr_weak_rates_init *loads* its cache file
- * (rates/weak/nTOp_thermal_<hash>.txt) when cfg->thermal_corrections is set
+ * (data/weak/nTOp_thermal_<hash>.txt) when cfg->thermal_corrections is set
  * and a matching file exists, and otherwise recomputes it from scratch via
  * the same algorithm Python's `corrections.py` uses -- VEGAS adaptive
  * Monte Carlo (vegas.h) for the three 2D sub-integrals, deterministic 1D
@@ -72,11 +72,11 @@ typedef struct {
  * spectral-distortion correction dFDneu when cfg->spectral_distortions.
  *
  * On a fingerprint cache hit (cfg->weak_rate_cache and a matching
- * rates/weak/nTOp_<hash>.txt exists), the nonthermal table is loaded
+ * data/weak/nTOp_<hash>.txt exists), the nonthermal table is loaded
  * directly (no integration). Otherwise it is computed via the
  * Gauss-Legendre rate integrals (Born/CCR/FM/SD) and, if cfg->save_nTOp,
  * written to that cache file. The thermal correction is loaded from
- * rates/weak/nTOp_thermal_<hash>.txt when cfg->thermal_corrections is set
+ * data/weak/nTOp_thermal_<hash>.txt when cfg->thermal_corrections is set
  * and that file exists (`has_thermal` is then 1); if thermal_corrections is
  * set but no matching file exists, this returns nonzero (the from-scratch
  * thermal computation is Phase 3b, not yet ported).

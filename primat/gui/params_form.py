@@ -297,7 +297,7 @@ def _available_networks():
 # previously recorded option string, so the index lookup fails) and the
 # unrecognised-name fallback then calls `PRIMATConfig({"network": title})`,
 # which always raises `ValueError` (no such file under
-# rates/nuclear/networks/). This process-local cache -- independent of
+# data/nuclear/networks/). This process-local cache -- independent of
 # `st.session_state` -- is populated every time `_network_label` succeeds
 # from a real script run, so a later context-less call still reproduces the
 # exact same label instead of hitting either failure mode.
@@ -1256,7 +1256,7 @@ def _manage_dialog_network_names():
 
     Reuses :func:`_available_networks` rather than hard-coding
     ``_RESERVED_NETWORK_NAMES`` so any extra network file dropped under
-    ``rates/nuclear/networks/`` also shows up here -- those are not
+    ``data/nuclear/networks/`` also shows up here -- those are not
     removable/renamable either (only entries in
     ``known_custom_networks`` are, see :func:`_render_manage_networks_dialog`),
     they just are not reachable any other way than this list.

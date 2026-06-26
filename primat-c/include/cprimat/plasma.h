@@ -11,7 +11,7 @@
  * with x = m/T, g the spin degeneracy (g=2 photons, g=4 e+-, g=1 nu).
  *
  * QED interaction-pressure corrections (Phys. Rep. S2.E, Eq. 47-49) are
- * loaded from rates/plasma/QED_*.txt (see qed_pressure.h) when present, or
+ * loaded from data/plasma/QED_*.txt (see qed_pressure.h) when present, or
  * computed analytically on the fly otherwise -- exactly the three modes
  * documented on plasma.Plasma._load_tables (file / analytic-fallback /
  * recompute).

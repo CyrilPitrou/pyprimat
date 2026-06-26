@@ -35,11 +35,11 @@
 #include "cprimat/config.h"
 #include "cprimat/plasma.h"
 
-/* Resolves a rates/NEVO/ data file, honouring a config override (mirrors
+/* Resolves a data/NEVO/ data file, honouring a config override (mirrors
  * neutrino_history.resolve_nevo_path). `override` is one of
  * cfg->nevo_file/nevo_spectral_file/nevo_grid_file (NULL = unset); when set
  * it names the file to use instead of `default_filename`, either an
- * absolute path or a filename resolved relative to rates/NEVO/. Writes the
+ * absolute path or a filename resolved relative to data/NEVO/. Writes the
  * resolved absolute path into `out` (caller-allocated, size out_size). */
 void cpr_resolve_nevo_path(const CPRConfig *cfg, const char *override,
                             const char *default_filename, char *out, size_t out_size);

@@ -5,7 +5,7 @@ CC ?= cc
 # editing a header silently relinks against an out-of-date .o (this bit a
 # Phase-5 background.c session: a stale build/config.o, not a source bug,
 # made eta0b look wrong by ~16 orders of magnitude until `make clean`).
-CFLAGS ?= -std=c11 -Wall -Wextra -O2 -Iinclude -MMD -MP -pthread
+CFLAGS ?= -std=c11 -Wall -Wextra -O2 -Iinclude -MMD -MP -pthread -D_GNU_SOURCE
 LDFLAGS ?= -lm -pthread
 
 BUILD := build
@@ -19,7 +19,7 @@ UNIT_BIN := $(patsubst tests/unit/%.c,$(BUILD)/unit/%,$(UNIT_SRC))
 
 all: $(BUILD)/cprimat
 
-debug: CFLAGS := -std=c11 -Wall -Wextra -O0 -g -fsanitize=address,undefined -Iinclude -MMD -MP -pthread
+debug: CFLAGS := -std=c11 -Wall -Wextra -O0 -g -fsanitize=address,undefined -Iinclude -MMD -MP -pthread -D_GNU_SOURCE
 debug: LDFLAGS := -lm -pthread -fsanitize=address,undefined
 debug: all
 

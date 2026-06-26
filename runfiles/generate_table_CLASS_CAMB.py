@@ -95,7 +95,7 @@ if __name__ == "__main__":
     # Run parameters
     # ---------------------------------------------------------------------------
 
-    N_MC      = 10    # MC samples per grid point (use at least 100)
+    N_MC      = 100    # MC samples per grid point (use at least 100)
     SEED_BASE = 12345  # for reproducibility
     N_JOBS    = -1     # joblib workers; -1 = all cores.  Lower this (e.g. 4) if the
                        # OS OOM killer stops the run -- fewer workers => less memory.

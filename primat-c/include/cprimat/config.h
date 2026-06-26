@@ -69,7 +69,7 @@ double cpr_rxnmap_get(const CPRRxnMap *map, const char *name); /* 0.0 default */
 void cpr_rxnmap_set(CPRRxnMap *map, const char *name, double value);
 void cpr_rxnmap_free(CPRRxnMap *map);
 
-/* One nuclide row from rates/nuclear/data/nuclides.csv. */
+/* One nuclide row from data/csv/nuclides.csv. */
 typedef struct {
     char name[16];
     int N, Z;
@@ -175,14 +175,16 @@ typedef struct {
     int rescale_nuclear_rates;
     int nuclear_qed_corrections;
 
-    /* ---- rates/ overlay (mirrors PyPRConfig.rates_dir/user_rates_dir; see
-     * CLAUDE.md "Rates directory resolution"). NULL = unset (shipped rates/
+    /* ---- data/nuclear overlay (mirrors PyPRConfig.rates_dir/user_rates_dir; see
+     * CLAUDE.md "Rates directory resolution"). NULL = unset (shipped data/nuclear/
      * tree only). Wired through cpr_config_resolve_rates_path() at the same
      * two call sites as the Python side: the network-file path
-     * (rates/nuclear/networks/<name>.txt) and each reaction's rate-table
-     * file (rates/nuclear/tables/<rxn>/<file>) -- NOT the reaction catalog
-     * (nuclides.csv/reactions_large.csv/detailed_balance.csv) or decays.txt,
-     * which stay on data_dir on both backends. */
+ * (data/nuclear/networks/<name>.txt) and each reaction's rate-table
+ * file (data/nuclear/tables/<rxn>/<file>) -- NOT the reaction catalog
+ * (nuclides.csv/reactions_large.csv/detailed_balance.csv) or decays.txt,
+ * which stay on data_dir on both backends. Overlay roots are treated as
+ * the equivalent of `primat/data/nuclear`, so they should contain
+ * `networks/` and `tables/` directly. */
     char *rates_dir;       /* full-takeover override directory */
     char *user_rates_dir;  /* additive overlay directory, checked before the shipped default */
 
@@ -250,11 +252,15 @@ int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg
  * "nuclear/tables/<rxn>/<file>.txt") through the same overlay chain as
  * PyPRConfig.resolve_rates_path: cfg->rates_dir (full takeover) ->
  * cfg->user_rates_dir (additive overlay) -> cfg->data_dir + "/" + relpath
- * (shipped default, tried last so it is never unreachable). The first
- * candidate that exists on disk wins; if none exist, the shipped-default
- * path is written anyway (so callers get a "missing file" error pointing at
- * the expected default location). Writes into `out` (size `outsize`,
- * truncated/snprintf-safe like every other path builder in this codebase). */
+ * (shipped default, tried last so it is never unreachable). Overlay
+ * directories are treated as the equivalent of `primat/data/nuclear`: the
+ * resolver first tries `base/<relpath without a leading "nuclear/">` and
+ * then the legacy nested layout `base/<relpath>` for compatibility. The
+ * first candidate that exists on disk wins; if none exist, the
+ * shipped-default path is written anyway (so callers get a "missing file"
+ * error pointing at the expected default location). Writes into `out`
+ * (size `outsize`, truncated/snprintf-safe like every other path builder in
+ * this codebase). */
 void cpr_config_resolve_rates_path(const CPRConfig *cfg, const char *relpath,
                                     char *out, size_t outsize);
 

@@ -26,6 +26,7 @@ import streamlit as st
 from primat import backend
 from primat import plasma as primat_thermo
 from primat.background import StandardBackground, CustomBackground
+from primat.credits import gui_credits_text
 from primat.config import PRIMATConfig
 from primat.gui import panels
 from primat.gui.params_form import render_sidebar_form
@@ -486,10 +487,14 @@ def main():
         # unambiguous which backend ran, for cross-checking against
         # `primat.backend.run_bbn(..., force_backend=...)` results computed
         # elsewhere.
-        mc_backend_note = ""
+        # Keep the compact performance summary readable at a glance: one
+        # parenthesized clause per timing, separated by " ; " to match the
+        # wording used in the GUI help text and user-facing docs.
+        perf_parts = [f"BBN solve with {backend_used} backend in {elapsed:.2f}s"]
         if mc is not None:
-            mc_backend_note = f", quick MC: {mc.backend} backend ({mc_elapsed:.2f} s)"
-        st.caption(f"(solved in {elapsed:.2f} s — BBN solve: {backend_used} backend{mc_backend_note})")
+            mc_backend_used = "C" if mc.backend == "c" else "Python"
+            perf_parts.append(f"Quick MC with {mc_backend_used} backend in {mc_elapsed:.2f}s")
+        st.caption(f"({' ; '.join(perf_parts)})")
         panels.render_results_panel(run, mc=mc)
     with tab_evolution:
         panels.render_evolution_panel(run)
@@ -502,23 +507,16 @@ def main():
         panels.render_downloads_panel(run, mc=mc, background=background)
 
 
+@st.dialog("Credits", width="large")
+def _render_credits_dialog():
+    """Popup showing the project attribution and citation text."""
+    st.markdown(gui_credits_text())
+
+
 def _render_footer():
-    """Sidebar attribution footer, shown below the parameter form."""
-    st.sidebar.caption(
-        ("✅ Compiled C extension available (used by default for the BBN "
-         "solve and Quick MC)"
-         if backend.HAS_C_BACKEND else
-         "⚠️ Compiled C extension not available — the BBN solve and Quick "
-         "MC both run on the pure-Python backend (slower).")
-    )
-    st.sidebar.caption(
-        "PRIMAT is developed by [Cyril Pitrou](https://www2.iap.fr/users/pitrou/) "
-        "and Julien Froustey. This GUI is developed by Cyril Pitrou."
-    )
-    st.sidebar.caption(
-        "Download the [source code](https://github.com/CyrilPitrou/primat) "
-        "and cite the [publication](https://arxiv.org/abs/1801.08023) if you use it."
-    )
+    """Sidebar footer reduced to a single Credits button."""
+    if st.sidebar.button("Credits", use_container_width=True):
+        _render_credits_dialog()
 
 
 if __name__ == "__main__":

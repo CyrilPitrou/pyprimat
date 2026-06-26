@@ -24,7 +24,7 @@
  * scipy.interpolate.CubicSpline's default in qed_pressure.py) on a log-
  * spaced T grid -- this is the "analytic fallback"/"recompute" path of
  * plasma.Plasma._load_tables; the normal "file mode" path instead reads
- * the pre-saved rates/plasma/QED_*.txt files directly via table_io.c (no
+ * the pre-saved data/plasma/QED_*.txt files directly via table_io.c (no
  * qed_pressure.c involvement at all in that path, matching Python).
  */
 #ifndef CPRIMAT_QED_PRESSURE_H
@@ -99,13 +99,13 @@ int cpr_qed_compute_tables(double T_min, double T_max, size_t n_pts,
 
 void cpr_qed_tables_free(CPRQEDTables *t);
 
-/* Writes the three rates/plasma/QED_*.txt files (QED_P_int.txt,
+/* Writes the three data/plasma/QED_*.txt files (QED_P_int.txt,
  * QED_dP_intdT.txt, QED_d2P_intdT2.txt) in the same 3-column (T, e^2-order,
  * e^3-order) whitespace-separated format Python's save_qed_tables produces
  * (and table_io.c/plasma.c's "file mode" loader reads back) -- so a
  * recompute-and-save cycle through this function is byte-for-byte
  * interchangeable with the Python one. `plasma_dir` is the path to
- * rates/plasma/ (no trailing slash required). Returns 0 on success,
+ * data/plasma/ (no trailing slash required). Returns 0 on success,
  * nonzero with *errmsg set (caller frees) on a file-write failure. */
 int cpr_qed_save_tables(const CPRQEDTables *t, const char *plasma_dir, char **errmsg);
 

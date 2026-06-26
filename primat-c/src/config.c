@@ -3,9 +3,11 @@
 
 #include <ctype.h>
 #include <math.h>
+#include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <sys/stat.h>
 
 /* ===========================================================================
@@ -299,6 +301,70 @@ static const FieldDesc FIELD_TABLE[] = {
 
 static char *cpr_strdup(const char *s) { return s ? strdup(s) : NULL; }
 
+static int cpr_is_path_field(const char *name)
+{
+    return strcmp(name, "nevo_file") == 0
+        || strcmp(name, "nevo_spectral_file") == 0
+        || strcmp(name, "nevo_grid_file") == 0
+        || strcmp(name, "custom_background") == 0
+        || strcmp(name, "rates_dir") == 0
+        || strcmp(name, "user_rates_dir") == 0
+        || strcmp(name, "output_file") == 0
+        || strcmp(name, "output_final_file") == 0
+        || strcmp(name, "output_background_file") == 0
+        || strcmp(name, "output_mc_file") == 0
+        || strcmp(name, "output_decay_file") == 0;
+}
+
+static char *cpr_expanduser_path(const char *path)
+{
+    if (!path)
+        return NULL;
+    if (path[0] != '~')
+        return strdup(path);
+
+    const char *rest = NULL;
+    const char *home = NULL;
+    if (path[1] == '\0' || path[1] == '/') {
+        /* "~" and "~/" both expand against the current user's home dir. */
+        home = getenv("HOME");
+        if (!home || !home[0]) {
+            struct passwd *pw = getpwuid(getuid());
+            if (pw && pw->pw_dir && pw->pw_dir[0])
+                home = pw->pw_dir;
+        }
+        rest = path + 1;
+    } else {
+        /* "~user/..." expands against that account's passwd entry. */
+        const char *slash = strchr(path + 1, '/');
+        size_t user_len = slash ? (size_t)(slash - (path + 1)) : strlen(path + 1);
+        char user[256];
+        if (user_len == 0 || user_len >= sizeof(user))
+            return strdup(path);
+        memcpy(user, path + 1, user_len);
+        user[user_len] = '\0';
+        struct passwd *pw = getpwnam(user);
+        if (pw && pw->pw_dir && pw->pw_dir[0]) {
+            home = pw->pw_dir;
+            rest = slash ? slash : "";
+        } else {
+            return strdup(path);
+        }
+    }
+
+    if (!home || !home[0])
+        return strdup(path);
+
+    size_t home_len = strlen(home);
+    size_t rest_len = strlen(rest);
+    char *out = malloc(home_len + rest_len + 1);
+    if (!out)
+        return NULL;
+    memcpy(out, home, home_len);
+    memcpy(out + home_len, rest, rest_len + 1);
+    return out;
+}
+
 int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg)
 {
     memset(cfg, 0, sizeof(*cfg));
@@ -433,6 +499,13 @@ void cpr_config_resolve_rates_path(const CPRConfig *cfg, const char *relpath,
     char candidate[4200];
 
     if (cfg->rates_dir) {
+        if (strncmp(relpath, "nuclear/", 8) == 0) {
+            snprintf(candidate, sizeof(candidate), "%s/%s", cfg->rates_dir, relpath + 8);
+            if (path_exists(candidate)) {
+                snprintf(out, outsize, "%s", candidate);
+                return;
+            }
+        }
         snprintf(candidate, sizeof(candidate), "%s/%s", cfg->rates_dir, relpath);
         if (path_exists(candidate)) {
             snprintf(out, outsize, "%s", candidate);
@@ -440,6 +513,13 @@ void cpr_config_resolve_rates_path(const CPRConfig *cfg, const char *relpath,
         }
     }
     if (cfg->user_rates_dir) {
+        if (strncmp(relpath, "nuclear/", 8) == 0) {
+            snprintf(candidate, sizeof(candidate), "%s/%s", cfg->user_rates_dir, relpath + 8);
+            if (path_exists(candidate)) {
+                snprintf(out, outsize, "%s", candidate);
+                return;
+            }
+        }
         snprintf(candidate, sizeof(candidate), "%s/%s", cfg->user_rates_dir, relpath);
         if (path_exists(candidate)) {
             snprintf(out, outsize, "%s", candidate);
@@ -540,7 +620,13 @@ int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
             if (value.type == CPR_NONE) {
                 *(char **)field = NULL;
             } else if (value.type == CPR_STRING) {
-                *(char **)field = strdup(value.v.s);
+                *(char **)field = cpr_is_path_field(name)
+                    ? cpr_expanduser_path(value.v.s)
+                    : strdup(value.v.s);
+                if (!*(char **)field) {
+                    *errmsg = strdup("out of memory while copying string parameter");
+                    return 1;
+                }
             } else {
                 *errmsg = malloc(128);
                 snprintf(*errmsg, 128, "%s expects a string or None", name);

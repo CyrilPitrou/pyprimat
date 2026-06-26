@@ -12,7 +12,7 @@
 #       print(net, time.time() - t0)
 #   "
 #
-# run from the repo root (so pyprimat/rates/ resolves), with the shipped
+# run from the repo root (so primat/data/ resolves), with the shipped
 # weak-rate/electron-thermo caches warm (a cold first run pays a one-time
 # ~0.7 s electron-thermo + cache-miss n<->p weak-rate cost on both sides
 # equally, so it is excluded here -- both timings below are cache-hit runs,

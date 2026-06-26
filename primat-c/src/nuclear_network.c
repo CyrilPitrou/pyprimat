@@ -451,6 +451,7 @@ int cpr_nuclear_network_write_final_result(const CPRNuclearNetwork *nn, char **e
         fprintf(f, "%-14s%.6e\n", nn->abundance_names[i], nn->Y_final[i]);
     fclose(f);
     printf("[output] Final abundances (%zu nuclides) written to %s\n", nn->n_species, path);
+    fflush(stdout);
     return 0;
 }
 
@@ -547,5 +548,6 @@ int cpr_nuclear_network_write_time_evolution(const CPRNuclearNetwork *nn, int n_
     free(t_out); free(T_out); free(a_out);
     free(Tnue_out); free(Tnumu_out); free(Tnutau_out); free(Y_out);
     printf("[output] Time-evolution data (%zu rows) written to %s\n", n, path);
+    fflush(stdout);
     return 0;
 }

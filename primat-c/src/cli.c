@@ -25,6 +25,27 @@ static int is_weak_cache_name(const char *name)
         && strlen(name) > 4 && strcmp(name + strlen(name) - 4, ".txt") == 0;
 }
 
+static void print_credits(void)
+{
+    fputs("primat is developed by Cyril Pitrou (https://www2.iap.fr/users/pitrou/) "
+          "with features related to neutrino physics written by Julien Froustey.\n\n",
+          stdout);
+    fputs("The story started in the 1980s with BBN codes written by Elisabeth "
+          "Vangioni and Alain Coc which eventually lead to 'ezbbn', a large "
+          "nuclear network FORTRAN code whose nuclear rates tables were maintained "
+          "by Alain Coc. PRIMAT, initially a Mathematica code, was based on "
+          "'ezbbn' with improved neutrino physics. It is now translated into a "
+          "python code, but it also relies on a C backend to improve its "
+          "performance.\n\n",
+          stdout);
+    fputs("For notebooks, examples and documentation, download the source code "
+          "(https://github.com/CyrilPitrou/primat).\n\n",
+          stdout);
+    fputs("Please cite the publication (https://arxiv.org/abs/1801.08023) if "
+          "you use it.\n",
+          stdout);
+}
+
 static int list_or_clear_weak_cache(const char *data_dir, int clear)
 {
     char dir_path[4096];
@@ -55,7 +76,7 @@ static void usage(const char *prog)
 {
     printf("usage: %s [--Omegabh2 VALUE] [--DeltaNeff VALUE] [--network NAME]\n"
            "          [--amax A] [--numerical_precision RTOL] [--verbose]\n"
-           "          [--cache-info] [--cache-clear] [--ini PATH]\n"
+           "          [--cache-info] [--cache-clear] [--credits] [--ini PATH]\n"
            "          [--data-dir PATH] [--custom-nuclear-dir PATH]\n"
            "          [--set KEY=VALUE ...]\n", prog);
 }
@@ -126,7 +147,7 @@ int cpr_cli_main(int argc, char **argv)
     const char *data_dir = default_data_dir(data_dir_buf, sizeof(data_dir_buf));
     const char *custom_nuclear_dir = NULL;
     const char *ini_path = NULL;
-    int cache_info = 0, cache_clear = 0;
+    int cache_info = 0, cache_clear = 0, credits = 0;
 
     /* --data-dir, --custom-nuclear-dir and --ini must be known before
      * cpr_config_init_defaults runs (the first picks the data directory;
@@ -145,10 +166,17 @@ int cpr_cli_main(int argc, char **argv)
             cache_info = 1;
         } else if (strcmp(argv[i], "--cache-clear") == 0) {
             cache_clear = 1;
+        } else if (strcmp(argv[i], "--credits") == 0) {
+            credits = 1;
         } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             usage(argv[0]);
             return 0;
         }
+    }
+
+    if (credits) {
+        print_credits();
+        return 0;
     }
 
     CPRConfig cfg;
@@ -197,6 +225,7 @@ int cpr_cli_main(int argc, char **argv)
         if (strcmp(a, "--data-dir") == 0 || strcmp(a, "--custom-nuclear-dir") == 0
             || strcmp(a, "--ini") == 0
             || strcmp(a, "--cache-info") == 0 || strcmp(a, "--cache-clear") == 0
+            || strcmp(a, "--credits") == 0
             || strcmp(a, "--help") == 0 || strcmp(a, "-h") == 0) {
             if (strcmp(a, "--data-dir") == 0 || strcmp(a, "--custom-nuclear-dir") == 0
                 || strcmp(a, "--ini") == 0) i++;

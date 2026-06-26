@@ -22,6 +22,7 @@ solve (~1.2 s, like ``test_cli.py``), so this module is marked
 (``pip install ".[gui]"``) is not installed.
 """
 import os
+import re
 
 import pytest
 
@@ -289,6 +290,12 @@ def test_quick_mc_uncertainty_adds_sigma_column():
     at.run(timeout=60)
     _run_bbn(at)
     assert not at.exception
+
+    [perf_caption] = [c.value for c in at.caption if "BBN solve with" in c.value]
+    assert re.fullmatch(
+        r"\(BBN solve with .+ backend in \d+\.\d{2}s ; Quick MC with (?:C|Python) backend in \d+\.\d{2}s\)",
+        perf_caption,
+    )
 
     [ratios_md] = [
         md for md in at.markdown if "Standard ratios" not in md.value
