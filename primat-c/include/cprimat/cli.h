@@ -1,4 +1,4 @@
-/* cli.h -- `cprimat` executable entry point (port of pyprimat/cli.py).
+/* cli.h -- `cprimat` executable entry point (port of primat/cli.py).
  *
  * Phase 0 scope: parse argv into a fully validated CPRConfig and print it
  * back (or run --cache-info/--cache-clear). The actual BBN solve

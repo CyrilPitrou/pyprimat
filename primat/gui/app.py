@@ -3,7 +3,7 @@
 primat.gui.app
 =================
 
-Streamlit entry point for the PyPRIMAT GUI.
+Streamlit entry point for the primat GUI.
 
 Run with::
 
@@ -14,7 +14,7 @@ Layout: a sidebar parameter form (built by
 :func:`primat.gui.params_form.render_sidebar_form`) plus a "Run BBN"
 button; the main area shows the two result panels from
 :mod:`primat.gui.panels` once a run has completed. The "params dict ->
-PRIMAT -> results" contract is identical to ``runfiles/PyPRIMAT_run.py`` and
+primat -> results" contract is identical to ``runfiles/primat_run.py`` and
 the ``primat`` console script (``primat/cli.py``).
 """
 import json

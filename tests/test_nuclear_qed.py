@@ -11,7 +11,7 @@ T9-dependent factor derived in Pitrou & Pospelov 2020.  These tests verify:
    phase space at higher energy) for the four remaining reactions.
 4. Corrections are applied to the loaded median rate tables and not to reactions
    that do not appear in the corrected set.
-5. p_* and NP_delta_* variations still work correctly on top of the corrected
+5. p_* and delta_* variations still work correctly on top of the corrected
    medians.
 6. A full solve with nuclear_qed_corrections=True completes and shifts D/H
    relative to the uncorrected run.

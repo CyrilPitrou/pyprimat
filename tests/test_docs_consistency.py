@@ -54,7 +54,7 @@ def _reference_run_options():
             pass
 
     if my_options_node is None:
-        raise AssertionError("MyOptions dict not found in PyPRIMAT_reference_run.py")
+        raise AssertionError("MyOptions dict not found in primat_reference_run.py")
     code = compile(ast.Expression(body=my_options_node), filename=path, mode='eval')
     return eval(code, {}, namespace)
 
@@ -68,7 +68,7 @@ def _reference_run_options():
 def test_reference_run_params_match_claude_md(key, expected):
     """The param names/values CLAUDE.md quotes for the reference run must exist verbatim."""
     options = _reference_run_options()
-    assert key in options, f"{key!r} no longer in PyPRIMAT_reference_run.py's MyOptions"
+    assert key in options, f"{key!r} no longer in primat_reference_run.py's MyOptions"
     assert options[key] == expected
 
 

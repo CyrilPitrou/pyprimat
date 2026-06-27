@@ -118,7 +118,7 @@ class NuclearNetwork:
         nTOp_bkwrd = background.weak_nTOp_bkwrd
         nucl      = self.nucl
 
-        # Refresh nuclear rates with current variation parameters (p_*, NP_delta_*)
+        # Refresh nuclear rates with current variation parameters (p_*, delta_*)
         nucl.apply_variations(cfg)
 
         if cfg.verbose:

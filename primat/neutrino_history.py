@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-neutrino_history.py — pluggable neutrino-sector background for PyPRIMAT
+neutrino_history.py — pluggable neutrino-sector background for primat
 ======================================================================
 
 The neutrino sector entering the cosmological background is the natural

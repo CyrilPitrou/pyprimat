@@ -1,5 +1,5 @@
 /* test_plasma.c -- checks the SM plasma thermodynamics port against
- * reference values from a live pyprimat.plasma.Plasma instance (default
+ * reference values from a live primat.plasma.Plasma instance (default
  * config: QED_corrections=True, n_electron_table=2000,
  * T_start_cosmo_MeV=40.0, DeltaNeff=0), run with `data_dir="../primat/data"`
  * so this test also exercises the real on-disk QED_*.txt and
@@ -52,8 +52,8 @@ int main(void)
     if (rc) { printf("FAIL cpr_plasma_init: %s\n", err); return 1; }
     CHECK(rc == 0, "cpr_plasma_init succeeds (cache hit expected for electron thermo)");
 
-    /* Reference values from a live Python run (pyprimat.plasma.Plasma,
-     * cfg = PyPRConfig() defaults with data_dir pointed at pyprimat/). */
+    /* Reference values from a live Python run (primat.plasma.Plasma,
+     * cfg = PRIMATConfig() defaults with data_dir pointed at primat/). */
     CHECK(close_rel(cpr_plasma_rho_e(&pl, 1.0), 1.1288162231372227, 1e-5), "rho_e(1.0) matches Python");
     CHECK(close_rel(cpr_plasma_p_e(&pl, 1.0), 0.3637834176879932, 1e-5), "p_e(1.0) matches Python");
     CHECK(close_rel(cpr_plasma_drho_e_dT(&pl, 1.0), 4.561478427783182, 1e-5), "drho_e_dT(1.0) matches Python");

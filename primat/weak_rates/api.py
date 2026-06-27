@@ -3,7 +3,7 @@
 weak_rates.api — public n<->p weak-rate entry points
 ===============================================================================
 
-Top-level functions used by the rest of PyPRIMAT (mainly
+Top-level functions used by the rest of primat (mainly
 primat.background): :func:`ComputeWeakRates` (raw computation),
 :func:`InterpolateWeakRates` (load the fingerprinted on-disk cache without
 recomputing), and :func:`RecomputeWeakRates` (the usual entry point: load the

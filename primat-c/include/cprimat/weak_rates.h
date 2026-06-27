@@ -1,4 +1,4 @@
-/* weak_rates.h -- n<->p weak-rate tables (port of pyprimat/weak_rates/).
+/* weak_rates.h -- n<->p weak-rate tables (port of primat/weak_rates/).
  *
  * CPLAN.md S7 scope (S7a, "always-needed pieces"): the non-thermal n<->p
  * rate (Born/CCR + finite-nucleon-mass + spectral-distortion corrections),
@@ -61,7 +61,7 @@ typedef struct {
  * weak_rates.RecomputeWeakRates([Tg_vec, Tnu_vec], cfg, dFDneu_func=...).
  *
  * Tg_MeV/Tnu_MeV (length n_bg): photon and (electron-flavour) neutrino
- * temperatures in MeV, e.g. PyPR._setup_background_and_cosmo's Tg_vec/
+ * temperatures in MeV, e.g. PRIMAT._setup_background_and_cosmo's Tg_vec/
  * Tnue_vec -- despite ComputeWeakRates's Python docstring saying "Kelvin",
  * background.py actually passes MeV arrays (_build_rate_context converts
  * via cfg.MeV_to_Kelvin); confirmed by reading the caller in background.py.

@@ -84,7 +84,7 @@ CPRParam cpr_parse_literal(const char *s)
 }
 
 /* ===========================================================================
- * CPRRxnMap: p_<rxn> / NP_delta_<rxn> dictionary.
+ * CPRRxnMap: p_<rxn> / delta_<rxn> dictionary.
  * ===========================================================================
  */
 double cpr_rxnmap_get(const CPRRxnMap *map, const char *name)
@@ -555,11 +555,11 @@ int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
         cpr_rxnmap_set(&cfg->p_rxn, name + 2, d);
         return 0;
     }
-    if (strncmp(name, "NP_delta_", 9) == 0) {
+    if (strncmp(name, "delta_", 6) == 0) {
         double d = value.type == CPR_DOUBLE ? value.v.d
                  : value.type == CPR_INT ? (double)value.v.i
                  : value.type == CPR_BOOL ? (double)value.v.b : 0.0;
-        cpr_rxnmap_set(&cfg->NP_delta_rxn, name + 9, d);
+        cpr_rxnmap_set(&cfg->delta_rxn, name + 6, d);
         return 0;
     }
     if (strcmp(name, "Omegabh2") == 0) {
@@ -658,7 +658,7 @@ int cpr_config_validate(CPRConfig *cfg, char **errmsg)
 
     /* NOTE: the network-file-existence check (PyPRConfig.__init__'s
      * `network must be 'small' or name an existing file...`) and the
-     * p_<rxn>/NP_delta_<rxn> typo check against the configured network's
+     * p_<rxn>/delta_<rxn> typo check against the configured network's
      * reaction list both require network_data.c (Phase 4, not yet ported)
      * to enumerate valid reaction names -- deferred to
      * cpr_network_validate() once that module exists, called from
@@ -711,7 +711,7 @@ void cpr_config_free(CPRConfig *cfg)
         }
     }
     cpr_rxnmap_free(&cfg->p_rxn);
-    cpr_rxnmap_free(&cfg->NP_delta_rxn);
+    cpr_rxnmap_free(&cfg->delta_rxn);
     free(cfg->nuclides.items);
     cfg->nuclides.items = NULL;
     cfg->nuclides.n = 0;

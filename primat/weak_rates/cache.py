@@ -50,7 +50,7 @@ WEAK_RATE_FORMAT_VERSION = 1
 # DeltaNeff is deliberately NOT listed: it only shifts the time-temperature
 # relation Tg(t) and does not affect the rate integrand at fixed Tg (in decoupling approximation).
 # In principle if we consider a DeltaNeff with incomplete decoupling we must also consider the associated NEVO file.
-# We need to review the interplay between NEVO and PyPRIMAT.
+# We need to review the interplay between NEVO and primat.
 # Note  that spectral distortions and incomplete decoupling effects are expected to have a small effect on weak rates.
 _WEAK_RATE_BG_FIELDS = [
     "radiative_corrections",

@@ -1,6 +1,6 @@
 /* test_qed_pressure.c -- checks the QED plasma-pressure correction port
  * against (a) the closed-form ultra-relativistic limit I01(0)=I2m1(0)=
- * pi^2/12, and (b) reference values from pyprimat.qed_pressure._dPa/_dPe3
+ * pi^2/12, and (b) reference values from primat.qed_pressure._dPa/_dPe3
  * at T=10 and T=1 MeV (computed via Python's scipy.integrate.quad, same
  * tolerance 1e-13 -- see qed_pressure.h's top comment for why these two
  * implementations must agree to high precision: both modules must produce

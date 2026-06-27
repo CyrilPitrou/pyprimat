@@ -13,7 +13,7 @@
 #include "cprimat/config.h"
 
 /* Loads `path`, applying every KEY=VALUE line to `cfg` via
- * cpr_config_set_by_name (so p_<rxn>/NP_delta_<rxn> keys and ordinary
+ * cpr_config_set_by_name (so p_<rxn>/delta_<rxn> keys and ordinary
  * fields are both handled, with the same type-coercion rules).  An unknown
  * key or type mismatch from cpr_config_set_by_name is treated as a warning
  * (printed to stderr, mirroring Python's warnings.warn) and does not abort

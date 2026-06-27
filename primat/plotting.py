@@ -20,7 +20,7 @@ Convention
   as a neutral reference curve.
 
 The single public entry point is :func:`nuclide_styles`, which takes the list of
-nuclide names (as used throughout PyPRIMAT, e.g. ``["n", "p", "H2", "He4",
+nuclide names (as used throughout primat, e.g. ``["n", "p", "H2", "He4",
 "Li7", ...]``) and returns, for each name, a ``(color, linestyle, label)``
 triple ready to pass to ``matplotlib``'s ``plot(..., color=, linestyle=,
 label=)``.
@@ -90,7 +90,7 @@ _SPECIAL_LABELS = {
 
 
 def parse_nuclide(name):
-    """Split a PyPRIMAT nuclide name into ``(element_symbol, mass_number A)``.
+    """Split a primat nuclide name into ``(element_symbol, mass_number A)``.
 
     Handles the two non-standard names used as bookkeeping aliases in the
     network: the free neutron ``"n"`` -> ``("n", 1)`` (treated specially by the

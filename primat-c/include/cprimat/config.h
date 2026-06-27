@@ -1,6 +1,6 @@
-/* config.h -- CPRIMAT run-time configuration (port of pyprimat/config.py).
+/* config.h -- CPRIMAT run-time configuration (port of primat/config.py).
  *
- * Unlike Python's dynamically-typed PyPRConfig, CPRConfig is a single plain
+ * Unlike Python's dynamically-typed PRIMATConfig, CPRConfig is a single plain
  * struct with one typed field per DEFAULT_PARAMS entry: C has no convenient
  * dynamic-attribute story, and a struct is both simpler to read and faster
  * to access than threading every physics formula through a generic
@@ -45,15 +45,15 @@ typedef struct {
     CPRParam value;
 } CPRParamSet;
 
-/* Parses one literal token the same way pyprimat.cli's --set escape hatch
+/* Parses one literal token the same way primat.cli's --set escape hatch
  * does (ast.literal_eval-equivalent): try int, then float, then
  * true/false/none (case-insensitive), else fall back to the literal string
  * (quotes, if any, are stripped). `s` must outlive the returned CPRParam
  * when the result is CPR_STRING (no copy is made). */
 CPRParam cpr_parse_literal(const char *s);
 
-/* Small open dictionary for p_<rxn> / NP_delta_<rxn>, mirroring
- * PyPRConfig.p_rxn / NP_delta_rxn. Linear-scan array: the reaction count is
+/* Small open dictionary for p_<rxn> / delta_<rxn>, mirroring
+ * PRIMATConfig.p_rxn / delta_rxn. Linear-scan array: the reaction count is
  * at most ~430 (the "large" network), so a hash table buys nothing here. */
 typedef struct {
     char name[40];
@@ -175,7 +175,7 @@ typedef struct {
     int rescale_nuclear_rates;
     int nuclear_qed_corrections;
 
-    /* ---- data/nuclear overlay (mirrors PyPRConfig.rates_dir/user_rates_dir; see
+    /* ---- data/nuclear overlay (mirrors PRIMATConfig.rates_dir/user_rates_dir; see
      * CLAUDE.md "Rates directory resolution"). NULL = unset (shipped data/nuclear/
      * tree only). Wired through cpr_config_resolve_rates_path() at the same
      * two call sites as the Python side: the network-file path
@@ -220,7 +220,7 @@ typedef struct {
     double eta0b;
 
     CPRRxnMap p_rxn;
-    CPRRxnMap NP_delta_rxn;
+    CPRRxnMap delta_rxn;
 
     CPRNuclideTable nuclides;
 
@@ -250,7 +250,7 @@ int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg
 
 /* Resolves `relpath` (e.g. "nuclear/networks/large.txt" or
  * "nuclear/tables/<rxn>/<file>.txt") through the same overlay chain as
- * PyPRConfig.resolve_rates_path: cfg->rates_dir (full takeover) ->
+ * PRIMATConfig.resolve_rates_path: cfg->rates_dir (full takeover) ->
  * cfg->user_rates_dir (additive overlay) -> cfg->data_dir + "/" + relpath
  * (shipped default, tried last so it is never unreachable). Overlay
  * directories are treated as the equivalent of `primat/data/nuclear`: the
@@ -270,7 +270,7 @@ void cpr_config_set_Omegabh2(CPRConfig *cfg, double value);
 double cpr_config_get_Omegabh2(const CPRConfig *cfg);
 
 /* Routes one (name, value) pair into the matching typed field, exactly like
- * PyPRConfig.__setattr__: a name with prefix "p_" or "NP_delta_" goes into
+ * PyPRConfig.__setattr__: a name with prefix "p_" or "delta_" goes into
  * the corresponding CPRRxnMap (value coerced to double); any other name
  * must match a DEFAULT_PARAMS key (looked up via the internal field table
  * in config.c) or this returns nonzero (unknown key -- caller decides

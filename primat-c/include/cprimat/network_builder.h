@@ -1,5 +1,5 @@
 /* network_builder.h -- stoichiometry-driven nuclear-network RHS/Jacobian
- * (port of pyprimat/network_builder.py: compile_network, the rhs/jacobian
+ * (port of primat/network_builder.py: compile_network, the rhs/jacobian
  * kernels, check_conservation).
  *
  * A BBN run integrates one ODE per nuclide, coupled through hundreds of
@@ -33,7 +33,7 @@
 #include <stddef.h>
 
 /* One side of one reaction: up to CPR_STOICH_MAX_TERMS distinct species,
- * each with an integer multiplicity. No PyPRIMAT reaction (small or large)
+ * each with an integer multiplicity. No primat reaction (small or large)
  * has more than 4 distinct species on either side; 8 is a generous margin. */
 #define CPR_STOICH_MAX_TERMS 8
 

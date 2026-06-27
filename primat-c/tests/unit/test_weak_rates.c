@@ -1,7 +1,7 @@
 /* test_weak_rates.c -- checks the n<->p weak-rate cache-hit path
  * (cpr_weak_rates_init/cpr_weak_rate_nTOp/cpr_weak_rate_pTOn) against
- * reference values from a live pyprimat.weak_rates.api.RecomputeWeakRates
- * run with the default PyPRConfig() (radiative_corrections=
+ * reference values from a live primat.weak_rates.api.RecomputeWeakRates
+ * run with the default PRIMATConfig() (radiative_corrections=
  * finite_mass_corrections=thermal_corrections=spectral_distortions=
  * weak_rate_cache=save_nTOp=tau_n_normalization=True, T_end_MeV=1e-3,
  * T_start_cosmo_MeV=40.0). The default config's weak-rate fingerprint hash

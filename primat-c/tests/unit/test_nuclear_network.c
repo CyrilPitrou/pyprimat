@@ -1,6 +1,6 @@
 /* test_nuclear_network.c -- end-to-end small/large+amax=8 BBN solves
  * (cpr_nuclear_network_solve, the HT->MT->LT era port of
- * pyprimat/nuclear_network.py's NuclearNetwork.solve) against CLAUDE.md's
+ * primat/nuclear_network.py's NuclearNetwork.solve) against documentation's
  * "Validation before committing" reference numbers, plus baryon-number
  * conservation at the final state.
  *

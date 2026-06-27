@@ -753,7 +753,7 @@ def _chi_func_sd_fm_v(ctx, en, pe, x, znu, sgnq, dFDneu_moments_v):
     ``FDνe{n}p{k}[enu,phi,znu]`` (here ``FD_nu_e{n}p{k}(enu, 0., znu)``)
     replaced by the corresponding *distortion* moment
     ``dFDneue{n}p{k}[enu,phi,x,znu,sgnq]`` -- i.e. en^n times the k-th
-    en-derivative of the analytic μ+y+gray distortion δf (PyPRIMAT's
+    en-derivative of the analytic μ+y+gray distortion δf (primat's
     ``dFDneu_func``), instead of en^n times the plain Fermi-Dirac occupation.
     Same f_1, f_2, f_3 Fokker-Planck coefficients and M_sgnq as
     :func:`_chi_func_fm_v`; the substitution is purely mechanical (term by
@@ -1151,7 +1151,7 @@ def _L_CCRTh_interpolants(ctx):
             #      neutron-decay value it must approach as T -> 0.
             # PRIMAT-Main.m already applies this clamp to p->n (sgnq=-1) only
             # (lines 1639/1644/1650); here it is extended to n->p because
-            # PyPRIMAT now tabulates the rates down to T_end ~ 1.16e7 K, well
+            # primat now tabulates the rates down to T_end ~ 1.16e7 K, well
             # into the regime where the unclamped n->p bremsstrahlung misbehaves.
             if T < _T_CCRTH_MIN:
                 return 0.

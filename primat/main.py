@@ -2,7 +2,7 @@
 """
 main.py
 =======
-Main class for PyPRIMAT.
+Main class for primat.
 
 Design
 ------
@@ -99,7 +99,7 @@ def _options_recap(cfg, backend):
 
 class PRIMAT:
     """
-    Main PyPRIMAT class.
+    Main primat class.
 
     Parameters
     ----------
@@ -753,7 +753,7 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
 
     Each MC sample draws all active nuclear rate offsets p_* independently from
     N(0,1), plus the neutron lifetime ``tau_n ~ N(cfg.tau_n, cfg.std_tau_n)``
-    (used when ``cfg.tau_n_flag=True``, the default), and runs a full PyPRIMAT
+    (used when ``cfg.tau_n_flag=True``, the default), and runs a full primat
     solve.  By default all reactions in the selected network are varied.
 
     Parameters

@@ -1,5 +1,5 @@
 /* mc.h -- threaded Monte-Carlo nuclear-rate/tau_n uncertainty propagation
- * (port of pyprimat/main.py's `mc_uncertainty`/`_mc_run_batch`,
+ * (port of primat/main.py's `mc_uncertainty`/`_mc_run_batch`,
  * CPLAN.md S9).
  *
  * Each of `num_mc` samples draws every active nuclear-rate offset
@@ -57,7 +57,7 @@ typedef struct {
  * it is never mutated after cpr_mc_uncertainty's caller builds it).
  *
  * `prev_centrals`/`prev_values`/`n_prev` are the incremental-reuse
- * counterpart of Python's `mc_uncertainty(..., prev=...)` (PyPRIMAT's
+ * counterpart of Python's `mc_uncertainty(..., prev=...)` (primat's
  * `main.py`): pass `n_prev > 0` to reuse `n_prev` already-computed samples
  * instead of recomputing them. `prev_centrals` (length `n_quantities`,
  * parallel to `quantities`) supplies each quantity's central value (so it

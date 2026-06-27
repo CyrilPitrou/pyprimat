@@ -188,7 +188,7 @@ def stamp_upload(name, raw_text):
     ._current_table_text`), the per-reaction "Source" column
     (:func:`primat.network_data._reaction_source_from_lines`, which reads
     this very header back), and a re-exported zip -- carries an unambiguous
-    "this is a PyPRIMAT-loaded custom table for reaction X" label, even when
+    "this is a primat-loaded custom table for reaction X" label, even when
     the uploaded file itself had no ``#`` header at all.
 
     Parameters
@@ -287,10 +287,10 @@ def effective_table_text(cfg, T9, rate, err, name="custom", source_header=()):
     # Provenance line first, then a long "#"-fence so it's visually obvious
     # that whatever the *original* uploaded file's own header said (preserved
     # verbatim below) is a separate, prior provenance -- not something
-    # PyPRIMAT itself wrote.
+    # primat itself wrote.
     lines = [
         f"# {reaction_display_name(name)}   [{name}]   "
-        "(custom rate reinterpolated by PyPRIMAT)",
+        "(custom rate reinterpolated by primat)",
         "#" * 70,
     ]
     lines.extend(source_header)
@@ -314,7 +314,7 @@ def decay_override_table_text(name, rate_s):
     table representation.
     """
     grid = (1.0e-3, 1.0e-2, 1.0e-1, 1.0, 10.0)
-    lines = [f"# {name}: decay rate overridden in PyPRIMAT (was log(2)/halflife)"]
+    lines = [f"# {name}: decay rate overridden in primat (was log(2)/halflife)"]
     lines += [f"{t9:.6e}   {rate_s:.6e}   {1.0:.6e}" for t9 in grid]
     return "\n".join(lines)
 
@@ -388,7 +388,7 @@ def export_zip(cfg, custom_network, kept_names, network_filename="custom"):
           filename and content -- so picking an existing alternate from the
           dropdown is never confused with a genuine edit.
         * A genuinely new/uploaded/edited table is written as
-          ``<name>_newnetwork.txt``, with the PyPRIMAT-provenance header from
+          ``<name>_newnetwork.txt``, with the primat-provenance header from
           :func:`effective_table_text`.
         * A decay reaction (Bm/Bp, rate from the shared ``decays.txt``, not a
           per-reaction file) has no table file at all; if its rate has been
@@ -439,7 +439,7 @@ def export_zip(cfg, custom_network, kept_names, network_filename="custom"):
                     # dropdown -- not an edit. The shipped default already
                     # carries the "_primat" suffix on disk (see
                     # convert_ac2024_rates.py), so it reads unambiguously as
-                    # "PyPRIMAT's own rate"; an already-distinctly-named
+                    # "primat's own rate"; an already-distinctly-named
                     # alternate (e.g. "*_parthenope3.0.txt") keeps its name.
                     lines.append(f"{name}, {shipped_name}")
                     zf.writestr(f"tables/{name}/{shipped_name}", raw_text)

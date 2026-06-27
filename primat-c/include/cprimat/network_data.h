@@ -232,10 +232,10 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
                       CPRNetworkDef *out, char **errmsg);
 void cpr_network_def_free(CPRNetworkDef *net);
 
-/* Updates net->fwd by applying p_<name>/NP_delta_<name> rate variations
+/* Updates net->fwd by applying p_<name>/delta_<name> rate variations
  * from cfg (port of NetworkDefinition.apply_variations): with no
  * variation, net->fwd reverts to net->fwd_median; otherwise
- * fwd = fwd_median * exp(p * log(expsigma)) [+ NP_delta if
+ * fwd = fwd_median * exp(p * log(expsigma)) [+ delta if
  * cfg->rescale_nuclear_rates]. Skips names[0] (n__p), handled by the
  * separate weak-rate cache instead. */
 void cpr_network_apply_variations(CPRNetworkDef *net, const CPRConfig *cfg);

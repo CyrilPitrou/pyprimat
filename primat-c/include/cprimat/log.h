@@ -1,5 +1,5 @@
 /* log.h -- verbose-mode console logging, the C-side counterpart of
- * pyprimat's scattered `if cfg.verbose: print(...)` lines (see CLAUDE.md's
+ * primat's scattered `if cfg.verbose: print(...)` lines (see documentation's
  * "Unify and complete --verbose output" effort). Centralised here so every
  * call site is a single line and the `[<tag>-c] ` prefix convention (mirrors
  * Python's `[<tag>-py] ` tags) stays consistent.

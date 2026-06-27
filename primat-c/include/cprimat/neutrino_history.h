@@ -1,5 +1,5 @@
 /* neutrino_history.h -- pluggable neutrino-sector background (port of
- * pyprimat/neutrino_history.py).
+ * primat/neutrino_history.py).
  *
  * The neutrino sector entering the cosmological background is fully
  * described, as a function of the photon temperature Tg [MeV], by:

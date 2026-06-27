@@ -2,9 +2,9 @@
  *
  * Ground truth was captured directly from the running Python code:
  *   python3 -c "
- *     from pyprimat.config import PyPRConfig
- *     from pyprimat.weak_rates.cache import _weak_rate_fingerprint, _thermal_fingerprint
- *     from pyprimat.cache_utils import fingerprint_hash
+ *     from primat.config import PRIMATConfig
+ *     from primat.weak_rates.cache import _weak_rate_fingerprint, _thermal_fingerprint
+ *     from primat.cache_utils import fingerprint_hash
  *     cfg = PyPRConfig()
  *     print(fingerprint_hash(_weak_rate_fingerprint(cfg)))
  *     print(fingerprint_hash(_thermal_fingerprint(cfg)))

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-weak_rates — n ↔ p weak interaction rates for PyPRIMAT
+weak_rates — n ↔ p weak interaction rates for primat
 ==========================================================
 
 Computes the seven n ↔ p reactions (neutron beta-decay and the six related

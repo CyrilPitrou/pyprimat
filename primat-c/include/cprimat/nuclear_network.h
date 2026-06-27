@@ -1,5 +1,5 @@
 /* nuclear_network.h -- the nuclear-reaction-network ODE integration across
- * the HT/MT/LT temperature eras (port of pyprimat/nuclear_network.py's
+ * the HT/MT/LT temperature eras (port of primat/nuclear_network.py's
  * NuclearNetwork class; CPLAN.md S13 Phases 6+7).
  *
  * CPRNuclearNetwork is driven purely through the *compulsory* interface of
@@ -82,7 +82,7 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
 void cpr_nuclear_network_free(CPRNuclearNetwork *nn);
 
 /* Final mass-fraction abundance Y of nuclide `name` (mirrors Y_final.get(name, 0.0)
- * via PyPR's __getitem__); 0.0 if `name` is not tracked by the active network. */
+ * via PRIMAT's __getitem__); 0.0 if `name` is not tracked by the active network. */
 double cpr_nuclear_network_get(const CPRNuclearNetwork *nn, const char *name);
 
 /* Abundance vector Y(t) of nuclide `name` at cosmic time t [s], linearly

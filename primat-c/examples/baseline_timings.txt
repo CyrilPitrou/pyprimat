@@ -16,14 +16,14 @@
 # weak-rate/electron-thermo caches warm (a cold first run pays a one-time
 # ~0.7 s electron-thermo + cache-miss n<->p weak-rate cost on both sides
 # equally, so it is excluded here -- both timings below are cache-hit runs,
-# matching `make bench`'s own `./cprimat` calls).
+# matching `make bench`'s own `./primat-c` calls).
 #
 # python_small_s            = 1.589
 # python_large_amax8_s      = 1.844
 #
 # CPRIMAT (this port) on the same machine, same cache state, `make bench`:
-#   cprimat_small_s         ~ 0.06   (~25x faster)
-#   cprimat_large_amax8_s   ~ 0.17   (~11x faster)
+#   primat-c_small_s         ~ 0.06   (~25x faster)
+#   primat-c_large_amax8_s   ~ 0.17   (~11x faster)
 #
 # (cprimat_small_s dropped from ~0.10 to ~0.06 after background.c's t(a)
 # ODE RHS was switched to a smooth cubic-spline T(a) lookup instead of the

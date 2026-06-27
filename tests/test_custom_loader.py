@@ -148,7 +148,7 @@ def test_added_reaction_enters_network():
     """A new reaction absent from the catalog is added with derived stoichiometry.
 
     ``t_t__He4_n_n`` (t + t -> He4 + 2n) is a real fusion reaction not present
-    in PyPRIMAT's shipped ``reactions_large.csv``; adding it to the *small*
+    in primat's shipped ``reactions_large.csv``; adding it to the *small*
     network must extend the LT reaction list and give it a non-trivial
     detailed-balance reverse rate (it is purely nuclear, so abg != 0).
     """

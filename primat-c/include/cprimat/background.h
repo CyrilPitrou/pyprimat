@@ -1,4 +1,4 @@
-/* background.h -- cosmological background (port of pyprimat/background.py).
+/* background.h -- cosmological background (port of primat/background.py).
  *
  * A "background" encapsulates everything the nuclear-network integration
  * needs about the expanding Universe: T_gamma(t)/t(T_gamma), the baryon

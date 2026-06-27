@@ -17,7 +17,7 @@ n<->p weak-rate / background machinery.
 # Default small-network run (network="small", spectral_distortions=True,
 # nuclear_qed_corrections=True -- the PRIMATConfig defaults), as produced by
 # `primat.cli.main([])`, `primat-gui`'s default "Run BBN", and
-# `runfiles/PyPRIMAT_run.py`. Snapshotted after commit e00f062 (rate_grid_npts
+# `runfiles/primat_run.py`. Snapshotted after commit e00f062 (rate_grid_npts
 # 500->1000, sampling_temperature_per_decade 400->600).
 NEFF_REFERENCE  = 3.0439772986
 YPBBN_REFERENCE = 0.24700028   # CLAUDE.md "Validation before committing" table

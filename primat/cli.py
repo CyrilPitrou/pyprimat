@@ -6,7 +6,7 @@ primat.cli
 Command-line entry point for primat.
 
 This wraps the same "build a params dict and call PRIMAT" pattern used by
-``runfiles/PyPRIMAT_run.py``, exposing the handful of options most users
+``runfiles/primat_run.py``, exposing the handful of options most users
 need (baryon density, extra relativistic species, network choice) so a
 ``pip install``-ed user can get BBN abundances without writing any Python::
 
@@ -22,7 +22,7 @@ standard config flag ``--output_mc_samples`` and the filename is taken from
 Anything not exposed as a named flag here can still be set without writing a
 script, via the (intentionally undocumented in ``--help``, to keep the
 printed help short) ``--set KEY=VALUE`` escape hatch, repeatable for any
-``PRIMATConfig`` key (including ``p_<reaction>``/``NP_delta_<reaction>``
+``PRIMATConfig`` key (including ``p_<reaction>``/``delta_<reaction>``
 rate-variation keys), e.g.::
 
     primat --set T_end_MeV=1e-4 --set decay_era=True --set network=large
@@ -82,7 +82,7 @@ def _build_parser():
         description="Run a Big Bang Nucleosynthesis computation with "
                      "primat and print the resulting Neff/abundances.",
         epilog="Any other PRIMATConfig parameter (including p_<reaction>/"
-               "NP_delta_<reaction> rate variations) can be set with "
+               "delta_<reaction> rate variations) can be set with "
                "repeated --set KEY=VALUE, e.g. --set T_end_MeV=1e-4. "
                "The output-path options are available as named flags: "
                "--output_file, --output_final_file, --output_background_file, "
@@ -228,7 +228,7 @@ def _build_parser():
              "later run just pays the one-time recompute cost again.",
     )
     # Generic escape hatch: lets any PRIMATConfig key (including p_<reaction>/
-    # NP_delta_<reaction>) be set from the CLI without a dedicated flag.
+    # delta_<reaction>) be set from the CLI without a dedicated flag.
     # help=SUPPRESS keeps it out of --help, per the handful of named flags
     # above being the only ones intended to show there; see the module
     # docstring for usage.

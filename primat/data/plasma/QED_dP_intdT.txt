@@ -1,4 +1,4 @@
-# Source: PyPRIMAT qed_pressure.py — computed from PRIMAT formulas
+# Source: primat qed_pressure.py — computed from PRIMAT formulas
 # T (MeV)           dP_int/dT (e^2)      dP_int/dT (e^3)
 1.000000E-03 -2.118569E-85 1.209991E-94
 1.023340E-03 1.071504E-85 -6.119745E-95

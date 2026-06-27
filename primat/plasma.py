@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-plasma.py — SM plasma thermodynamics for PyPRIMAT
+plasma.py — SM plasma thermodynamics for primat
 =================================================
 
 Implements the photon, electron–positron, and neutrino thermodynamics

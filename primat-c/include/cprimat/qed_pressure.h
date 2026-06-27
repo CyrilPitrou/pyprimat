@@ -1,5 +1,5 @@
 /* qed_pressure.h -- analytical QED plasma-pressure corrections (port of
- * pyprimat/qed_pressure.py). See that module's docstring for the physics
+ * primat/qed_pressure.py). See that module's docstring for the physics
  * background; brief summary here:
  *
  * The finite-temperature QED interaction-pressure correction dP(T) to the
@@ -12,7 +12,7 @@
  *   dP_e3(T) [O(alpha^3/2)]  -- ring/plasmon contribution (Blaizot-Zinn-
  *                                Justin), positive, ~10x smaller.
  *
- * (The O(alpha^2) two-loop exchange term dPb is not ported: PyPRIMAT's
+ * (The O(alpha^2) two-loop exchange term dPb is not ported: primat's
  * shipped tables never include it, and CPLAN.md S7a scopes this module to
  * the pieces plasma.c actually loads.)
  *

@@ -2,7 +2,7 @@
 """
 config.py
 =========
-Central configuration for PyPRIMAT.
+Central configuration for primat.
 
 Physical constants and derived unit conversions are *fixed* and computed once
 here.  All run-time flags and cosmological/nuclear parameters are carried in a
@@ -329,7 +329,7 @@ DEFAULT_PARAMS: dict = {
     # QED correction to select radiative-capture nuclear rates (Pitrou & Pospelov 2020).
     # Applies a T9-dependent multiplicative rescaling to the forward rate tables of
     # n_p__d_g, d_p__He3_g, t_p__a_g, t_a__Li7_g, He3_a__Be7_g at load time.  When True the
-    # corrected values become the new medians, so p_* and NP_delta_* variations
+    # corrected values become the new medians, so p_* and delta_* variations
     # work relative to the QED-corrected central value.
     "nuclear_qed_corrections":    True,
 
@@ -529,14 +529,14 @@ class PRIMATConfig:
         # those overrides), so that the per-reaction defaults match the
         # network actually requested by the caller.
         object.__setattr__(self, "p_rxn", {})
-        object.__setattr__(self, "NP_delta_rxn", {})
+        object.__setattr__(self, "delta_rxn", {})
         object.__setattr__(self, "_init_messages", [])
 
         user_keys = set(params.keys()) if params else set()
 
         # Apply user overrides
         if params:
-            known_prefixes = ('p_', 'NP_delta_')
+            known_prefixes = ('p_', 'delta_')
             unknown = set()
             for key, value in params.items():
                 if key in DEFAULT_PARAMS or any(key.startswith(p) for p in known_prefixes):
@@ -609,15 +609,15 @@ class PRIMATConfig:
                 )
 
         # Default every reaction of the *configured* network (self.network,
-        # finalised by the overrides above) to p_<rxn>=0 / NP_delta_<rxn>=0,
-        # i.e. "no rate variation".  Use setdefault so any p_<rxn>/NP_delta_<rxn>
+        # finalised by the overrides above) to p_<rxn>=0 / delta_<rxn>=0,
+        # i.e. "no rate variation".  Use setdefault so any p_<rxn>/delta_<rxn>
         # override already applied above is not clobbered.
         from .network_data import load_reaction_names, reaction_category
         reactions_with_tables = load_reaction_names(self, self.network)
         # Each entry is "bare_name" or "bare_name, filename.txt"; only the
-        # bare reaction name is used as the p_<rxn>/NP_delta_<rxn> key.
+        # bare reaction name is used as the p_<rxn>/delta_<rxn> key.
         # amax (now meaningful for any network, not just "large") must be
-        # applied here too, so p_rxn/NP_delta_rxn don't carry stale keys for
+        # applied here too, so p_rxn/delta_rxn don't carry stale keys for
         # reactions load_network would have dropped.
         valid_rxns = set()
         for entry in reactions_with_tables:
@@ -627,15 +627,15 @@ class PRIMATConfig:
             valid_rxns.add(bare)
         for rxn in valid_rxns:
             self.p_rxn.setdefault(rxn, 0.0)
-            self.NP_delta_rxn.setdefault(rxn, 0.0)
+            self.delta_rxn.setdefault(rxn, 0.0)
 
-        # Catch p_<rxn>/NP_delta_<rxn> typos in the constructor params. This
+        # Catch p_<rxn>/delta_<rxn> typos in the constructor params. This
         # has to happen here rather than in __setattr__ at the time those
         # overrides were applied (above): the override loop runs before this
         # network's reaction list is known (self.network may itself be one of
         # the overrides), and by the time we reach this point __setattr__'s
         # routing has already inserted the (possibly bogus) key into
-        # self.p_rxn/self.NP_delta_rxn -- so we must check against
+        # self.p_rxn/self.delta_rxn -- so we must check against
         # ``valid_rxns`` computed just above, not against those dicts.
         for key in user_keys:
             if key.startswith('p_') and key[2:] not in valid_rxns:
@@ -644,7 +644,7 @@ class PRIMATConfig:
                     f"network {self.network!r}; it has no effect on the run.",
                     stacklevel=2,
                 )
-            elif key.startswith('NP_delta_') and key[9:] not in valid_rxns:
+            elif key.startswith('delta_') and key[6:] not in valid_rxns:
                 warnings.warn(
                     f"PRIMATConfig: {key!r} does not match any reaction in "
                     f"network {self.network!r}; it has no effect on the run.",
@@ -776,19 +776,19 @@ class PRIMATConfig:
         self._update_derived()
 
     def __getattr__(self, name: str):
-        """Dynamic lookup for nuclear rate variations p_* and NP_delta_*."""
+        """Dynamic lookup for nuclear rate variations p_* and delta_*."""
         if name.startswith("p_"):
             return object.__getattribute__(self, 'p_rxn').get(name[2:], 0.0)
-        if name.startswith("NP_delta_"):
-            return object.__getattribute__(self, 'NP_delta_rxn').get(name[9:], 0.0)
+        if name.startswith("delta_"):
+            return object.__getattribute__(self, 'delta_rxn').get(name[6:], 0.0)
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
     def __setattr__(self, name: str, value):
-        """Dynamic routing for nuclear rate variations p_* and NP_delta_*."""
+        """Dynamic routing for nuclear rate variations p_* and delta_*."""
         if name.startswith("p_"):
             object.__getattribute__(self, 'p_rxn')[name[2:]] = float(value)
-        elif name.startswith("NP_delta_"):
-            object.__getattribute__(self, 'NP_delta_rxn')[name[9:]] = float(value)
+        elif name.startswith("delta_"):
+            object.__getattribute__(self, 'delta_rxn')[name[6:]] = float(value)
         else:
             if name in _PATH_PARAMS:
                 # Normalize "~" immediately so both direct assignment and

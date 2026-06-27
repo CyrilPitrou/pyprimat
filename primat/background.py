@@ -2,7 +2,7 @@
 """
 background.py
 ==============
-Cosmological-background component for PyPRIMAT ("Class 1" of the
+Cosmological-background component for primat ("Class 1" of the
 ``PRIMAT`` split).
 
 A *background* encapsulates everything the nuclear-network integration
@@ -328,7 +328,7 @@ class Background(object):
 
 
 class StandardBackground(Background):
-    """The standard PyPRIMAT cosmological background.
+    """The standard primat cosmological background.
 
     Builds the ``a <-> t <-> T`` relations and n<->p weak rates exactly as
     the pre-split ``PRIMAT`` did, under either of the two decoupling regimes
@@ -1288,7 +1288,7 @@ class CustomBackground(Background):
         m_B · n0CMB · eta0b / a(t)^3, with ``a(t)`` read from the supplied
         table.  The scale factor must be normalised so that ``a = 1`` today
         (``a · T_γ → T0CMB_MeV`` as ``T_γ → 0``), consistent with the
-        standard PyPRIMAT convention (see
+        standard primat convention (see
         :meth:`StandardBackground._rhoB_of_a`).
 
         Args:

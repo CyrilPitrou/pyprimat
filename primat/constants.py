@@ -2,7 +2,7 @@
 """
 constants.py
 ============
-Frozen physical constants and unit-conversion factors for PyPRIMAT.
+Frozen physical constants and unit-conversion factors for primat.
 
 This module is the single source of truth for the *fixed* physical
 constants used throughout the code: PDG masses and couplings, the
@@ -106,7 +106,7 @@ class Constants:
     # (Bennett et al. 2021, arXiv:2012.02726; de Salas & Pastor numerical
     # value to 3.044 quoted from the more recent re-evaluations of the
     # Mangano/Miele 3.046 result). Used wherever the *standard*-physics value
-    # of N_eff is needed as an input (rather than the value PyPRIMAT itself
+    # of N_eff is needed as an input (rather than the value primat itself
     # solves for via the NEVO non-instantaneous-decoupling table), e.g. the
     # radiation-density sanity check in
     # ``StandardBackground._replace_LCDM_with_exact`` and the EDE-era
@@ -162,7 +162,7 @@ class Constants:
         cm^3 g^-1 s^-2 to m^3 kg^-1 s^-2.
 
         ``cfg.GN`` itself is stored and exposed in SI units throughout
-        PyPRIMAT (``DEFAULT_PARAMS["GN"]`` in ``config.py``, the GUI's
+        primat (``DEFAULT_PARAMS["GN"]`` in ``config.py``, the GUI's
         "Constants" panel); this factor (and its inverse,
         :attr:`GN_SI_to_MeV2`) is used internally to convert to/from the
         natural units that the Friedmann equation

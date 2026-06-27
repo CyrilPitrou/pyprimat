@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-primat.gui — optional Streamlit front end for PyPRIMAT.
+primat.gui — optional Streamlit front end for primat.
 
 This subpackage is intentionally kept import-light: nothing here (or in
 ``primat/__init__.py``) imports ``streamlit``/``plotly`` at module load
 time, so ``import primat`` continues to work even when the optional
-``gui`` extra (``pip install "PyPRIMAT[gui]"``) is not installed.
+``gui`` extra (``pip install "primat[gui]"``) is not installed.
 
 Launch the GUI with::
 

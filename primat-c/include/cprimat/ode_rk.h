@@ -29,7 +29,7 @@ typedef struct {
     int max_steps;       /* hard cap on accepted+rejected steps combined */
 } CPRRKOpts;
 
-/* Default options: rtol=1e-7, atol=1e-12 (matching PyPRIMAT's
+/* Default options: rtol=1e-7, atol=1e-12 (matching primat's
  * `numerical_precision` default and a representative abundance floor),
  * h_init=0 (auto), h_min=0, h_max=0, max_steps=100000. */
 CPRRKOpts cpr_ode_rk_default_opts(void);

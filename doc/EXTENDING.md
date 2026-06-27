@@ -22,7 +22,7 @@ rejects duplicate entries, so a malformed addition fails fast and loudly
 rather than silently mis-integrating.
 
 For a one-off sensitivity study rather than a permanent addition, use the
-existing `p_<reaction>` / `NP_delta_<reaction>` config knobs to perturb a
+existing `p_<reaction>` / `delta_<reaction>` config knobs to perturb a
 rate already in the network — no file changes needed (see CLAUDE.md
 "Nuclear rate variation").
 
@@ -60,6 +60,86 @@ the Friedmann equation given the supplied `a(t)`. See
 `tests/test_custom_background.py` for a round-trip example (write a
 reference background from a standard run, re-run through
 `custom_background`, check observables agree to <1e-5 relative).
+
+### Using custom_background to test alternative cosmological scenarios
+
+The `custom_background` mechanism is particularly powerful for exploring
+non-standard cosmological expansion histories. By providing a complete
+`(T, t, a)` table, you can bypass **all** of primat's standard cosmology
+calculations — the entropy-conservation ODE, the NEVO neutrino-decoupling
+history, and the associated weak-rate corrections — and replace them with
+your own expansion history. This is the intended path for investigating:
+
+- Modified expansion histories (e.g., early dark energy models, non-standard
+  radiation content, or time-varying dark-energy equations of state)
+- Alternative neutrino physics (by providing a table that encodes a
+  different `T_ν(T_γ)` relationship implicitly through the supplied `a(t)`)
+- Non-standard temperature-time relationships (e.g., from modified gravity
+  or other exotic scenarios)
+
+**How it works:**
+
+1. Create a tab- or comma-delimited text file with at least three columns
+   named `T` [MeV], `t` [s], and `a` (scale factor, normalised to 1 today).
+   The file must span the full BBN temperature range (typically from
+   `T ~ 10 MeV` down to `T ~ 0.001 MeV`).
+
+2. Set `cfg.custom_background` to the path of this file.
+
+3. primat automatically forces `incomplete_decoupling=False` and
+   `spectral_distortions=False`, then uses your table directly:
+   - `T_of_t`/`t_of_T`/`a_of_T`/`T_of_a`/`t_of_a`/`a_of_t` are all read from the
+     supplied table via linear interpolation.
+   - Neutrino temperatures use the **instantaneous-decoupling** approximation
+     (`T_ν = (4/11)^(1/3) * T_γ` for all flavours), computed from your supplied
+     photon temperature `T`.
+   - The n↔p weak rates are computed using these instantaneous-decoupling
+     neutrino temperatures (no NEVO spectral distortions).
+   - `Neff` is estimated at the end of BBN from the Friedmann equation:
+     `H² = 8πG/3 · ρ_tot`, where `ρ_tot = ρ_plasma + ρ_ν`, and `ρ_ν` is inferred
+     as the difference between `ρ_tot` (from `H` via your `a(t)`) and the known
+     plasma density `ρ_plasma(T_γ)`.
+
+**Example: generating a custom-background table from an external cosmology code**
+
+Suppose you have a cosmology code that outputs `(T_γ, t, a)` for a non-standard
+model. You can format this output as a TSV file:
+
+```
+T	t	a
+10.0	0.001	1.0e-10
+5.0	0.01	2.0e-10
+...
+0.001	1000000	0.001
+```
+
+Then run BBN with this background:
+
+```python
+from primat.backend import run_bbn
+
+result = run_bbn({
+    "custom_background": "my_cosmology.tsv",
+    "network": "small",
+    "Omegabh2": 0.022425,
+})
+
+print(f"YP (BBN) = {result['YPBBN']:.8f}")
+print(f"Neff     = {result['Neff']:.8f}")
+```
+
+**Important notes:**
+
+- The scale factor `a` in your table **must** be normalised so that
+  `a · T_γ → T_0CMB` as `T_γ → 0`. In practice this means `a ≈ 1/T_γ` in
+  radiation domination (the standard convention), so `a = 1` today when
+  `T_γ = T_0CMB`.
+- Rows may be in any order; primat sorts them internally by cosmic time `t`.
+- Extra columns in your file are silently ignored.
+- This mode is mutually exclusive with `external_scale_factor=True`.
+- The Python backend always supports `custom_background`. The C backend
+  (`primat-c`) supports it as of the same feature set; both backends give
+  identical results when used with the same table.
 
 A cleaner `PyPR(..., background=<Background instance>)` injection hook
 (subclassing `pyprimat.background.Background` directly, rather than going

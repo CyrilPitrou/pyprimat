@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-primat — core package for PyPRIMAT.
+primat — core package for the PRIMAT BBN solver.
 
 Public API::
 

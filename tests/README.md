@@ -1,13 +1,11 @@
-# PyPRIMAT Test Suite
+# primat Test Suite
 
-This test suite was written by [Claude](https://claude.ai) (Anthropic) during an
-interactive development session with Cyril Pitrou. It is meant to be read as
-documentation as much as run as a check: every test group below states the
-physics or software property it pins down.
+This test suite is meant to be read as documentation as much as run as a check:
+every test group below states the physics or software property it pins down.
 
 ## Why these tests exist
 
-PyPRIMAT is a numerical physics code whose output (primordial abundances) is a
+primat is a numerical physics code whose output (primordial abundances) is a
 single set of numbers that is easy to get *subtly* wrong — a mistyped Jacobian
 entry, a rate read from the wrong column, a refactor that shifts a result by a
 few parts in 1e5. The suite is built in layers so that:
@@ -41,9 +39,9 @@ Three speed tiers:
 
 | Marker | Meaning |
 |--------|---------|
-| `slow` | any test excluded from the fast lane: a full PyPRIMAT solve (or a Monte-Carlo loop of solves), a weak-rate recompute (~1.8 s, bypassing the fingerprinted cache), or packaging checks. Deselect with `-m "not slow"`. |
-| `solve` | the "solve" tier: tests that run >=1 full PyPRIMAT solve at *default* (non-reference) precision; always also marked `slow`. `-m "not slow or solve"` selects the fast lane plus this tier. |
-| `reference` | high-precision runs (numerical_precision=1e-10, sampling_temperature_per_decade=2000, sampling_nTOp_per_decade=125, T_start_cosmo=100 MeV) that reproduce the CLAUDE.md values to YP ±1e-5, D/H ±3e-9; ~60 s total; always also marked `slow`. |
+| `slow` | any test excluded from the fast lane: a full primat solve (or a Monte-Carlo loop of solves), a weak-rate recompute (~1.8 s, bypassing the fingerprinted cache), or packaging checks. Deselect with `-m "not slow"`. |
+| `solve` | the "solve" tier: tests that run >=1 full primat solve at *default* (non-reference) precision; always also marked `slow`. `-m "not slow or solve"` selects the fast lane plus this tier. |
+| `reference` | high-precision runs (numerical_precision=1e-10, sampling_temperature_per_decade=2000, sampling_nTOp_per_decade=125, T_start_cosmo=100 MeV) that reproduce the documented reference values to YP ±1e-5, D/H ±3e-9; ~60 s total; always also marked `slow`. |
 | `wheel` | builds a wheel and `pip install`s it into a clean venv before running a smoke solve; always also marked `slow`. |
 | `gui` | drives the optional Streamlit GUI (`primat.gui`) via `AppTest`; skipped if the `gui` extra is not installed; always also marked `slow` and `solve`. |
 
@@ -71,7 +69,7 @@ yet done, so the `solve` tier still runs full three-era solves.
 | File | What it checks |
 |------|----------------|
 | `conftest.py` | Session-scoped fixtures: pre-solved small- and large-network `PRIMAT` instances reused across tests (built once, not per test). |
-| `test_config.py` | `PyPRConfig`: defaults, user overrides, unknown-key warnings, p_*/NP_delta_* reaction-name typo warnings, the `Nuclides` table, that `eta0b` tracks `Omegabh2`, and that there is exactly one MCMC weight per network reaction. |
+| `test_config.py` | `PyPRConfig`: defaults, user overrides, unknown-key warnings, p_*/delta_* reaction-name typo warnings, the `Nuclides` table, that `eta0b` tracks `Omegabh2`, and that there is exactly one MCMC weight per network reaction. |
 | `test_constants.py` | `primat.constants.CONST`'s derived electroweak values: `sW2` (sin²θ_W) against an independent hand-computation of the on-shell relation, the `geL`/`geR`/`gmuL` effective couplings derived from it, and `T_weak`/`T_nucl` against `MeV_to_Kelvin`. |
 | `test_plasma.py` | Plasma/neutrino thermodynamics: `rho_g`, `rho_e`/`p_e` positivity and the e± cutoff, `spl`/`dspl_dT` self-consistency (combined vs separate evaluation, vs finite differences), `T_nu_decoupling` high- and low-T limits. |
 | `test_decoupling_qed.py` | The `incomplete_decoupling` × `QED_corrections` 2×2 flag matrix: that `PofT`/`dPdT`/`d2PdT2` vanish when `QED_corrections=False`; that `spl/T³` equals `11π²/45` (free-gas) or differs from it (QED) at high T; that the instantaneous-decoupling $(T_\gamma/T_\nu)^3$ ratio equals `11/4` without QED and the Dodelson–Turner–Heckler perturbative formula with QED; that the correct NEVO file is loaded for each combination; and Neff reference values pinned for all four combinations. |
@@ -88,5 +86,5 @@ yet done, so the `solve` tier still runs full three-era solves.
 | `test_nuclear_qed.py` | QED corrections to radiative-capture rates (Pitrou & Pospelov 2020): correction factors are > 1 and sub-percent; the npTOdg polynomial matches its T9→0 cap; the four Kroll-formula reactions increase monotonically with T9; reference magnitudes at T9=0.1 GK are pinned to ±2e-6; non-QED reactions are unchanged; p_* variations stack correctly on the corrected median; and a full solve with the flag on shifts D/H by a detectable but sub-percent amount. |
 | `test_regression.py` | Final abundances: loose default-precision sanity checks, tight `reference`-marked checks against the published CLAUDE.md values, no-numba full solve checks (pure-Python kernels must match JIT to 1e-4), and the `amax` cutoff verification (large network filtered to A ≤ 20 matches medium light elements to ~1e-3). |
 | `test_wheel_smoke.py` | The `wheel`-marked "pip install" smoke test: builds a wheel, installs it into a clean venv, and runs a small-network solve there to catch package-data/path regressions (e.g. `rates/` not shipped, or a path computed relative to the source tree instead of the installed package) that an editable install would not reveal. |
-| `test_docs_consistency.py` | Guards README/CLAUDE.md claims that aren't checked anywhere else: `PyPRConfig`'s `save_nTOp`/`save_nTOp_thermal` defaults match what README states, and the parameter names/values CLAUDE.md quotes for `runfiles/PyPRIMAT_reference_run.py` (`sampling_temperature_per_decade`, `numerical_precision`, `sampling_nTOp_per_decade`, `T_start_cosmo_MeV`) still exist verbatim in that script and are recognised by `PyPRConfig` (no "unknown parameter" warning). |
+| `test_docs_consistency.py` | Guards README claims that aren't checked anywhere else: `PRIMATConfig`'s `save_nTOp`/`save_nTOp_thermal` defaults match what README states, and the parameter names/values documented for `runfiles/primat_reference_run.py` (`sampling_temperature_per_decade`, `numerical_precision`, `sampling_nTOp_per_decade`, `T_start_cosmo_MeV`) still exist verbatim in that script and are recognised by `PRIMATConfig` (no "unknown parameter" warning). |
 | `test_gui.py` | The optional Streamlit GUI (`primat.gui`): `import primat` does not pull in `primat.gui`/streamlit; the parameter-form metadata covers `amax` (the one `None`-default key) and the network choices; an end-to-end `AppTest` run of `primat/gui/app.py` reproduces `test_cli.py`'s pinned default-run values (Neff/YPBBN/D-H and the per-nuclide table) -- i.e. the GUI drives `PRIMAT` identically to the CLI; the abundance-evolution panel renders with its default "light elements" nuclide selection; the `amax` widget appears only for `network='large'`; and an invalid flag combination (`spectral_distortions=True` with `incomplete_decoupling=False`) is shown as a clean `st.error` rather than a traceback. Skipped entirely if the `gui` extra is not installed. |

@@ -14,7 +14,7 @@ UNIT_BIN := $(patsubst tests/unit/%.c,$(BUILD)/unit/%,$(UNIT_SRC))
 
 .PHONY: all debug test bench clean
 
-all: $(BUILD)/cprimat
+all: $(BUILD)/primat-c
 
 debug: CFLAGS := -std=c11 -Wall -Wextra -O0 -g -fsanitize=address,undefined -Iinclude -MMD -MP -pthread -D_GNU_SOURCE
 debug: LDFLAGS := -lm -pthread -fsanitize=address,undefined
@@ -26,7 +26,7 @@ $(BUILD)/%.o: src/%.c
 
 -include $(OBJ:.o=.d)
 
-$(BUILD)/cprimat: $(OBJ)
+$(BUILD)/primat-c: $(OBJ)
 	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
 $(BUILD)/unit/%: tests/unit/%.c $(filter-out $(BUILD)/main.o,$(OBJ))
@@ -53,19 +53,19 @@ test: $(UNIT_BIN)
 # `mkdir -p results` only matters on a fresh checkout (cpr_nuclear_network_
 # write_final_result's own mkdir_p creates it too, but cfg->output_final_
 # result defaults to False via the CLI path used here -- see cli.c).
-bench: $(BUILD)/cprimat
+bench: $(BUILD)/primat-c
 	@mkdir -p results
 	@echo "== CPRIMAT benchmark (small, large+amax=8) vs. Python baseline =="
 	@echo "-- small --"; \
 	 start=$$(date +%s.%N); \
-	 ./$(BUILD)/cprimat --data-dir ../primat/data --ini examples/run_small.ini >/dev/null; \
+	 ./$(BUILD)/primat-c --data-dir ../primat/data --ini examples/run_small.ini >/dev/null; \
 	 end=$$(date +%s.%N); \
-	 awk -v s=$$start -v e=$$end 'BEGIN { printf "cprimat: %.3f s\n", e - s }'
+	 awk -v s=$$start -v e=$$end 'BEGIN { printf "primat-c: %.3f s\n", e - s }'
 	@echo "-- large, amax=8 --"; \
 	 start=$$(date +%s.%N); \
-	 ./$(BUILD)/cprimat --data-dir ../primat/data --ini examples/run_large_amax8.ini >/dev/null; \
+	 ./$(BUILD)/primat-c --data-dir ../primat/data --ini examples/run_large_amax8.ini >/dev/null; \
 	 end=$$(date +%s.%N); \
-	 awk -v s=$$start -v e=$$end 'BEGIN { printf "cprimat: %.3f s\n", e - s }'
+	 awk -v s=$$start -v e=$$end 'BEGIN { printf "primat-c: %.3f s\n", e - s }'
 	@echo "Python baseline timings (recorded once, see examples/baseline_timings.txt):"
 	@cat examples/baseline_timings.txt
 

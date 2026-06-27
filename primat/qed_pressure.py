@@ -257,7 +257,7 @@ def _dPb(T, alpha=_ALPHA_FS, me=_ME_MEV, epsrel=1e-4):
     logarithm has an integrable singularity at p₁ = p₂.
 
     **Note**: this term is O(α²) ≈ 5×10⁻⁵ and is NOT included in the
-    standard PyPRIMAT QED tables (which only store δP_a + δP_{e3}).
+    standard primat QED tables (which only store δP_a + δP_{e3}).
     It is provided here for completeness.  Computing it is expensive
     (~10–60 s per temperature point at low precision).
 
@@ -433,11 +433,11 @@ def save_qed_tables(tables, plasma_dir, verbose=True):
     d2e2 = tables["d2_dP_e2_dT2"]
     d2e3 = tables["d2_dP_e3_dT2"]
 
-    hdr_P   = ("Source: PyPRIMAT qed_pressure.py — computed from PRIMAT formulas\n"
+    hdr_P   = ("Source: primat qed_pressure.py — computed from PRIMAT formulas\n"
                "T (MeV)           P_int (e^2)          P_int (e^3)")
-    hdr_dP  = ("Source: PyPRIMAT qed_pressure.py — computed from PRIMAT formulas\n"
+    hdr_dP  = ("Source: primat qed_pressure.py — computed from PRIMAT formulas\n"
                "T (MeV)           dP_int/dT (e^2)      dP_int/dT (e^3)")
-    hdr_d2P = ("Source: PyPRIMAT qed_pressure.py — computed from PRIMAT formulas\n"
+    hdr_d2P = ("Source: primat qed_pressure.py — computed from PRIMAT formulas\n"
                "T (MeV)           d2P_int/dT2 (e^2)    d2P_int/dT2 (e^3)")
 
     fmt = "%.6E"

@@ -2,7 +2,7 @@
 """
 Unified nuclear-network construction and use.
 
-This module is the single place where PyPRIMAT turns a named reaction list into
+This module is the single place where primat turns a named reaction list into
 ODE equations.  The lists in ``data/nuclear/networks/{small_parthenope,large}.txt``
 (plus the hardcoded ``small``) name the thermonuclear reactions to keep; an
 ``amax`` cutoff (any positive integer >= 1) further filters any of these by
@@ -120,7 +120,7 @@ def _resample_rate_table(T9_src, rate_src, T9_dst):
                  bounds_error=False, fill_value="extrapolate")
     return f(lx_dst)
 
-# Reaction-naming syntax used throughout PyPRIMAT, both for the canonical
+# Reaction-naming syntax used throughout primat, both for the canonical
 # strings this module builds/parses and for the on-disk file names under
 # data/nuclear/{tables,networks} and data/csv/*.csv:
 #   "spaced"  (default): "<reactants joined by '_'>__<products joined by '_'>",
@@ -162,16 +162,16 @@ SPECIES_MD = SPECIES_SMALL + ["He6", "Li8", "Li6", "B8"]
 # and ``p``, where the implicit mass number 1 is conventionally not shown).
 _NUCLIDE_LATEX_SPECIAL = {"n": r"\mathrm{n}", "p": r"\mathrm{p}"}
 
-# Matches every other PyPRIMAT nuclide name: an element symbol (one capital
+# Matches every other primat nuclide name: an element symbol (one capital
 # letter optionally followed by a lowercase letter, e.g. "He", "B", "Na")
 # followed by its mass number (e.g. "He3", "B10", "Na23").
 _NUCLIDE_NAME_RE = re.compile(r"^([A-Z][a-z]?)(\d+)$")
 
 
 def nuclide_latex(name):
-    """Return the LaTeX form of a PyPRIMAT nuclide name, e.g. for axis labels.
+    """Return the LaTeX form of a primat nuclide name, e.g. for axis labels.
 
-    PyPRIMAT names nuclides as ``"<element symbol><mass number>"`` (e.g.
+    primat names nuclides as ``"<element symbol><mass number>"`` (e.g.
     ``"He3"``, ``"B10"``), with the neutron and proton as the bare bookkeeping
     names ``"n"`` and ``"p"``.  This maps such a name to the standard
     isotope notation ``${}^{A}\\mathrm{Sym}$`` (e.g. ``"He3"`` ->
@@ -402,7 +402,7 @@ def compute_detailed_balance_coefficients(reactants, products, cfg):
     cfg : PRIMATConfig
         Supplies the nuclide tables (``Nuclides`` = [N, Z], ``NuclExcessMass``
         in keV, ``NuclSpin``) and the fundamental constants (kB, hbar, clight,
-        ma, me, keV, MeV) in the CGS-erg system used throughout PyPRIMAT.
+        ma, me, keV, MeV) in the CGS-erg system used throughout primat.
 
     Returns
     -------
@@ -880,7 +880,7 @@ class NetworkDefinition:
 
     def apply_variations(self, cfg):
         """Update the active forward rate tables ``self._fwd`` by applying any
-        variation parameters (p_* and NP_delta_*) from the configuration.
+        variation parameters (p_* and delta_*) from the configuration.
 
         This allows Monte Carlo loops to reuse the same network objects while
         refreshing the rates at the start of each solve.
@@ -889,16 +889,16 @@ class NetworkDefinition:
         # Skip names[0] which is always n__p (handled separately in the solver)
         for i, name in enumerate(self.names[1:]):
             p = getattr(cfg, f"p_{name}")
-            NP_delta = getattr(cfg, f"NP_delta_{name}")
+            delta = getattr(cfg, f"delta_{name}")
 
-            if p == 0.0 and (not NP or NP_delta == 0.0):
+            if p == 0.0 and (not NP or delta == 0.0):
                 # No variation: revert to median
                 self._fwd[i] = self._fwd_median[i]
             else:
                 # Apply p uncertainty: median * exp(p * log(expsigma))
                 variation = np.exp(p * np.log(self._expsigma[i]))
                 if NP:
-                    variation += NP_delta
+                    variation += delta
                 self._fwd[i] = self._fwd_median[i] * variation
 
     def fill_buffer(self, T_t, nTOp_frwrd, nTOp_bkwrd, clamp=True):
@@ -1715,7 +1715,7 @@ def _apply_nuclear_qed(names, fwd_median, grid, cfg):
 
     The correction (Pitrou & Pospelov 2020) accounts for pair-production in
     the final-state photon.  Multiplying into ``fwd_median`` makes the
-    corrected value the new median so that ``p_*``/``NP_delta_*`` rate
+    corrected value the new median so that ``p_*``/``delta_*`` rate
     variations apply relative to it.
 
     Args:

@@ -264,7 +264,7 @@ int cprimat_run(const CPRConfig *cfg, const CPRCustomNetwork *custom,
         print_reactions(&nr.lt_net);
     }
     /* Mirrors NuclearNetwork.solve()'s own nucl.apply_variations(cfg) call
-     * (p_<rxn>/NP_delta_<rxn> rate-variation knobs); cpr_nuclear_network_solve's
+     * (p_<rxn>/delta_<rxn> rate-variation knobs); cpr_nuclear_network_solve's
      * docstring requires this be done by the caller before passing `nr` in. */
     cpr_nuclear_rates_apply_variations(&nr, cfg);
 

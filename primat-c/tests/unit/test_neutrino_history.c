@@ -1,5 +1,5 @@
 /* test_neutrino_history.c -- checks the neutrino-sector background port
- * against reference values from a live pyprimat.neutrino_history run
+ * against reference values from a live primat.neutrino_history run
  * (make_neutrino_history with default cfg = NEVOTable +
  * spectral_distortions=True, and incomplete_decoupling=False +
  * spectral_distortions=False = InstantaneousDecoupling -- the

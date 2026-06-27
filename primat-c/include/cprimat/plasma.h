@@ -1,4 +1,4 @@
-/* plasma.h -- SM plasma thermodynamics (port of pyprimat/plasma.py).
+/* plasma.h -- SM plasma thermodynamics (port of primat/plasma.py).
  *
  * Photon, e+-, and neutrino thermodynamics used in the background a(T)/
  * t(T) evolution and Friedmann equation during BBN. All quantities follow
@@ -47,7 +47,7 @@ double cpr_drho_nu_dT(double Tnu);
  * neutrino chemical potential c = mu/Tnu (antineutrino carries -c). The energy
  * density rho(c) = Tnu^4 (7pi^2/120 + c^2/4 + c^4/(8pi^2)) is even in c; this
  * returns just the excess over c=0, Tnu^4 (c^2/4 + c^4/(8pi^2)). The caller
- * sums it over the three flavours. Mirrors pyprimat.plasma.rho_nu_chempot_excess.
+ * sums it over the three flavours. Mirrors primat.plasma.rho_nu_chempot_excess.
  * A neutrino chemical potential is NOT a spectral distortion: this energy feeds
  * the expansion rate / Neff directly. */
 double cpr_rho_nu_chempot_excess(double Tnu, double c);

@@ -53,11 +53,11 @@ def test_p_rxn_typo_warns():
     assert any("p_not_a_real_reaction" in str(x.message) for x in w)
 
 
-def test_NP_delta_rxn_typo_warns():
+def test_delta_rxn_typo_warns():
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        PRIMATConfig({"NP_delta_not_a_real_reaction": 0.5})
-    assert any("NP_delta_not_a_real_reaction" in str(x.message) for x in w)
+        PRIMATConfig({"delta_not_a_real_reaction": 0.5})
+    assert any("delta_not_a_real_reaction" in str(x.message) for x in w)
 
 
 def test_p_rxn_valid_reaction_does_not_warn():
@@ -81,7 +81,7 @@ def test_nuclides_NZ_values():
 
 
 def test_p_rate_keys_count():
-    """``p_rxn``/``NP_delta_rxn`` carry one MCMC weight per *configured*
+    """``p_rxn``/``delta_rxn`` carry one MCMC weight per *configured*
     network's reaction (small/large±amax), not always the full large set --
     see the "Corrected bug on MC" fix in ``PRIMATConfig.__init__``, which reads
     ``load_reaction_names(self.data_dir, self.network)`` rather than the
@@ -91,11 +91,13 @@ def test_p_rate_keys_count():
     cfg = PRIMATConfig()  # default network="small" -> 12 reactions
     assert cfg.network == "small"
     assert len(cfg.p_rxn) == 12
+    assert len(cfg.delta_rxn) == 12
 
     cfg_amax8 = PRIMATConfig({"network": "large", "amax": 8})
     net_amax8 = load_network(cfg_amax8, era="LT")
     n_thermonuclear = len(net_amax8.names) - 1  # exclude the prepended n__p
     assert len(cfg_amax8.p_rxn) == n_thermonuclear == 67
+    assert len(cfg_amax8.delta_rxn) == n_thermonuclear == 67
 
 
 def test_physical_constants_positive():
@@ -105,7 +107,7 @@ def test_physical_constants_positive():
 
 
 def test_config_dynamic_rate_attrs():
-    """Dynamic ``p_*`` and ``NP_delta_*`` attrs round-trip through the backing dicts."""
+    """Dynamic ``p_*`` and ``delta_*`` attrs round-trip through the backing dicts."""
     cfg = PRIMATConfig()
 
     # p_<reaction> attribute routes to cfg.p_rxn dict
@@ -113,10 +115,10 @@ def test_config_dynamic_rate_attrs():
     assert cfg.p_rxn["n_p__d_g"] == 0.5
     assert cfg.p_n_p__d_g == 0.5
 
-    # NP_delta_<reaction> routes to cfg.NP_delta_rxn dict
-    cfg.NP_delta_d_p__He3_g = 0.1
-    assert cfg.NP_delta_rxn["d_p__He3_g"] == 0.1
-    assert cfg.NP_delta_d_p__He3_g == 0.1
+    # delta_<reaction> routes to cfg.delta_rxn dict
+    cfg.delta_d_p__He3_g = 0.1
+    assert cfg.delta_rxn["d_p__He3_g"] == 0.1
+    assert cfg.delta_d_p__He3_g == 0.1
 
     # Unknown prefix falls through to object.__setattr__
     cfg.some_random_param = 42

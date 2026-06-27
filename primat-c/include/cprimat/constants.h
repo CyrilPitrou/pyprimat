@@ -1,6 +1,6 @@
 /* constants.h -- frozen physical constants and unit-conversion factors.
  *
- * Direct port of pyprimat/constants.py's `Constants` dataclass: the base
+ * Direct port of primat/constants.py's `Constants` dataclass: the base
  * fields are literal PDG values (verbatim, no computation differs from
  * Python), and the derived quantities are implemented as functions of
  * `g_const` rather than dataclass `@property`s, since C has no lazy

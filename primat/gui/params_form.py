@@ -262,7 +262,7 @@ def _cfg():
 def _available_networks():
     """Return the selectable values for the ``network`` parameter.
 
-    'small' is PyPRIMAT's built-in default network and needs no file; the
+    'small' is primat's built-in default network and needs no file; the
     other choices are discovered from ``primat/data/nuclear/networks/*.txt``
     (see ``PRIMATConfig.__init__``, which validates ``network`` against exactly
     these files for any value other than 'small'). Every custom network built
@@ -1019,7 +1019,7 @@ def _render_add_rate_section(dialog_amax, all_entries):
     with st.container(border=True):
         st.caption(
             "Add a reaction that need not be in this network (or in "
-            "PyPRIMAT's catalog at all). Its stoichiometry is read from the name."
+            "primat's catalog at all). Its stoichiometry is read from the name."
         )
         name = st.text_input("Reaction name", key=SessionKeys.dialog_add_name,
                              placeholder="He3_d__He4_p")

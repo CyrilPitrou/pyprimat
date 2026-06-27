@@ -1201,16 +1201,16 @@ void cpr_network_apply_variations(CPRNetworkDef *net, const CPRConfig *cfg)
     for (size_t i = 1; i < net->n_reac; i++) { /* skip names[0] == n__p */
         size_t row = i - 1;
         double p = cpr_rxnmap_get(&cfg->p_rxn, net->names[i]);
-        double NP_delta = cpr_rxnmap_get(&cfg->NP_delta_rxn, net->names[i]);
+        double delta = cpr_rxnmap_get(&cfg->delta_rxn, net->names[i]);
         double *fwd_row = &net->fwd[row * n_grid];
         const double *median_row = &net->fwd_median[row * n_grid];
-        if (p == 0.0 && (!cfg->rescale_nuclear_rates || NP_delta == 0.0)) {
+        if (p == 0.0 && (!cfg->rescale_nuclear_rates || delta == 0.0)) {
             memcpy(fwd_row, median_row, n_grid * sizeof(double));
         } else {
             const double *sigma_row = &net->fwd_expsigma[row * n_grid];
             for (size_t g = 0; g < n_grid; g++) {
                 double variation = exp(p * log(sigma_row[g]));
-                if (cfg->rescale_nuclear_rates) variation += NP_delta;
+                if (cfg->rescale_nuclear_rates) variation += delta;
                 fwd_row[g] = median_row[g] * variation;
             }
         }

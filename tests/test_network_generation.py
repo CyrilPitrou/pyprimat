@@ -3,7 +3,7 @@ Tests for the offline network-generation layer
 (``generate_rates/convert_ac2024_rates.py`` + ``nuclide_table.py``).
 
 That command runs once to turn AC2024 + the analytic table + NUBASE into the
-three CSVs PyPRIMAT reads at start-up:
+three CSVs primat reads at start-up:
 
 * ``nuclides.csv``        : every nuclide the network touches, with N,Z,A,Q,mass,spin,
 * ``reactions_large.csv`` : the deduced >400-reaction list,
@@ -13,13 +13,13 @@ The tests below check, without re-running the (slow) full generation:
 
 1. the token resolver and the *formal* baryon/charge conservation check;
 2. that the generated nuclide table is internally consistent and agrees with
-   PyPRIMAT's hard-coded 12-nuclide table;
+   primat's hard-coded 12-nuclide table;
 3. that the deduced reaction list is a superset of the known 12- and 68-reaction
    networks (the latter being "large" filtered to amax=8, the old "medium"
    network's exact equivalent) and that *every* listed reaction conserves A
    and Q;
 4. that the detailed-balance coefficients computed from nuclide data reproduce
-   PyPRIMAT's published values for those 68 reactions.
+   primat's published values for those 68 reactions.
 
 The CSV-based tests skip if the generated ``rates/nuclear/AC2024`` folder is
 absent (fresh checkout before the generator has been run).

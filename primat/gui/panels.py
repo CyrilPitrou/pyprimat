@@ -3,7 +3,7 @@
 primat.gui.panels
 ====================
 
-The two result panels of the PyPRIMAT GUI:
+The two result panels of the primat GUI:
 
 * :func:`render_results_panel` -- the standard BBN ratios (Neff, Yp, D/H,
   He3/He4, He3/H, Li7/H) plus a per-nuclide table of final abundances.

@@ -1,7 +1,7 @@
 /* test_background.c -- checks cpr_bg_init_standard/cpr_bg_init_custom
  * (Phase 5: background.c) against reference values from a live
- * pyprimat.background.StandardBackground/CustomBackground run with the
- * default PyPRConfig() (Omegabh2=0.022425, incomplete_decoupling=
+ * primat.background.StandardBackground/CustomBackground run with the
+ * default PRIMATConfig() (Omegabh2=0.022425, incomplete_decoupling=
  * spectral_distortions=QED_corrections=True, T_start_cosmo_MeV=40,
  * T_end_MeV=1e-3).
  *

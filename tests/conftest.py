@@ -1,5 +1,5 @@
 """
-Shared pytest fixtures for PyPRIMAT tests.
+Shared pytest fixtures for primat tests.
 """
 import sys
 import os

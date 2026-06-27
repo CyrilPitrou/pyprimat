@@ -8,7 +8,7 @@ uncertainties.  These tests verify that:
 2. restoring p=0 reproduces the baseline to floating-point precision;
 3. the MC runner propagates rate uncertainty to non-zero spread in observables.
 
-The ``test_config_dynamic_attr`` test (attribute routing for p_* / NP_delta_*)
+The ``test_config_dynamic_attr`` test (attribute routing for p_* / delta_*)
 lives in ``test_config.py`` where it logically belongs.
 """
 import numpy as np

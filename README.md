@@ -15,7 +15,11 @@ pip install primat
 
 That's it. The package includes a fast C backend compiled for your platform,
 with a pure-Python fallback if no compiled binary is available — both give
-identical results, just different speed.
+identical results, just different speed. To get started, just type
+
+```
+primat --help
+```
 
 **For development, examples, and notebooks:**
 
@@ -125,8 +129,9 @@ Li6/Li7    = 1.418945e-05
 | `--backend {auto,c,python}` | Force a backend (default: `auto`) |
 | `--json` | Print full results dict as JSON instead of summary |
 | `--verbose` | Enable progress messages (timings, cache hits, ...) |
+| `--set KEY VALUE` | Set any configuration parameter (e.g., `--set tau_n 880.1`); use `primat --help` for the full list |
 
-For parameters not exposed as command-line flags, use the Python API.
+Run `primat --help` to see all available command-line options. For parameters not exposed as flags, use `--set` or the Python API.
 
 ### 3. Graphical interface (GUI)
 
@@ -137,17 +142,18 @@ primat-gui
 ```
 
 The browser-based app offers a parameter form, interactive abundance-evolution
-plot, and final-abundances panel. It uses the pure-Python backend to support
-custom networks and time-evolution output.
+plot, and final-abundances panel. It supports custom networks, time-evolution
+output, and can use either the C or Python backend (automatically selected
+like the CLI).
 
 ### 4. Example scripts (development/source-only)
 
 Clone the repo and run from the root:
 
 ```bash
-python runfiles/PyPRIMAT_run.py           # Standard SM run
-python runfiles/PyPRIMAT_compare.py       # Network comparison
-python runfiles/PyPRIMAT_reference_run.py # High-precision run (~2 min)
+python runfiles/primat_run.py           # Standard SM run
+python runfiles/primat_compare.py       # Network comparison
+python runfiles/primat_reference_run.py # High-precision run (~2 min)
 ```
 
 ## Backend selection
@@ -165,24 +171,58 @@ Python-only features (that force fallback to pure-Python even with
 - `output_time_evolution=True` (write full time series)
 - `extra_rho`, `background=` arguments
 
+### Using primat-c directly
+
+For users who prefer to work directly with the C code, the `primat-c/` directory
+contains a standalone C99 implementation that can be compiled independently.
+See `primat-c/README.md` for detailed compilation instructions and usage
+information for various platforms.
+
 
 ## Key parameters
 
+### Physics parameters
+
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `Omegabh2` | 0.022425 | Baryon density |
+| `Omegabh2` | 0.022425 | Baryon density Ω_b h² |
 | `DeltaNeff` | 0.0 | Extra relativistic degrees of freedom |
+| `tau_n` | 879.6 | Neutron lifetime [s] |
 | `network` | `"small"` | `"small"` (12 reactions) / `"small_parthenope"` (12, Parthenope 3.0 tables) / `"large"` (~429), optionally restricted via `amax`. |
-| `numerical_precision` | 1e-7 | ODE solver rtol |
+| `amax` | None | Maximum mass number A for nuclides in reactions (filters any network) |
+| `radiative_corrections` | True | Coulomb + T=0 resummed radiative corrections to n↔p (CCR) |
+| `finite_mass_corrections` | True | Fokker-Planck finite-nucleon-mass correction (FM) |
+| `thermal_corrections` | True | Finite-temperature radiative corrections to n↔p (CCRTh) |
+| `spectral_distortions` | True | Correct n↔p rates for non-FD neutrino distributions (SD) |
+| `tau_n_normalization` | True | Normalise weak rates using τ_n (neutron lifetime) |
+
+### Precision parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `numerical_precision` | 1e-7 | `solve_ivp` relative tolerance (rtol) for all ODE integration |
 | `sampling_temperature_per_decade` | 400 | Background grid points per decade of T |
 | `sampling_nTOp_per_decade` | 80 | n↔p rate grid points per decade of T |
+| `rate_grid_npts` | 1000 | Points in the master T9 grid used for rate-table resampling |
+| `rate_grid_T9_min` | 1e-3 | Minimum T9 [GK] of the master rate grid |
+| `rate_grid_T9_max` | 10.0 | Maximum T9 [GK] of the master rate grid |
+
+### Caching parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
 | `weak_rate_cache` | True | If False, never load n↔p rates from `data/weak/` (always recompute) |
 | `save_nTOp` | True | Save recomputed n↔p rates to `data/weak/` with a fingerprint header |
-| `thermal_corrections` | True | Include thermal radiative corrections (CCRTh) to the n↔p rates |
 | `save_nTOp_thermal` | True | Save recomputed thermal corrections to `data/weak/` with a fingerprint header |
-| `output_time_evolution` | False | Write time-evolution table to `output_file` |
-| `output_file` | `results/output_tables.tsv` | Output file path (relative paths resolve against the current working directory) |
+
+### Output parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `output_time_evolution` | False | Generate time-evolution data (accessible via result["evolution"]) |
+| `output_file` | `results/output_tables.tsv` | Output file path for time evolution (relative to current directory) |
 | `output_n_points` | 500 | Number of interpolated rows in output file |
+| `output_rates_time_evolution` | False | Include per-reaction rate columns in time-evolution output (small/small_parthenope only) |
 
 ### n↔p weak rate workflow
 
@@ -209,7 +249,7 @@ that affects its numeric content (background thermodynamics,
   during throwaway experiments.
 
 Recomputing the thermal correction (`thermal_corrections=True`) requires a
-`vegas` Monte Carlo integration that can take minutes to hours; the
+`vegas` Monte Carlo integration that can take a few minutes; the
 fingerprint mechanism above is what makes this avoidable across runs that
 share the same configuration.
 
@@ -237,25 +277,85 @@ to `data/NEVO/`, or absolute paths): `nevo_file` (6/7-column thermo table),
 spectral-column count). Each defaults to `None` (the shipped table selected by
 `QED_corrections`); a custom file is validated for existence and shape at
 construction time, and is included in the n↔p weak-rate cache fingerprint so
-a different table correctly triggers a recompute.
+a different table correctly triggers a recompute. 
+For the moment `nevo_grid_file` is assumed to be a Gauss-Laguerre quadrature. 
+The format for handling NEVO results to primat will evolve in future releases.
 
-Each nuclear reaction rate has a `p_<name>` parameter (e.g. `p_npTOdg`) for uncertainty propagation: setting it to a non-zero float samples the rate at `median × exp(p × σ)`.
 
 ### Rates overlay (custom networks/tables without editing the install)
 
-`user_rates_dir` points at a directory with the same `nuclear/networks/`
-and/or `nuclear/tables/<name>/` layout as the shipped `data/` tree; any
+`user_rates_dir` points at a directory with the same `networks/`
+and/or `tables/<name>/` layout as the shipped `data/nuclear/` folder; any
 network file or per-reaction table found there is used instead of the
 shipped one, while everything not overridden still falls back to the
 shipped default (an additive overlay, not a takeover). `rates_dir` instead
-fully replaces the shipped tree as the first lookup base (still falling
-back to the shipped tree as a last resort, so `small`/`large` never
+fully replaces the shipped folder as the first lookup base (still falling
+back to the shipped folder as a last resort, so `small`/`large` never
 disappear). Both default to `None` and are validated as existing
 directories at construction time.
 
+
+### Nuclear rate variation and sensitivity analysis
+
+primat provides two distinct mechanisms for varying nuclear reaction rates:
+
+#### 1. Log-normal rate variations: `p_<reaction>` parameters
+
+Each nuclear reaction has a corresponding parameter `p_<name>` (e.g., `p_n_p__d_g` for the n + p → d + γ reaction). This varies the rate as:
+
+**Rate = median × exp(p × σ)**
+
+where σ is the rate's log-normal uncertainty width (from the rate table's error column).
+
+- **Primary use case**: Monte Carlo uncertainty propagation. Use `run_mc()` or `mc_uncertainty()` to automatically sample p_* from N(0,1) for each reaction.
+- **Manual use**: You can also set `p_<name>` directly to explore fixed variations. For example, `p_n_p__d_g = 1` increases the rate by roughly +1σ, while `p_n_p__d_g = -2` decreases it by roughly -2σ.
+
+For systematic MC runs, use `backend.run_mc()`:
+
+```python
+from primat.backend import run_mc
+
+# Run MC with nuclear rate uncertainties
+mc_result = run_mc(
+    params={"Omegabh2": 0.022425},
+    n_samples=100,
+    quantities=["DoH", "YPBBN"]  # Quantities to compute statistics for
+)
+
+print(f"D/H mean: {mc_result['DoH'].cent:8e} ± {mc_result['DoH'].err:8e}")
+```
+
+`p_<reaction>` parameters can be set via the CLI using `--set`:
+```bash
+primat --set p_n_p__d_g=1  # Fixed variation: increase n+p->d+gamma rate by ~1σ
+```
+
+#### 2. Additive rate rescaling: `rescale_nuclear_rates` + `delta_<reaction>`
+
+For deterministic sensitivity studies, enable `rescale_nuclear_rates=True`. This activates additive variation parameters `delta_<name>`. When `p_<name>=0` (the default), the rate becomes:
+
+**Rate = median × (1 + delta_<name>)**
+
+This allows uniform or per-reaction rescaling. When both `rescale_nuclear_rates=True` AND `p_<name>≠0`, the combined formula is:
+
+**Rate = median × (exp(p × σ) + delta_<name>)**
+
+Example:
+```python
+from primat.backend import run_bbn
+
+# Sensitivity study: vary n+p->d+gamma rate by +10%
+result = run_bbn({
+    "rescale_nuclear_rates": True,
+    "delta_n_p__d_g": 0.1
+})
+```
+
+**Important**: The `p_<reaction>` mechanism is designed for MC uncertainty propagation (log-normal variations), while `rescale_nuclear_rates` + `delta_<reaction>` is designed for deterministic sensitivity studies (additive variations). They can be used together but interpret the combined effect carefully.
+
 ## Output
 
-`solve()` returns a dict:
+`run_bbn()` returns a dict with the following keys:
 
 | Key | Description |
 |-----|-------------|
@@ -268,8 +368,10 @@ directories at construction time.
 | `Omeganurel` | Ω_ν h² × 10⁶ (relativistic) |
 | `OneOverOmeganunr` | 1 / (Ω_ν h² × 10⁻⁶) (non-relativistic) |
 
-When `output_time_evolution=True`, a TSV file is written with columns:
-`a, T, t, H, Tnue, Tnumu, Tnutau, [Nheating], [abundances], n_to_p_weak_rate, p_to_n_weak_rate, [nuclear rates]`
+When `output_time_evolution=True`, the time evolution data is made available. If `output_file` is set to a path, a TSV file is written with columns:
+`a, T, t, H, Tnue, Tnumu, Tnutau, [Nheating], [abundances], n_to_p_weak_rate, p_to_n_weak_rate, [nuclear rates]`.
+
+If `output_file=None` (the default), no file is written to disk, but the time evolution data is still accessible via the `"evolution"` key in the result dictionary returned by `run_bbn()`. The `primat.evolution` and `primat.plotting` modules provide tools for working with and plotting this time evolution data (see the example notebooks for usage).
 
 `Nheating` is included only for `incomplete_decoupling=True` (a real NEVO
 heating table). `[abundances]` is one `Y<species>` column per nuclide of the
@@ -296,17 +398,17 @@ primat/                    Core Python package
   evolution.py           Unified time-evolution TSV schema
   cli.py                 `primat` command-line entry point
   gui/                   `primat-gui` Streamlit app (optional, source-only)
-  data/                  Shipped rate tables and network definitions
-  _primat_c/             Compiled C extension bridge (wraps primat-c/)
+  data/                  Shipped default data tree
+  _primat_c/             Compiled C extension bridge (wraps primat-c)
 
 primat/data/
-  nuclear/
-    tables/              Per-reaction rate tables (one folder per reaction)
-    networks/            Network list files (small.txt, large.txt, custom.txt, etc.)
-    csv/                 Reaction catalog (nuclides.csv, detailed_balance.csv, etc.)
-  plasma/                Pre-computed QED pressure tables
-  weak/                  Cached n↔p forward/backward rates
-  NEVO/                  Neutrino-decoupling history tables
+  nuclear/            Nuclear reaction data
+    tables/          Per-reaction rate tables (one folder per reaction)
+    networks/        Network list files (small.txt, large.txt, custom.txt, etc.)
+  csv/               Reaction catalog (nuclides.csv, detailed_balance.csv, reactions_large.csv)
+  plasma/            Pre-computed QED pressure tables
+  weak/              Cached n<->p forward/backward rates
+  NEVO/              Neutrino-decoupling history tables
 
 primat-c/                Standalone C99 port (independent build via `make`)
                          Also compiled as extension for the Python backend.

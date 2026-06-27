@@ -1,5 +1,5 @@
 /* cache.h -- fingerprinted on-disk cache support (port of
- * pyprimat/cache_utils.py + pyprimat/weak_rates/cache.py).
+ * primat/cache_utils.py + primat/weak_rates/cache.py).
  *
  * The fingerprint hash MUST reproduce Python's byte-for-byte:
  *   sha256(json.dumps(fingerprint_dict, sort_keys=True, separators=(",", ":")))[:16]
@@ -25,7 +25,7 @@ typedef struct {
 char *cpr_fingerprint_json(const CPRFPField *fields, size_t n);
 
 /* Returns the 16-hex-character sha256 prefix of `json_str` (matches
- * pyprimat.cache_utils.fingerprint_hash applied to the already-serialised
+ * primat.cache_utils.fingerprint_hash applied to the already-serialised
  * dict). Returned string is malloc'd; caller frees. */
 char *cpr_sha256_hex16(const char *json_str);
 
