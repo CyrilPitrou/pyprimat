@@ -13,6 +13,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <time.h>
 
 /* Riemann zeta(3) (Apery's constant) -- see constants.c's identical
@@ -193,7 +195,7 @@ double cpr_bg_Hubble(const CPRBackground *bg, double Tg, double Tnue, double Tnu
     double rho_3nu = cpr_rho_nu(Tnue) + cpr_rho_nu(Tnumu) + cpr_rho_nu(Tnutau);
     /* Genuine neutrino chemical potential: raises the neutrino energy density
      * (each flavour by Tnu^4 (xi^2/4 + xi^4/(8pi^2)); antineutrino carries
-     * -xi). Mirrors pyprimat Plasma.rho_nu. It also shifts the n<->p weak rates
+     * -xi). Mirrors primat Plasma.rho_nu. It also shifts the n<->p weak rates
      * (handled in weak_rates.c via the FD_nu3 integrand). NOT a spectral
      * distortion (that's rho_nu_SD just below). */
     if (cfg->munuOverTnu != 0.0) {
@@ -676,7 +678,7 @@ int cpr_bg_init_custom(CPRBackground *bg, const CPRConfig *cfg, const CPRPlasma 
     /* Instantaneous-decoupling neutrino history: cpr_neutrino_history_init
      * dispatches on cfg->incomplete_decoupling, which custom_background
      * configs always have False (enforced by cpr_config_validate, mirroring
-     * PyPRConfig.__init__'s warning/forced-False for this combination) --
+     * PRIMATConfig.__init__'s warning/forced-False for this combination) --
      * so this always takes the CPR_NU_INSTANTANEOUS branch, exactly as
      * Python's CustomBackground._setup_neutrino_history directly
      * instantiates InstantaneousDecoupling. */
@@ -887,5 +889,203 @@ int cpr_bg_Omeganuh2_nrnu(const CPRBackground *bg, double *out)
     size_t i = bg->n_bg - 1;
     double Tnu0 = bg->Tnu_vec[i] / bg->Tg_vec[i] * g_const.T0CMB / cpr_MeV_to_Kelvin();
     *out = (1.5 * ZETA3 / (M_PI * M_PI) * pow(Tnu0, 3.0)) / cpr_config_rhocOverh2(bg->cfg);
+    return 0;
+}
+
+/* ===========================================================================
+ * Background time-evolution TSV writer (mirrors
+ * Python's StandardBackground.write_time_evolution / time_evolution_text).
+ * ===========================================================================
+ */
+
+/* mkdir -p equivalent (copied from nuclear_network.c). */
+static void bg_mkdir_p(const char *path)
+{
+    char buf[4300];
+    snprintf(buf, sizeof(buf), "%s", path);
+    for (char *p = buf + 1; *p; p++) {
+        if (*p == '/') {
+            *p = '\0';
+            mkdir(buf, 0755);
+            *p = '/';
+        }
+    }
+    mkdir(buf, 0755);
+}
+
+int cpr_bg_write_time_evolution(const CPRBackground *bg, const char *path, int n_points, char **errmsg)
+{
+    if (bg->kind != CPR_BG_STANDARD) {
+        *errmsg = strdup("cpr_bg_write_time_evolution only supported for CPR_BG_STANDARD");
+        return 1;
+    }
+
+    const CPRConfig *cfg = bg->cfg;
+    const CPRPlasma *thermo = bg->plasma;
+    int has_nheating = bg->has_heating_table;
+
+    /* Build the time grid: log-spaced from t_lo to t_hi */
+    double T_start_cosmo_K = cpr_config_T_start_cosmo(cfg);
+    double T_end_K = cpr_config_T_end(cfg);
+    double T_start_cosmo = T_start_cosmo_K / cpr_MeV_to_Kelvin();
+    double T_end = T_end_K / cpr_MeV_to_Kelvin();
+    double t_lo = cpr_bg_t_of_T(bg, T_start_cosmo);
+    double t_hi = cpr_bg_t_of_T(bg, T_end);
+
+    if (t_lo <= 0.0 || t_hi <= 0.0 || t_lo >= t_hi) {
+        char buf[4400];
+        snprintf(buf, sizeof(buf), "cpr_bg_write_time_evolution: invalid time range [%.3e, %.3e] s", t_lo, t_hi);
+        *errmsg = strdup(buf);
+        return 1;
+    }
+
+    /* Allocate time grid */
+    double *t_out = malloc((size_t)n_points * sizeof(double));
+    if (!t_out) {
+        *errmsg = strdup("cpr_bg_write_time_evolution: out of memory for t_out");
+        return 1;
+    }
+
+    /* Log-spaced grid */
+    double log_t_lo = log10(t_lo);
+    double log_t_hi = log10(t_hi);
+    double dlogt = (n_points > 1) ? (log_t_hi - log_t_lo) / (n_points - 1) : 0.0;
+    for (int i = 0; i < n_points; i++) {
+        t_out[i] = pow(10.0, log_t_lo + i * dlogt);
+    }
+
+    /* Allocate storage for all columns */
+    /* Columns: T, t, a, H, Tnue, Tnumu, Tnutau, [Nheating], rho_plasma, rho_nu_tot, [rho_extra], rho_tot */
+    size_t n_cols = 10;
+    if (has_nheating) n_cols++;
+    /* rho_extra column is added if there are any extra energy-density contributions (LCDM/EDE) */
+    int has_extra = bg->has_lcdm || bg->has_ede;
+    if (has_extra) n_cols++;
+    double *data = calloc(n_points * n_cols, sizeof(double));
+    if (!data) {
+        free(t_out);
+        *errmsg = strdup("cpr_bg_write_time_evolution: out of memory for data");
+        return 1;
+    }
+
+    /* Fill data for each time point */
+    for (int i = 0; i < n_points; i++) {
+        double t = t_out[i];
+        double T = cpr_bg_T_of_t(bg, t);
+        double a = cpr_bg_a_of_t(bg, t);
+
+        /* T and t */
+        data[i * n_cols + 0] = T;
+        data[i * n_cols + 1] = t;
+
+        if (bg->has_scale_factor) {
+            double Tnue = 0.0, Tnumu = 0.0, Tnutau = 0.0;
+            /* For StandardBackground, this should always return 1 */
+            if (cpr_bg_Tnu_of_t(bg, t, &Tnue, &Tnumu, &Tnutau)) {
+                double H = cpr_bg_Hubble(bg, T, Tnue, Tnumu, Tnutau);
+
+                data[i * n_cols + 2] = a;
+                data[i * n_cols + 3] = H;
+                data[i * n_cols + 4] = Tnue;
+                data[i * n_cols + 5] = Tnumu;
+                data[i * n_cols + 6] = Tnutau;
+
+                size_t col = 7;
+                if (has_nheating) {
+                    data[i * n_cols + col] = cpr_nu_N_NEVO_of_Tg(&bg->nh, T);
+                    col++;
+                }
+
+                /* Energy densities */
+                double PQEDofT = bg_PQEDofT(thermo, T);
+                double dPQEDdT = bg_dPQEDdT(thermo, T);
+                double rho_plasma = cpr_rho_g(T) + cpr_plasma_rho_e(thermo, T)
+                                 - PQEDofT + T * dPQEDdT;
+                double rho_nu_tot = cpr_rho_nu(Tnue) + cpr_rho_nu(Tnumu) + cpr_rho_nu(Tnutau)
+                                   + cpr_plasma_rho_nu_extra(thermo, T);
+
+                /* Spectral-distortion contribution */
+                if (bg->nh.has_analytic_distortion) {
+                    double Tnu_avg = pow((pow(Tnue, 4.0) + pow(Tnumu, 4.0) + pow(Tnutau, 4.0)) / 3.0, 0.25);
+                    rho_nu_tot += cpr_nu_rho_nu_SD(&bg->nh, Tnu_avg);
+                }
+                /* Chemical potential contribution */
+                if (cfg->munuOverTnu != 0.0) {
+                    double xi = cfg->munuOverTnu;
+                    rho_nu_tot += cpr_rho_nu_chempot_excess(Tnue, xi);
+                    rho_nu_tot += cpr_rho_nu_chempot_excess(Tnumu, xi);
+                    rho_nu_tot += cpr_rho_nu_chempot_excess(Tnutau, xi);
+                }
+
+                data[i * n_cols + col] = rho_plasma;
+                col++;
+                data[i * n_cols + col] = rho_nu_tot;
+                col++;
+
+                /* Extra energy-density contributions (LCDM + EDE) */
+                double rho_extra = 0.0;
+                if (bg->has_lcdm) {
+                    rho_extra += bg->rhocdm_a3 / (a * a * a) + bg->rholambda;
+                }
+                if (bg->has_ede) {
+                    rho_extra += 2.0 * bg->rhocEDEac / (1.0 + pow(bg->TcEDE / T, bg->EDE_exponent));
+                }
+                if (has_extra) {
+                    data[i * n_cols + col] = rho_extra;
+                    col++;
+                }
+
+                double rho_tot = rho_plasma + rho_nu_tot + rho_extra;
+                data[i * n_cols + col] = rho_tot;
+            }
+        }
+    }
+
+    /* Prepare directory */
+    char abspath[4300];
+    snprintf(abspath, sizeof(abspath), "%s", path);
+    char *slash = strrchr(abspath, '/');
+    if (slash) {
+        *slash = '\0';
+        bg_mkdir_p(abspath);
+        *slash = '/';
+    }
+
+    /* Open file */
+    FILE *f = fopen(path, "w");
+    if (!f) {
+        char buf[4400];
+        snprintf(buf, sizeof(buf), "cpr_bg_write_time_evolution: cannot open %s", path);
+        free(t_out);
+        free(data);
+        *errmsg = strdup(buf);
+        return 1;
+    }
+
+    /* Write header */
+    fprintf(f, "T [MeV]\tt [s]\ta [1]\tH [s^-1]\tTnue [MeV]\tTnumu [MeV]\tTnutau [MeV]");
+    if (has_nheating) {
+        fprintf(f, "\tNheating [1]");
+    }
+    fprintf(f, "\trho_plasma [MeV^4]\trho_nu_tot [MeV^4]");
+    if (has_extra) {
+        fprintf(f, "\trho_extra [MeV^4]");
+    }
+    fprintf(f, "\trho_tot [MeV^4]\n");
+
+    /* Write data rows */
+    for (int i = 0; i < n_points; i++) {
+        for (size_t j = 0; j < n_cols; j++) {
+            if (j > 0) fprintf(f, "\t");
+            fprintf(f, "%.10e", data[i * n_cols + j]);
+        }
+        fprintf(f, "\n");
+    }
+
+    fclose(f);
+    free(t_out);
+    free(data);
+
+    printf("[output] Background time-evolution data (%d rows) written to %s\n", n_points, path);
     return 0;
 }

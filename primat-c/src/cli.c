@@ -18,7 +18,7 @@
 
 /* Matches "nTOp_*.txt" (the weak-rate cache naming convention; thermal
  * caches are "nTOp_thermal_*.txt" and match the same glob, exactly as
- * pyprimat.cache_utils.list_weak_cache_files globs both with one pattern). */
+ * primat.cache_utils.list_weak_cache_files globs both with one pattern). */
 static int is_weak_cache_name(const char *name)
 {
     return strncmp(name, "nTOp_", 5) == 0

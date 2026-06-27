@@ -1,6 +1,6 @@
 /* weak_rates.c -- see cprimat/weak_rates.h.
  *
- * Direct port of pyprimat/weak_rates/{integrands,corrections,api}.py.
+ * Direct port of primat/weak_rates/{integrands,corrections,api}.py.
  * Every correction term below is evaluated scalar-at-a-time (one T value),
  * looped over the rate-table grid in cpr_weak_rates_init -- the Python
  * source vectorises over T with numpy for speed, which has no equivalent

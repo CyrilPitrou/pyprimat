@@ -192,4 +192,12 @@ double cpr_bg_N_eff(const CPRBackground *bg, double Tg, double rho_nu_tot);
 int cpr_bg_Omeganuh2_relnu(const CPRBackground *bg, double *out);
 int cpr_bg_Omeganuh2_nrnu(const CPRBackground *bg, double *out);
 
+/* Writes the background time evolution to a TSV file, mirroring
+ * Python's StandardBackground.write_time_evolution. Columns: T [MeV], t [s],
+ * a [1], H [s^-1], Tnue [MeV], Tnumu [MeV], Tnutau [MeV], Nheating [1] (if
+ * has_heating_table), rho_plasma [MeV^4], rho_nu_tot [MeV^4],
+ * rho_extra [MeV^4] (if has_extra), rho_tot [MeV^4]. Returns 0 on success,
+ * nonzero with *errmsg set (caller frees) on failure. */
+int cpr_bg_write_time_evolution(const CPRBackground *bg, const char *path, int n_points, char **errmsg);
+
 #endif /* CPRIMAT_BACKGROUND_H */

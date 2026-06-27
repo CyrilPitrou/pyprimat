@@ -1,10 +1,10 @@
-/* api.h -- the thin top-level wrapper (port of pyprimat/main.py's PyPR
+/* api.h -- the thin top-level wrapper (port of primat/main.py's PyPR
  * class), CPLAN.md S9/Phase 8.
  *
  * `cprimat_run` is the single entry point mirroring `PyPR(params).solve()`:
  * it owns the full init sequence (plasma -> nuclear rates -> background ->
  * nuclear network) and assembles the same "BBN observables" dict that
- * `PyPR.solve()` returns, plus the per-nuclide final abundances (`Y_final`
+ * `PRIMAT.solve()` returns, plus the per-nuclide final abundances (`Y_final`
  * in Python). Unlike Python's dynamically-keyed dict, each optional
  * observable here is a `has_*` flag next to its value, set only when the
  * corresponding Python dict key would have been present (e.g. `Neff`/
@@ -13,10 +13,7 @@
  *
  * `custom_network` (the GUI "Customise Reactions" override) *is* supported,
  * via `cprimat_run`'s optional `custom` parameter -- see network_data.h's
- * CPRCustomNetwork. Still out of scope here (CPLAN.md S0): the
- * background-evolution TSV writer (Python's `cfg.output_background_evolution`
- * path) -- background.c does not yet port `Background.write_time_evolution`,
- * see background.h's top comment.
+ * CPRCustomNetwork.
  * `cfg.output_time_evolution`/`output_final_file` *are* honoured (delegated
  * to nuclear_network.h's existing writers for the disk side; `cfg.output_time_evolution`
  * also populates `CPRResults`'s `evol_*` in-memory arrays directly --
@@ -84,10 +81,9 @@ typedef struct {
  * Plasma -> CPRNuclearRates -> CPRBackground (standard or custom, per
  * cfg->custom_background) -> CPRNuclearNetwork, integrates HT->MT->LT,
  * and fills `results` (zeroed first). Honours cfg->output_final_file
- * (always) and cfg->output_time_evolution (if set) the same way
- * nuclear_network.c's own writers do; does NOT honour
- * cfg->output_background_evolution (not yet ported, see this header's top
- * comment). `custom` (may be NULL) is forwarded verbatim to
+ * (always), cfg->output_time_evolution (if set), and
+ * cfg->output_background_evolution (if set) the same way as the Python
+ * backend. `custom` (may be NULL) is forwarded verbatim to
  * cpr_nuclear_rates_init -- the GUI "Customise Reactions" override.
  *
  * Returns 0 on success (caller must cprimat_results_free), nonzero with

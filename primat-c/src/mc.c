@@ -1,4 +1,4 @@
-/* mc.c -- see cprimat/mc.h. Threaded port of pyprimat/main.py's
+/* mc.c -- see cprimat/mc.h. Threaded port of primat/main.py's
  * mc_uncertainty/_mc_run_batch/_mc_collect_samples.
  */
 #include "cprimat/mc.h"

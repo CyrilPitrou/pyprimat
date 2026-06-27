@@ -12,7 +12,7 @@
 
 /* ===========================================================================
  * Literal parsing (--set KEY=VALUE / ini values), mirroring the
- * ast.literal_eval-equivalent used by pyprimat/cli.py.
+ * ast.literal_eval-equivalent used by primat/cli.py.
  * ===========================================================================
  */
 CPRParam cpr_parse_literal(const char *s)

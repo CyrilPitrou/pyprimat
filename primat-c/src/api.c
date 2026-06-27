@@ -1,4 +1,4 @@
-/* api.c -- see cprimat/api.h. Port of pyprimat/main.py's PyPR.__init__ +
+/* api.c -- see cprimat/api.h. Port of primat/main.py's PyPR.__init__ +
  * PyPR.solve().
  */
 #include "cprimat/api.h"
@@ -288,11 +288,20 @@ int cprimat_run(const CPRConfig *cfg, const CPRCustomNetwork *custom,
 
     cpr_assemble_results(results, cfg, &nn, &bg);
 
-    /* Output files (output_final.dat / time-evolution TSV) are already
-     * written by cpr_nuclear_network_solve itself, gated on
-     * cfg->output_final_result/output_time_evolution -- nothing more to do
-     * here (cfg->output_background_evolution is not yet honoured, see
-     * api.h's top comment). */
+    /* Output files: output_final.dat / time-evolution TSV are already
+     * written by cpr_nuclear_network_solve itself (gated on
+     * cfg->output_final_result/output_time_evolution); background
+     * time-evolution TSV is written here when requested. */
+    if (cfg->output_background_evolution) {
+        if (cpr_bg_write_time_evolution(&bg, cfg->output_background_file,
+                                         cfg->output_n_points, errmsg)) {
+            cpr_nuclear_network_free(&nn);
+            cpr_background_free(&bg);
+            cpr_nuclear_rates_free(&nr);
+            cpr_plasma_free(&pl);
+            return 1;
+        }
+    }
     cpr_nuclear_network_free(&nn);
     cpr_background_free(&bg);
     cpr_nuclear_rates_free(&nr);

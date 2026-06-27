@@ -147,6 +147,53 @@ def test_python_backend_background_output_announces_path(capfd, tmp_path):
     assert str(out_background.resolve()) in out
 
 
+@pytest.mark.parametrize("force_backend", [
+    "python",
+    pytest.param("c", marks=requires_c_backend),
+])
+def test_output_background_evolution_both_backends(force_backend, capfd, tmp_path):
+    """Both backends write output_background.tsv when requested.
+
+    This tests that the C backend now honours cfg->output_background_evolution
+    (previously unwired, see primat-c/include/cprimat/api.h history).
+    """
+    out_background = tmp_path / f"background_{force_backend}.tsv"
+    params = {
+        "network": "small",
+        "output_background_evolution": True,
+        "output_background_file": str(out_background),
+    }
+    if force_backend == "c":
+        script = (
+            "from primat.backend import run_bbn\n"
+            f"run_bbn({params!r}, force_backend='c')\n"
+        )
+        proc = subprocess.run(
+            [sys.executable, "-c", script],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        out = proc.stdout
+        # C backend writes file directly, no [output] announcement yet
+        # (could be added to cpr_bg_write_time_evolution in future)
+    else:
+        run_bbn(params, force_backend=force_backend)
+        out = capfd.readouterr().out
+        assert "[output] Background time-evolution data" in out
+        assert str(out_background.resolve()) in out
+
+    # Both backends must produce the file
+    assert out_background.exists()
+    content = out_background.read_text()
+    assert len(content) > 0
+    # Check header contains expected columns (T, t, a, H, Tnue, ...)
+    header = content.splitlines()[0]
+    assert "T [MeV]" in header
+    assert "t [s]" in header
+    assert "a [1]" in header
+
+
 @pytest.mark.parametrize("params", [
     {"network": "small"},
     {"network": "large", "amax": 8},

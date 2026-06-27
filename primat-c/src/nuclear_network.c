@@ -266,7 +266,7 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
     recorder_push(&rec_mt, t_weak, Yi_MT);
     MTLTCtx mt_ctx = { background, nucl };
     CPRBDFOpts bdf_opts = cpr_ode_bdf_default_opts();
-    bdf_opts.rtol = cfg->numerical_precision; bdf_opts.atol = 1.0e-15;
+    bdf_opts.rtol = cfg->numerical_precision; bdf_opts.atol = 1.0e-16;
     cpr_log(cfg, "nucl", "Solving nuclear network at mid temperature era");
     clock_t _t_mt0 = clock();
     if (cpr_ode_bdf(mt_rhs, mt_jac, &mt_ctx, t_weak, t_nucl, Yi_MT, n_mt, bdf_opts,

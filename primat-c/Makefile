@@ -1,10 +1,7 @@
 CC ?= cc
 # -MMD/-MP emit a per-object .d file listing the headers it #includes, so a
 # header edit (e.g. config.h, only #included transitively) correctly marks
-# every .o that depends on it stale -- without this, plain `make` after
-# editing a header silently relinks against an out-of-date .o (this bit a
-# Phase-5 background.c session: a stale build/config.o, not a source bug,
-# made eta0b look wrong by ~16 orders of magnitude until `make clean`).
+# every .o that depends on it stale 
 CFLAGS ?= -std=c11 -Wall -Wextra -O2 -Iinclude -MMD -MP -pthread -D_GNU_SOURCE
 LDFLAGS ?= -lm -pthread
 
@@ -50,8 +47,8 @@ test: $(UNIT_BIN)
 # Times the two CLAUDE.md reference runs (small, large+amax=8) end-to-end
 # and reports the ratio against the recorded Python baseline (CPLAN.md S12)
 # -- examples/baseline_timings.txt, captured once via
-# `time python runfiles/PyPRIMAT_run.py`-equivalent calls (see that file's
-# header for how/when to refresh it). `--rates-dir ../pyprimat` matches
+# `time python runfiles/primat_run.py`-equivalent calls (see that file's
+# header for how/when to refresh it). `--data-dir ../primat/data` matches
 # every other CPRIMAT invocation in this repo (tests, examples/*.ini);
 # `mkdir -p results` only matters on a fresh checkout (cpr_nuclear_network_
 # write_final_result's own mkdir_p creates it too, but cfg->output_final_
@@ -61,12 +58,12 @@ bench: $(BUILD)/cprimat
 	@echo "== CPRIMAT benchmark (small, large+amax=8) vs. Python baseline =="
 	@echo "-- small --"; \
 	 start=$$(date +%s.%N); \
-	 ./$(BUILD)/cprimat --rates-dir ../pyprimat --ini examples/run_small.ini >/dev/null; \
+	 ./$(BUILD)/cprimat --data-dir ../primat/data --ini examples/run_small.ini >/dev/null; \
 	 end=$$(date +%s.%N); \
 	 awk -v s=$$start -v e=$$end 'BEGIN { printf "cprimat: %.3f s\n", e - s }'
 	@echo "-- large, amax=8 --"; \
 	 start=$$(date +%s.%N); \
-	 ./$(BUILD)/cprimat --rates-dir ../pyprimat --ini examples/run_large_amax8.ini >/dev/null; \
+	 ./$(BUILD)/cprimat --data-dir ../primat/data --ini examples/run_large_amax8.ini >/dev/null; \
 	 end=$$(date +%s.%N); \
 	 awk -v s=$$start -v e=$$end 'BEGIN { printf "cprimat: %.3f s\n", e - s }'
 	@echo "Python baseline timings (recorded once, see examples/baseline_timings.txt):"
