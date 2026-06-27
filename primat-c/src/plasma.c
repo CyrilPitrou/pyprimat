@@ -154,10 +154,22 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
 
 typedef double (*ElecIntegrand)(double E, double x);
 
-static double rho_e_intgd(double E, double x)     { return E * E * sqrt(E * E - x * x) / (exp(E) + 1.0); }
-static double drho_e_dT_intgd(double E, double x) { return E * E * E * sqrt(E * E - x * x) / pow(cosh(E / 2.0), 2.0); }
-static double p_e_intgd(double E, double x)       { return pow(E * E - x * x, 1.5) / (exp(E) + 1.0); }
-static double dp_e_dT_intgd(double E, double x)   { return E * pow(E * E - x * x, 1.5) / pow(cosh(E / 2.0), 2.0); }
+static double rho_e_intgd(double E, double x)     { 
+    if (E <= x) return 0.0; 
+    return E * E * sqrt(E * E - x * x) / (exp(E) + 1.0); 
+}
+static double drho_e_dT_intgd(double E, double x) { 
+    if (E <= x) return 0.0; 
+    return E * E * E * sqrt(E * E - x * x) / pow(cosh(E / 2.0), 2.0); 
+}
+static double p_e_intgd(double E, double x)       { 
+    if (E <= x) return 0.0; 
+    return pow(E * E - x * x, 1.5) / (exp(E) + 1.0); 
+}
+static double dp_e_dT_intgd(double E, double x)   { 
+    if (E <= x) return 0.0; 
+    return E * pow(E * E - x * x, 1.5) / pow(cosh(E / 2.0), 2.0); 
+}
 
 typedef struct { ElecIntegrand fn; double x; } ElecCtx;
 

@@ -102,3 +102,90 @@ def test_electron_thermo_cache_refreshed_on_fingerprint_mismatch():
     finally:
         with open(cache_path, "wb") as f:
             f.write(before)
+
+
+# ---------------------------------------------------------------------------
+# C backend plasma tests (require primat._primat_c to be built)
+# ---------------------------------------------------------------------------
+
+from primat.backend import HAS_C_BACKEND, run_bbn
+
+requires_c_backend = pytest.mark.skipif(
+    not HAS_C_BACKEND,
+    reason="primat._primat_c C extension is not built"
+)
+
+
+@requires_c_backend
+@pytest.mark.slow
+@pytest.mark.backend
+def test_c_backend_plasma_without_cache(tmp_path):
+    """C backend can compute electron-thermo tables from scratch (no cache file).
+    
+    This verifies the fix for the NaN issue where the C backend's electron
+    integrands could return NaN when the adaptive quadrature evaluated them
+    slightly below E=x (the lower integration bound), causing sqrt(negative).
+    """
+    import os
+    import shutil
+    
+    # Save the original cache file and remove it
+    cfg = PRIMATConfig()
+    cache_path = os.path.join(cfg.data_dir, "data", "plasma", 
+                              "electron_thermo_cache.txt")
+    
+    # Remove the cache file to force C backend to compute from scratch
+    cache_backup = tmp_path / "electron_thermo_cache_backup.txt"
+    if os.path.exists(cache_path):
+        shutil.copy(cache_path, cache_backup)
+        os.remove(cache_path)
+    
+    try:
+        # This should succeed (not fail with "cpr_ode_rk45: max_steps exceeded")
+        result = run_bbn({"network": "small"}, force_backend="c")
+        
+        # Verify we got reasonable results (not NaN or obviously wrong)
+        assert np.isfinite(result["YPBBN"])
+        assert np.isfinite(result["DoH"])
+        assert result["YPBBN"] > 0.24
+        assert result["YPBBN"] < 0.25
+        assert result["DoH"] > 2e-5
+        assert result["DoH"] < 3e-5
+    finally:
+        # Restore the cache file
+        if cache_backup.exists():
+            shutil.copy(cache_backup, cache_path)
+
+
+@requires_c_backend
+@pytest.mark.slow
+@pytest.mark.backend
+def test_c_backend_plasma_with_cache():
+    """C backend can read electron-thermo cache written by Python backend."""
+    # Ensure cache exists (should be there from normal usage)
+    result = run_bbn({"network": "small"}, force_backend="c")
+    
+    # Verify we got reasonable results
+    assert np.isfinite(result["YPBBN"])
+    assert np.isfinite(result["DoH"])
+    assert result["YPBBN"] > 0.24
+    assert result["YPBBN"] < 0.25
+    assert result["DoH"] > 2e-5
+    assert result["DoH"] < 3e-5
+
+
+@requires_c_backend
+@pytest.mark.slow
+@pytest.mark.backend
+def test_c_backend_plasma_recompute():
+    """C backend can recompute electron-thermo cache when forced."""
+    result = run_bbn({"network": "small", "recompute_electron_thermo": True}, 
+                    force_backend="c")
+    
+    # Verify we got reasonable results
+    assert np.isfinite(result["YPBBN"])
+    assert np.isfinite(result["DoH"])
+    assert result["YPBBN"] > 0.24
+    assert result["YPBBN"] < 0.25
+    assert result["DoH"] > 2e-5
+    assert result["DoH"] < 3e-5
