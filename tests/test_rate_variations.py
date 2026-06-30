@@ -3,10 +3,14 @@ Tests for nuclear rate variation and MC uncertainty propagation.
 
 The ``p_<reaction>`` mechanism shifts a reaction rate by ``exp(p × σ)``
 relative to its median value, enabling MCMC sampling of nuclear-rate
-uncertainties.  These tests verify that:
-1. varying a rate actually changes the predicted abundances;
-2. restoring p=0 reproduces the baseline to floating-point precision;
-3. the MC runner propagates rate uncertainty to non-zero spread in observables.
+uncertainties.  The ``delta_<reaction>`` mechanism adds a direct fractional
+shift on top of any ``p_`` variation (delta=0.1 → +10% on the rate).
+These tests verify that:
+1. varying a rate (p_* or delta_*) actually changes the predicted abundances;
+2. restoring p=0/delta=0 reproduces the baseline to floating-point precision;
+3. delta_* works when passed via run_bbn's params dict (the original bug:
+   delta was silently gated behind rescale_nuclear_rates and had no effect);
+4. the MC runner propagates rate uncertainty to non-zero spread in observables.
 
 The ``test_config_dynamic_attr`` test (attribute routing for p_* / delta_*)
 lives in ``test_config.py`` where it logically belongs.
@@ -15,6 +19,7 @@ import numpy as np
 import pytest
 
 from primat import PRIMAT, mc_uncertainty
+from primat.backend import run_bbn
 
 
 @pytest.mark.slow
@@ -37,6 +42,36 @@ def test_solve_variation():
     dh2  = res2["DoH"]
     assert np.isclose(dh2, dh0, rtol=1e-10), (
         f"Reverting p_n_p__d_g should match baseline: {dh2:.8e} vs {dh0:.8e}"
+    )
+
+
+@pytest.mark.slow
+@pytest.mark.solve
+def test_run_bbn_delta_variation():
+    """delta_<rxn> passed via run_bbn params changes D/H on both backends.
+
+    This is the regression test for the bug where delta_<rxn> was silently
+    gated behind ``rescale_nuclear_rates`` and had no effect when that flag
+    was False (the default).  Passing delta_n_p__d_g=0.1 must shift D/H
+    relative to the baseline without any extra flags.
+    """
+    base = {"network": "small", "verbose": False}
+    res0 = run_bbn(base)
+    dh0  = res0["DoH"]
+
+    res1 = run_bbn({**base, "delta_n_p__d_g": 0.1})
+    dh1  = res1["DoH"]
+    assert dh1 != dh0, (
+        "delta_n_p__d_g=0.1 via run_bbn should shift D/H "
+        f"(got {dh1:.8e} == {dh0:.8e})"
+    )
+
+    # Confirm the Python backend also applies it
+    res2 = run_bbn({**base, "delta_n_p__d_g": 0.1}, force_backend="python")
+    dh2  = res2["DoH"]
+    assert dh2 != dh0, (
+        "delta_n_p__d_g=0.1 via run_bbn (Python backend) should shift D/H "
+        f"(got {dh2:.8e} == {dh0:.8e})"
     )
 
 

@@ -237,11 +237,13 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
 void cpr_network_def_free(CPRNetworkDef *net);
 
 /* Updates net->fwd by applying p_<name>/delta_<name> rate variations
- * from cfg (port of NetworkDefinition.apply_variations): with no
- * variation, net->fwd reverts to net->fwd_median; otherwise
- * fwd = fwd_median * exp(p * log(expsigma)) [+ delta if
- * cfg->rescale_nuclear_rates]. Skips names[0] (n__p), handled by the
- * separate weak-rate cache instead. */
+ * from cfg (port of NetworkDefinition.apply_variations):
+ *   fwd = fwd_median * (exp(p * log(expsigma)) + delta)
+ * With p=0 and delta=0 (the defaults) fwd reverts to fwd_median.
+ * delta is a direct fractional additive shift (0.1 → +10%); it always
+ * applies when nonzero regardless of cfg->rescale_nuclear_rates (that
+ * flag is kept for backward compat but no longer gates delta).
+ * Skips names[0] (n__p), handled by the separate weak-rate cache. */
 void cpr_network_apply_variations(CPRNetworkDef *net, const CPRConfig *cfg);
 
 /* Fills and returns net->buf, the forward/backward rate buffer at photon

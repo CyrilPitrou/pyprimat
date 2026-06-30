@@ -884,21 +884,25 @@ class NetworkDefinition:
 
         This allows Monte Carlo loops to reuse the same network objects while
         refreshing the rates at the start of each solve.
+
+        The effective forward rate for reaction i is:
+            fwd_i = median_i * (exp(p_i * log(sigma_i)) + delta_i)
+        where p_i=0/delta_i=0 is the no-variation baseline (fwd_i = median_i).
+        delta_i is a direct fractional additive shift (delta=0.1 → +10%).
+        ``cfg.rescale_nuclear_rates`` is checked but no longer gates delta; it
+        is kept for backward compatibility only.
         """
-        NP = cfg.rescale_nuclear_rates
         # Skip names[0] which is always n__p (handled separately in the solver)
         for i, name in enumerate(self.names[1:]):
             p = getattr(cfg, f"p_{name}")
             delta = getattr(cfg, f"delta_{name}")
 
-            if p == 0.0 and (not NP or delta == 0.0):
+            if p == 0.0 and delta == 0.0:
                 # No variation: revert to median
                 self._fwd[i] = self._fwd_median[i]
             else:
-                # Apply p uncertainty: median * exp(p * log(expsigma))
-                variation = np.exp(p * np.log(self._expsigma[i]))
-                if NP:
-                    variation += delta
+                # variation = exp(p * log(sigma)) + delta; baseline: p=0,delta=0 → 1.0
+                variation = np.exp(p * np.log(self._expsigma[i])) + delta
                 self._fwd[i] = self._fwd_median[i] * variation
 
     def fill_buffer(self, T_t, nTOp_frwrd, nTOp_bkwrd, clamp=True):

@@ -1237,13 +1237,16 @@ void cpr_network_apply_variations(CPRNetworkDef *net, const CPRConfig *cfg)
         double delta = cpr_rxnmap_get(&cfg->delta_rxn, net->names[i]);
         double *fwd_row = &net->fwd[row * n_grid];
         const double *median_row = &net->fwd_median[row * n_grid];
-        if (p == 0.0 && (!cfg->rescale_nuclear_rates || delta == 0.0)) {
+        /* variation = exp(p * log(sigma)) + delta; baseline p=0,delta=0 → 1.0.
+         * delta is a direct fractional additive shift (delta=0.1 → +10%).
+         * cfg->rescale_nuclear_rates is kept for backward compat but no longer
+         * gates delta; any nonzero delta always applies. */
+        if (p == 0.0 && delta == 0.0) {
             memcpy(fwd_row, median_row, n_grid * sizeof(double));
         } else {
             const double *sigma_row = &net->fwd_expsigma[row * n_grid];
             for (size_t g = 0; g < n_grid; g++) {
-                double variation = exp(p * log(sigma_row[g]));
-                if (cfg->rescale_nuclear_rates) variation += delta;
+                double variation = exp(p * log(sigma_row[g])) + delta;
                 fwd_row[g] = median_row[g] * variation;
             }
         }
