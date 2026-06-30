@@ -304,10 +304,14 @@ class Plasma:
 
         Three modes (controlled by ``cfg.recompute_qed_corrections``):
 
-        **File mode** (default, ``recompute_qed_corrections=False``, files present):
-            Loads ``rates/plasma/QED_P_int.txt``, ``QED_dP_intdT.txt``, and
-            ``QED_d2P_intdT2.txt``.  Each file has three columns (T, e²-order,
-            e³-order); both columns are summed to give the total δP.
+        **File mode** (default, ``recompute_qed_corrections=False``, file present):
+            Loads ``data/plasma/QED_tables.txt``: a 7-column file with columns
+            T [MeV], δP_a [MeV^4], δP_{e3} [MeV^4], d(δP_a)/dT [MeV^3],
+            d(δP_{e3})/dT [MeV^3], d²(δP_a)/dT² [MeV^2], d²(δP_{e3})/dT²
+            [MeV^2].  The two δP columns are summed to give the total correction.
+            (Backward compat: if ``QED_tables.txt`` is absent but the legacy
+            ``QED_P_int.txt`` / ``QED_dP_intdT.txt`` / ``QED_d2P_intdT2.txt``
+            trio is present, those 3-column files are loaded instead.)
 
         **Analytic fallback** (``recompute_qed_corrections=False``, files absent):
             Calls :func:`primat.qed_pressure.compute_qed_pressure_tables`
@@ -315,10 +319,9 @@ class Plasma:
             writing any files.  Useful on a fresh checkout.
 
         **Recompute mode** (``recompute_qed_corrections=True``):
-            Always computes analytically and overwrites the three
-            ``rates/plasma/QED_*.txt`` files so they serve as a cached copy
-            for subsequent runs.  Use this after changing physical constants or
-            to regenerate after deleting the files.
+            Always computes analytically and overwrites ``data/plasma/QED_tables.txt``
+            so it serves as a cached copy for subsequent runs.  Use this after
+            changing physical constants or to regenerate after deleting the file.
 
         The QED pressure decomposition follows PRIMAT-Main.m:
           - δP_a [O(e²)]:  leading one-loop correction (dPa in PRIMAT)
@@ -332,17 +335,21 @@ class Plasma:
             self.d2PQEDdT2 = lambda T: 0.
             return
 
-        plasma_dir = os.path.join(cfg._resolved_data_dir, "plasma")
-        p_file   = os.path.join(plasma_dir, "QED_P_int.txt")
-        dp_file  = os.path.join(plasma_dir, "QED_dP_intdT.txt")
-        d2p_file = os.path.join(plasma_dir, "QED_d2P_intdT2.txt")
+        plasma_dir    = os.path.join(cfg._resolved_data_dir, "plasma")
+        new_file      = os.path.join(plasma_dir, "QED_tables.txt")
+        # Legacy 3-file names kept for backward compat with old cached copies.
+        p_file_leg    = os.path.join(plasma_dir, "QED_P_int.txt")
+        dp_file_leg   = os.path.join(plasma_dir, "QED_dP_intdT.txt")
+        d2p_file_leg  = os.path.join(plasma_dir, "QED_d2P_intdT2.txt")
 
-        files_present = (os.path.exists(p_file) and os.path.exists(dp_file)
-                         and os.path.exists(d2p_file))
+        new_present    = os.path.exists(new_file)
+        legacy_present = (os.path.exists(p_file_leg) and os.path.exists(dp_file_leg)
+                          and os.path.exists(d2p_file_leg))
+        files_present  = new_present or legacy_present
         recompute = cfg.recompute_qed_corrections
 
         if recompute or not files_present:
-            # Compute analytically (~0.3 s).  In recompute mode, also save files.
+            # Compute analytically (~0.3 s).  In recompute mode, also save file.
             from .qed_pressure import compute_qed_pressure_tables, save_qed_tables
             if cfg.verbose:
                 reason = "recompute requested" if recompute else "files not found"
@@ -363,16 +370,27 @@ class Plasma:
             self.d2PQEDdT2 = lambda T, _s=spl_d2P: float(_s(T))
             return
 
-        # Load from the saved files (linear interpolation matches the file precision).
-        t = np.loadtxt(p_file)
-        self.PQEDofT = interp1d(t[:, 0], t[:, 1] + t[:, 2], bounds_error=False,
-                        fill_value="extrapolate", assume_sorted=False, kind='linear')
-        t = np.loadtxt(dp_file)
-        self.dPQEDdT = interp1d(t[:, 0], t[:, 1] + t[:, 2], bounds_error=False,
-                        fill_value="extrapolate", assume_sorted=False, kind='linear')
-        t = np.loadtxt(d2p_file)
-        self.d2PQEDdT2 = interp1d(t[:, 0], t[:, 1] + t[:, 2], bounds_error=False,
-                          fill_value="extrapolate", assume_sorted=False, kind='linear')
+        # Load from the saved file(s), linear interpolation matches file precision.
+        if new_present:
+            # New format: single 7-column file (T, dP_a, dP_e3, derivatives…).
+            t = np.loadtxt(new_file)
+            self.PQEDofT = interp1d(t[:, 0], t[:, 1] + t[:, 2], bounds_error=False,
+                            fill_value="extrapolate", assume_sorted=False, kind='linear')
+            self.dPQEDdT = interp1d(t[:, 0], t[:, 3] + t[:, 4], bounds_error=False,
+                            fill_value="extrapolate", assume_sorted=False, kind='linear')
+            self.d2PQEDdT2 = interp1d(t[:, 0], t[:, 5] + t[:, 6], bounds_error=False,
+                              fill_value="extrapolate", assume_sorted=False, kind='linear')
+        else:
+            # Legacy 3-file format (backward compat with old cached copies).
+            t = np.loadtxt(p_file_leg)
+            self.PQEDofT = interp1d(t[:, 0], t[:, 1] + t[:, 2], bounds_error=False,
+                            fill_value="extrapolate", assume_sorted=False, kind='linear')
+            t = np.loadtxt(dp_file_leg)
+            self.dPQEDdT = interp1d(t[:, 0], t[:, 1] + t[:, 2], bounds_error=False,
+                            fill_value="extrapolate", assume_sorted=False, kind='linear')
+            t = np.loadtxt(d2p_file_leg)
+            self.d2PQEDdT2 = interp1d(t[:, 0], t[:, 1] + t[:, 2], bounds_error=False,
+                              fill_value="extrapolate", assume_sorted=False, kind='linear')
 
     def _setup_integrand_impls(self, cfg):
         """Define the four e± Fermi-Dirac integrands, optionally JIT-compiled.

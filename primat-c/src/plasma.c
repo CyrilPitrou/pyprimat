@@ -78,13 +78,19 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
     }
     pl->qed_active = 1;
 
-    char plasma_dir[4096], p_file[4160], dp_file[4160], d2p_file[4160];
-    snprintf(plasma_dir, sizeof(plasma_dir), "%s/plasma", cfg->data_dir);
-    snprintf(p_file, sizeof(p_file), "%s/QED_P_int.txt", plasma_dir);
-    snprintf(dp_file, sizeof(dp_file), "%s/QED_dP_intdT.txt", plasma_dir);
-    snprintf(d2p_file, sizeof(d2p_file), "%s/QED_d2P_intdT2.txt", plasma_dir);
+    char plasma_dir[4096], new_file[4200];
+    /* Legacy 3-file names for backward compat with old cached copies. */
+    char p_file_leg[4200], dp_file_leg[4200], d2p_file_leg[4200];
+    snprintf(plasma_dir,   sizeof(plasma_dir),   "%s/plasma", cfg->data_dir);
+    snprintf(new_file,     sizeof(new_file),      "%s/QED_tables.txt", plasma_dir);
+    snprintf(p_file_leg,   sizeof(p_file_leg),    "%s/QED_P_int.txt", plasma_dir);
+    snprintf(dp_file_leg,  sizeof(dp_file_leg),   "%s/QED_dP_intdT.txt", plasma_dir);
+    snprintf(d2p_file_leg, sizeof(d2p_file_leg),  "%s/QED_d2P_intdT2.txt", plasma_dir);
 
-    int files_present = file_exists(p_file) && file_exists(dp_file) && file_exists(d2p_file);
+    int new_present    = file_exists(new_file);
+    int legacy_present = file_exists(p_file_leg) && file_exists(dp_file_leg)
+                         && file_exists(d2p_file_leg);
+    int files_present  = new_present || legacy_present;
     int recompute = cfg->recompute_qed_corrections;
 
     if (recompute || !files_present) {
@@ -121,19 +127,42 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
      * with linear extrapolation outside the table (matches
      * interp1d(kind='linear', fill_value="extrapolate")). */
     CPRTable tab;
-    const char *files[3] = { p_file, dp_file, d2p_file };
-    CPRInterp1D *targets[3] = { &pl->P_QED, &pl->dP_QED, &pl->d2P_QED };
-    for (int k = 0; k < 3; k++) {
-        if (cpr_table_read(files[k], 3, &tab, errmsg)) return 1;
-        targets[k]->is_spline = 0;
-        targets[k]->n = tab.n_rows;
-        targets[k]->x = malloc(tab.n_rows * sizeof(double));
-        targets[k]->y = malloc(tab.n_rows * sizeof(double));
-        for (size_t i = 0; i < tab.n_rows; i++) {
-            targets[k]->x[i] = tab.cols[0][i];
-            targets[k]->y[i] = tab.cols[1][i] + tab.cols[2][i];
+    if (new_present) {
+        /* New 7-column format: T, dP_a, dP_e3, d(dP_a)/dT, d(dP_e3)/dT,
+         * d2(dP_a)/dT2, d2(dP_e3)/dT2. */
+        if (cpr_table_read(new_file, 7, &tab, errmsg)) return 1;
+        /* col indices: 0=T, 1=dP_a, 2=dP_e3, 3=ddP_a/dT, 4=ddP_e3/dT,
+         *              5=d2dP_a/dT2, 6=d2dP_e3/dT2 */
+        int col_pairs[3][2] = { {1,2}, {3,4}, {5,6} };
+        CPRInterp1D *targets[3] = { &pl->P_QED, &pl->dP_QED, &pl->d2P_QED };
+        for (int k = 0; k < 3; k++) {
+            targets[k]->is_spline = 0;
+            targets[k]->n = tab.n_rows;
+            targets[k]->x = malloc(tab.n_rows * sizeof(double));
+            targets[k]->y = malloc(tab.n_rows * sizeof(double));
+            for (size_t i = 0; i < tab.n_rows; i++) {
+                targets[k]->x[i] = tab.cols[0][i];
+                targets[k]->y[i] = tab.cols[col_pairs[k][0]][i]
+                                  + tab.cols[col_pairs[k][1]][i];
+            }
         }
         cpr_table_free(&tab);
+    } else {
+        /* Legacy 3-file format: backward compat with old cached copies. */
+        const char *files[3]    = { p_file_leg, dp_file_leg, d2p_file_leg };
+        CPRInterp1D *targets[3] = { &pl->P_QED, &pl->dP_QED, &pl->d2P_QED };
+        for (int k = 0; k < 3; k++) {
+            if (cpr_table_read(files[k], 3, &tab, errmsg)) return 1;
+            targets[k]->is_spline = 0;
+            targets[k]->n = tab.n_rows;
+            targets[k]->x = malloc(tab.n_rows * sizeof(double));
+            targets[k]->y = malloc(tab.n_rows * sizeof(double));
+            for (size_t i = 0; i < tab.n_rows; i++) {
+                targets[k]->x[i] = tab.cols[0][i];
+                targets[k]->y[i] = tab.cols[1][i] + tab.cols[2][i];
+            }
+            cpr_table_free(&tab);
+        }
     }
     return 0;
 }

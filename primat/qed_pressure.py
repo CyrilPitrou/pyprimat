@@ -44,12 +44,15 @@ smaller still and is optional.
 
 File format
 -----------
-The results are stored in ``rates/plasma/QED_*.txt`` with three columns:
-  T [MeV]  |  quantity_e2  |  quantity_e3
+The results are stored in a single ``data/plasma/QED_tables.txt`` with
+seven columns::
 
-where ``_e2`` = δP_a (order e²) and ``_e3`` = δP_{e3} (order e³).
-When loaded by :mod:`primat.plasma`, both columns are summed to give the
-total correction.  The δP_b term would require a separate flag and file.
+  T [MeV]  dP_a [MeV^4]  dP_e3 [MeV^4]  d(dP_a)/dT [MeV^3]  d(dP_e3)/dT [MeV^3]  d2(dP_a)/dT2 [MeV^2]  d2(dP_e3)/dT2 [MeV^2]
+
+where ``_a`` = δP_a (order e², one-loop) and ``_e3`` = δP_{e3} (order e³,
+ring/plasmon).  When loaded by :mod:`primat.plasma`, the two δP columns are
+summed to give the total correction, and likewise for each derivative.
+The δP_b term would require a separate flag and column.
 
 Usage
 -----
@@ -403,27 +406,29 @@ def compute_qed_pressure_tables(T_min=1e-3, T_max=1e2, n_pts=500,
 
 
 def save_qed_tables(tables, plasma_dir, verbose=True):
-    """Write the computed QED tables to ``rates/plasma/*.txt`` files.
+    """Write the computed QED tables to a single ``data/plasma/QED_tables.txt``.
 
-    Produces three files whose format matches the ones loaded by
-    :func:`primat.plasma._load_tables`:
+    Produces one 7-column file read by :func:`primat.plasma._load_tables`:
 
-      - ``QED_P_int.txt``      — δP (columns: T, δP_a, δP_{e3})
-      - ``QED_dP_intdT.txt``   — dδP/dT (columns: T, dδP_a/dT, dδP_{e3}/dT)
-      - ``QED_d2P_intdT2.txt`` — d²δP/dT² (similar)
+      ``QED_tables.txt`` — T, δP_a, δP_{e3}, d(δP_a)/dT, d(δP_{e3})/dT,
+      d²(δP_a)/dT², d²(δP_{e3})/dT²
+
+    Column units are given explicitly in the file header:
+    T in MeV, δP in MeV^4, dδP/dT in MeV^3, d²δP/dT² in MeV^2
+    (natural units ħ = c = k_B = 1).
 
     Parameters
     ----------
     tables : dict
         Output of :func:`compute_qed_pressure_tables`.
     plasma_dir : str
-        Path to the ``rates/plasma/`` directory.
+        Path to the ``data/plasma/`` directory.
     verbose : bool
-        Print confirmation messages (default True).
+        Print confirmation message (default True).
 
     Example
     -------
-    >>> save_qed_tables(tables, "rates/plasma/")
+    >>> save_qed_tables(tables, "primat/data/plasma/")
     """
     T    = tables["T"]
     e2   = tables["dP_e2"]
@@ -433,22 +438,18 @@ def save_qed_tables(tables, plasma_dir, verbose=True):
     d2e2 = tables["d2_dP_e2_dT2"]
     d2e3 = tables["d2_dP_e3_dT2"]
 
-    hdr_P   = ("Source: primat qed_pressure.py — computed from PRIMAT formulas\n"
-               "T (MeV)           P_int (e^2)          P_int (e^3)")
-    hdr_dP  = ("Source: primat qed_pressure.py — computed from PRIMAT formulas\n"
-               "T (MeV)           dP_int/dT (e^2)      dP_int/dT (e^3)")
-    hdr_d2P = ("Source: primat qed_pressure.py — computed from PRIMAT formulas\n"
-               "T (MeV)           d2P_int/dT2 (e^2)    d2P_int/dT2 (e^3)")
+    hdr = ("Source: primat qed_pressure.py — QED plasma-pressure corrections delta_P(T)\n"
+           "delta_P_a [O(e^2), one-loop] and delta_P_e3 [O(e^3), ring/plasmon];\n"
+           "Reference: Pitrou et al., Phys. Rep. (2018), eq. 47; PRIMAT-Main.m: dPa, dPe3\n"
+           "T [MeV]       dP_a [MeV^4]      dP_e3 [MeV^4]"
+           "      d(dP_a)/dT [MeV^3]  d(dP_e3)/dT [MeV^3]"
+           "  d2(dP_a)/dT2 [MeV^2]  d2(dP_e3)/dT2 [MeV^2]")
 
-    fmt = "%.6E"
-    np.savetxt(os.path.join(plasma_dir, "QED_P_int.txt"),
-               np.column_stack([T, e2, e3]), header=hdr_P, fmt=fmt)
-    np.savetxt(os.path.join(plasma_dir, "QED_dP_intdT.txt"),
-               np.column_stack([T, de2, de3]), header=hdr_dP, fmt=fmt)
-    np.savetxt(os.path.join(plasma_dir, "QED_d2P_intdT2.txt"),
-               np.column_stack([T, d2e2, d2e3]), header=hdr_d2P, fmt=fmt)
+    np.savetxt(os.path.join(plasma_dir, "QED_tables.txt"),
+               np.column_stack([T, e2, e3, de2, de3, d2e2, d2e3]),
+               header=hdr, fmt="%.6E")
 
     if verbose:
-        print(f"[QED]  Tables written to {plasma_dir}:")
-        print(f"       QED_P_int.txt, QED_dP_intdT.txt, QED_d2P_intdT2.txt")
+        print(f"[QED]  Table written to {plasma_dir}:")
+        print(f"       QED_tables.txt  (7 columns: T, dP_a, dP_e3, derivatives)")
         print(f"       T range: {T[0]:.3e}–{T[-1]:.3e} MeV  ({len(T)} points)")

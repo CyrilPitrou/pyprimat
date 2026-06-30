@@ -165,13 +165,16 @@ void cpr_qed_tables_free(CPRQEDTables *t)
     memset(t, 0, sizeof(*t));
 }
 
-/* Writes one 3-column (T, e2-order, e3-order) file in the same %.6E
- * whitespace-separated format as numpy.savetxt(..., fmt="%.6E") produces
- * (save_qed_tables), with a 2-line '#'-prefixed header to match. */
-static int write_one(const char *path, const char *col2_label, const char *col3_label,
-                      const double *T, const double *e2, const double *e3, size_t n,
-                      char **errmsg)
+/* Writes a single 7-column QED_tables.txt matching numpy.savetxt(fmt="%.6E")
+ * output from Python's save_qed_tables.  Columns:
+ *   T [MeV]  dP_a [MeV^4]  dP_e3 [MeV^4]
+ *   d(dP_a)/dT [MeV^3]  d(dP_e3)/dT [MeV^3]
+ *   d2(dP_a)/dT2 [MeV^2]  d2(dP_e3)/dT2 [MeV^2]
+ * All '#'-prefixed header lines are skipped by cpr_table_read. */
+int cpr_qed_save_tables(const CPRQEDTables *t, const char *plasma_dir, char **errmsg)
 {
+    char path[1024];
+    snprintf(path, sizeof(path), "%s/QED_tables.txt", plasma_dir);
     FILE *fp = fopen(path, "w");
     if (!fp) {
         char buf[512];
@@ -179,31 +182,18 @@ static int write_one(const char *path, const char *col2_label, const char *col3_
         *errmsg = strdup(buf);
         return 1;
     }
-    fprintf(fp, "# Source: CPRIMAT qed_pressure.c -- computed from PRIMAT formulas\n");
-    fprintf(fp, "# T (MeV)           %-21s%s\n", col2_label, col3_label);
-    for (size_t i = 0; i < n; i++)
-        fprintf(fp, "%.6E %.6E %.6E\n", T[i], e2[i], e3[i]);
+    fprintf(fp, "# Source: CPRIMAT qed_pressure.c -- QED plasma-pressure corrections delta_P(T)\n");
+    fprintf(fp, "# delta_P_a [O(e^2), one-loop] and delta_P_e3 [O(e^3), ring/plasmon];\n");
+    fprintf(fp, "# Reference: Pitrou et al., Phys. Rep. (2018), eq. 47; PRIMAT-Main.m: dPa, dPe3\n");
+    fprintf(fp, "# T [MeV]       dP_a [MeV^4]      dP_e3 [MeV^4]"
+                "      d(dP_a)/dT [MeV^3]  d(dP_e3)/dT [MeV^3]"
+                "  d2(dP_a)/dT2 [MeV^2]  d2(dP_e3)/dT2 [MeV^2]\n");
+    for (size_t i = 0; i < t->n; i++)
+        fprintf(fp, "%.6E %.6E %.6E %.6E %.6E %.6E %.6E\n",
+                t->T[i],
+                t->dP_e2[i], t->dP_e3[i],
+                t->d_dP_e2_dT[i], t->d_dP_e3_dT[i],
+                t->d2_dP_e2_dT2[i], t->d2_dP_e3_dT2[i]);
     fclose(fp);
-    return 0;
-}
-
-int cpr_qed_save_tables(const CPRQEDTables *t, const char *plasma_dir, char **errmsg)
-{
-    char path[1024];
-
-    snprintf(path, sizeof(path), "%s/QED_P_int.txt", plasma_dir);
-    if (write_one(path, "P_int (e^2)", "P_int (e^3)", t->T, t->dP_e2, t->dP_e3, t->n, errmsg))
-        return 1;
-
-    snprintf(path, sizeof(path), "%s/QED_dP_intdT.txt", plasma_dir);
-    if (write_one(path, "dP_int/dT (e^2)", "dP_int/dT (e^3)",
-                  t->T, t->d_dP_e2_dT, t->d_dP_e3_dT, t->n, errmsg))
-        return 1;
-
-    snprintf(path, sizeof(path), "%s/QED_d2P_intdT2.txt", plasma_dir);
-    if (write_one(path, "d2P_int/dT2 (e^2)", "d2P_int/dT2 (e^3)",
-                  t->T, t->d2_dP_e2_dT2, t->d2_dP_e3_dT2, t->n, errmsg))
-        return 1;
-
     return 0;
 }

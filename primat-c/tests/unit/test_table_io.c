@@ -53,13 +53,13 @@ int main(void)
     CHECK(close(t.cols[0][0], 3.289640684128431782e-03), "NEVOGrid first value");
     cpr_table_free(&t);
 
-    /* QED_P_int.txt: T, P_int(e^2), P_int(e^3) -- 3 columns, 2 comment lines. */
-    if (cpr_table_read("../primat/data/plasma/QED_P_int.txt", 3, &t, &err)) {
-        printf("FAIL QED_P_int read: %s\n", err);
+    /* QED_tables.txt: 7 columns (T, dP_a, dP_e3, derivatives…), 4 comment lines. */
+    if (cpr_table_read("../primat/data/plasma/QED_tables.txt", 7, &t, &err)) {
+        printf("FAIL QED_tables read: %s\n", err);
         return 1;
     }
-    CHECK(t.n_cols == 3, "QED_P_int has 3 columns");
-    CHECK(close(t.cols[0][0], 1.0e-3), "QED_P_int first T == 1e-3");
+    CHECK(t.n_cols == 7, "QED_tables has 7 columns");
+    CHECK(close(t.cols[0][0], 1.0e-3), "QED_tables first T == 1e-3");
     cpr_table_free(&t);
 
     if (failures) {

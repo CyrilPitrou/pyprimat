@@ -99,10 +99,12 @@ int cpr_qed_compute_tables(double T_min, double T_max, size_t n_pts,
 
 void cpr_qed_tables_free(CPRQEDTables *t);
 
-/* Writes the three data/plasma/QED_*.txt files (QED_P_int.txt,
- * QED_dP_intdT.txt, QED_d2P_intdT2.txt) in the same 3-column (T, e^2-order,
- * e^3-order) whitespace-separated format Python's save_qed_tables produces
- * (and table_io.c/plasma.c's "file mode" loader reads back) -- so a
+/* Writes data/plasma/QED_tables.txt: a single 7-column file with columns
+ *   T [MeV]  dP_a [MeV^4]  dP_e3 [MeV^4]
+ *   d(dP_a)/dT [MeV^3]  d(dP_e3)/dT [MeV^3]
+ *   d2(dP_a)/dT2 [MeV^2]  d2(dP_e3)/dT2 [MeV^2]
+ * in the same %.6E whitespace-separated format Python's save_qed_tables
+ * produces (plasma.c's "file mode" loader reads it back) -- so a
  * recompute-and-save cycle through this function is byte-for-byte
  * interchangeable with the Python one. `plasma_dir` is the path to
  * data/plasma/ (no trailing slash required). Returns 0 on success,
