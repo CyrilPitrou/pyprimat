@@ -734,15 +734,22 @@ def _mc_collect_samples(base_params, rate_keys, quantities, seeds, n_jobs,
     row after the requested quantities.
 
     When ``progress=True``, print a ``\\r``-updated sample count to stderr as
-    each worker chunk completes.  One update per chunk (= one per parallel
-    worker), which gives ~8 updates for a typical 8-CPU run -- enough to show
-    steady advancement without requiring per-sample IPC.
+    each worker chunk completes.  Seeds are split into several chunks per
+    worker (not just one), so chunks finish at staggered times and the
+    progress counter advances steadily instead of jumping straight from 0%
+    to 100% -- without requiring per-sample IPC.
     """
     from joblib import Parallel, delayed, effective_n_jobs
 
     if not seeds:
         return np.empty((0, len(quantities)))
-    n_chunks = max(1, min(len(seeds), effective_n_jobs(n_jobs)))
+    # Use several chunks per worker (not just one) so the progress generator
+    # below yields updates steadily throughout the run instead of bunching
+    # them all near the end: with exactly one chunk per worker, every chunk
+    # takes about the same time and they all complete near-simultaneously.
+    _chunks_per_worker = 10
+    n_chunks = max(1, min(len(seeds),
+                          effective_n_jobs(n_jobs) * _chunks_per_worker))
     chunks   = [list(c) for c in np.array_split(seeds, n_chunks)]
     total    = len(seeds)
     done     = 0
