@@ -224,6 +224,7 @@ typedef struct {
 
 static const FieldDesc FIELD_TABLE[] = {
     FLD(verbose, F_BOOL),
+    FLD(show_progress, F_BOOL),
     FLD(debug, F_BOOL),
     FLD(numerical_precision, F_DOUBLE),
     FLD(numba_installed, F_BOOL),
@@ -372,6 +373,7 @@ int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg
     strncpy(cfg->data_dir, data_dir, sizeof(cfg->data_dir) - 1);
 
     cfg->verbose = 0;
+    cfg->show_progress = 1;
     cfg->debug = 0;
     cfg->numerical_precision = 1.e-7;
     cfg->numba_installed = 1;

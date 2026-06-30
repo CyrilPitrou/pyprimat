@@ -126,15 +126,16 @@ except ImportError:
     HAS_C_BACKEND = False
 
 
-def _python_solve(params, extra_rho, custom_network, background):
+def _python_solve(params, extra_rho, custom_network, background, progress=True):
     """Run the pure-Python backend and return PRIMAT.solve()'s result dict."""
     from .main import PRIMAT
     return PRIMAT(params=params, extra_rho=extra_rho,
-                  custom_network=custom_network, background=background).solve()
+                  custom_network=custom_network, background=background).solve(progress=progress)
 
 
 def run_bbn(params=None, force_backend=None, extra_rho=None,
-            custom_network=None, background=None, log_backend=False):
+            custom_network=None, background=None, log_backend=False,
+            progress=True):
     """Run one BBN computation, dispatching to the C or Python backend.
 
     This mirrors ``PRIMAT(params=params, ...).solve()``'s result dict (same
@@ -193,7 +194,7 @@ def run_bbn(params=None, force_backend=None, extra_rho=None,
 
     if force_backend == "python":
         _log_backend("run_bbn", "Python", "force_backend='python'", log_backend)
-        return _python_solve(params, extra_rho, custom_network, background)
+        return _python_solve(params, extra_rho, custom_network, background, progress=progress)
 
     if force_backend == "c":
         if not HAS_C_BACKEND:
@@ -209,18 +210,20 @@ def run_bbn(params=None, force_backend=None, extra_rho=None,
             )
         _log_backend("run_bbn", "C", "force_backend='c'", log_backend)
         _data_dir = (params or {}).get("data_dir") or _C_DATA_DIR
-        return _assemble_c_result(_c_ext.run_bbn(params, _data_dir, custom_network))
+        return _assemble_c_result(_c_ext.run_bbn(params, _data_dir, custom_network,
+                                                   show_progress=int(progress)))
 
     # force_backend in (None, "auto"): use the C backend opportunistically,
     # falling back to Python for anything it cannot express.
     if HAS_C_BACKEND and not python_only_feature:
         _log_backend("run_bbn", "C", "auto, no C-unsupported feature requested", log_backend)
         _data_dir = (params or {}).get("data_dir") or _C_DATA_DIR
-        return _assemble_c_result(_c_ext.run_bbn(params, _data_dir, custom_network))
+        return _assemble_c_result(_c_ext.run_bbn(params, _data_dir, custom_network,
+                                                   show_progress=int(progress)))
     reason = ("auto fallback: extra_rho/background/decay_era requested"
               if python_only_feature else "auto fallback: C extension unavailable")
     _log_backend("run_bbn", "Python", reason, log_backend)
-    return _python_solve(params, extra_rho, custom_network, background)
+    return _python_solve(params, extra_rho, custom_network, background, progress=progress)
 
 
 def _assemble_c_result(result):
@@ -295,7 +298,8 @@ def _c_prev_reuse(prev, seed, quantities, base_params, custom_network):
 
 
 def run_mc(num_mc, quantities=None, params=None, force_backend=None, seed=0,
-           n_jobs=-1, prev=None, custom_network=None, log_backend=False):
+           n_jobs=-1, prev=None, custom_network=None, log_backend=False,
+           progress=True):
     """Run an MC nuclear-rate/tau_n uncertainty propagation, dispatching to
     the C or Python backend (the MC counterpart of :func:`run_bbn`).
 
@@ -353,9 +357,11 @@ def run_mc(num_mc, quantities=None, params=None, force_backend=None, seed=0,
     from .config import PRIMATConfig
     PRIMATConfig(params)  # validate params the same way regardless of backend
 
-    if quantities is None:
-        quantities = _default_mc_quantities(params)
-    quantities = [quantities] if isinstance(quantities, str) else list(quantities)
+    # Don't resolve quantities=None eagerly with a probe run_bbn -- each
+    # backend resolves it from its own central solve (mc_uncertainty for
+    # Python, the discovery run_bbn in _c_mc for C), so only one solve is
+    # needed rather than two.
+    quantities = [quantities] if isinstance(quantities, str) else quantities
 
     # mc_uncertainty() applies these same defaults to `base_params` before
     # storing it on the MCResult it returns (for its own reuse-guard) -- so
@@ -369,7 +375,8 @@ def run_mc(num_mc, quantities=None, params=None, force_backend=None, seed=0,
     def _python_mc():
         from .main import mc_uncertainty
         return mc_uncertainty(num_mc, quantities, params=params, n_jobs=n_jobs,
-                               seed=seed, prev=prev, custom_network=custom_network)
+                               seed=seed, prev=prev, custom_network=custom_network,
+                               progress=progress)
 
     def _c_mc():
         # One ordinary (non-MC) solve to learn the nuclide list and which
@@ -379,16 +386,23 @@ def run_mc(num_mc, quantities=None, params=None, force_backend=None, seed=0,
         # quantities=None path, but needed here unconditionally since the
         # default-observable merge below always applies, not just when
         # quantities was omitted.
-        central = run_bbn(params, custom_network=custom_network, force_backend="c")
+        # Probe solve: discovers which nuclides and optional observables
+        # (Li6oLi7, YCNO, …) this network/config actually produces, so we
+        # can build a complete quantities_with_nuclides list to pass to
+        # cpr_mc_uncertainty.  progress=False suppresses phase markers here --
+        # cpr_mc_uncertainty will print them for its own central solve.
+        central = run_bbn(params, custom_network=custom_network,
+                           force_backend="c", progress=False)
         all_nuclides = list(central["Y_final"].keys())
         # Always merge in the standard observables (filtered to those this
         # network actually has) and every nuclide, regardless of what the
         # caller explicitly requested -- so the returned MCResult is always
         # complete enough to dump to disk (see _DEFAULT_MC_OBSERVABLES).
-        qty_set = set(quantities)
+        qty_set = set(quantities) if quantities is not None else set()
         extra_observables = [q for q in _DEFAULT_MC_OBSERVABLES
                               if q not in qty_set and q in central]
-        quantities_plus_observables = list(quantities) + extra_observables
+        quantities_plus_observables = (list(quantities) if quantities is not None
+                                       else []) + extra_observables
         full_set = set(quantities_plus_observables)
         quantities_with_nuclides = (quantities_plus_observables
                                      + [nm for nm in all_nuclides if nm not in full_set])
@@ -403,7 +417,8 @@ def run_mc(num_mc, quantities=None, params=None, force_backend=None, seed=0,
             prev_values = None
         _data_dir = (params or {}).get("data_dir") or _C_DATA_DIR
         raw = _c_ext.run_mc(params, _data_dir, num_mc, quantities_with_nuclides, seed, n_jobs,
-                             custom_network, prev_centrals, prev_values)
+                             custom_network, prev_centrals, prev_values,
+                             progress=int(progress))
         return _assemble_c_mc_result(raw, quantities_with_nuclides, seed, base_params, custom_network)
 
     if force_backend == "python":
@@ -452,12 +467,16 @@ def dump_mc_samples(mc):
 def dump_final_with_sigma(names, Y, sigma=None, num_mc=None):
     """Render the ``output_final.dat``-format final-abundances text.
 
-    Two columns (``# nuclide  Y``) when ``sigma`` is ``None`` -- identical to
+    Two columns (``nuclide  Y``) when ``sigma`` is ``None`` -- identical to
     the plain single-run format written by
-    ``NuclearNetwork._write_final_result``. Three columns (``# nuclide  Y
+    ``NuclearNetwork._write_final_result``. Three columns (``nuclide  Y
     sigma_N<num_mc>``) when an MC ``sigma`` dict is supplied, so the sample
     count backing the uncertainty estimate is recorded directly in the
     header rather than only in the (separate) MC-samples file.
+
+    The header row uses the same column widths as the data rows so the
+    column names sit directly above their respective values (no ``#``
+    comment prefix that would shift the label two characters to the right).
 
     Args:
         names: list of str. Nuclide names, in the order to write them.
@@ -470,11 +489,13 @@ def dump_final_with_sigma(names, Y, sigma=None, num_mc=None):
         str: the file text, with a trailing newline.
     """
     if sigma is None:
-        lines = [f"# {'nuclide':<12}Y"]
+        # Header width (14) matches nuclide-name column in data rows so
+        # "nuclide" sits directly above the names and "Y" above the values.
+        lines = [f"{'nuclide':<14}Y"]
         lines += [f"{nm:<14}{Y[nm]:.6e}" for nm in names]
     else:
         if num_mc is None:
             raise ValueError("num_mc is required when sigma is given")
-        lines = [f"# {'nuclide':<12}{'Y':<14}sigma_N{num_mc}"]
+        lines = [f"{'nuclide':<14}{'Y':<14}sigma_N{num_mc}"]
         lines += [f"{nm:<14}{Y[nm]:<14.6e}{sigma[nm]:.6e}" for nm in names]
     return "\n".join(lines) + "\n"

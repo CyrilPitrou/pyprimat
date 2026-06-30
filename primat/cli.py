@@ -83,10 +83,7 @@ def _build_parser():
                      "primat and print the resulting Neff/abundances.",
         epilog="Any other PRIMATConfig parameter (including p_<reaction>/"
                "delta_<reaction> rate variations) can be set with "
-               "repeated --set KEY=VALUE, e.g. --set T_end_MeV=1e-4. "
-               "The output-path options are available as named flags: "
-               "--output_file, --output_final_file, --output_background_file, "
-               "--output_mc_file.",
+               "repeated --set KEY=VALUE, e.g. --set T_end_MeV=1e-4.",
     )
     # `version` action prints the string and exits before any computation;
     # the version itself comes from the installed distribution metadata via
@@ -312,11 +309,15 @@ def main(argv=None):
             print(_rates_overlay_notice(key, params[key]), file=sys.stderr)
 
     start_time = time.time()
-    results = run_bbn(params=params, force_backend=args.backend)
-    mc = None
     if args.mc is not None:
+        # run_mc already computes the central (nominal) solve internally;
+        # derive results from mc[q].central to avoid a redundant second solve.
         mc = run_mc(args.mc, params=params, force_backend=args.backend,
                     seed=args.mc_seed, n_jobs=args.mc_jobs)
+        results = {q: mc[q].central for q in mc.quantity_names()}
+    else:
+        results = run_bbn(params=params, force_backend=args.backend)
+        mc = None
     elapsed = time.time() - start_time
 
     if args.json:
@@ -353,8 +354,6 @@ def main(argv=None):
         if "YCNO" in results:
             print(f"CNO (mass) = {results['YCNO']:.6e}" +
                   (f" +/- {mc['YCNO'].std:.6e}" if mc is not None and "YCNO" in mc.quantity_names() else ""))
-        if mc is not None:
-            print(f"--- Monte-Carlo: {args.mc} samples ---")
         print(f"--- running time: {elapsed:.2f} seconds ---")
 
     if mc is not None:

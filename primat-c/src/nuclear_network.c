@@ -243,6 +243,9 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
     HTCtx ht_ctx = { background };
     CPRRKOpts rk_opts = cpr_ode_rk_default_opts();
     rk_opts.rtol = cfg->numerical_precision; rk_opts.atol = 1.0e-10;
+    if (cfg->show_progress && !cfg->verbose) {
+        fprintf(stderr, "[primat]  HT."); fflush(stderr);
+    }
     cpr_log(cfg, "nucl", "Solving neutron decoupling at high temperature era"
                          " (T = %.4g -> %.4g MeV)", T_start_MeV, T_weak_MeV);
     clock_t _t_ht0 = clock();
@@ -272,6 +275,9 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
     MTLTCtx mt_ctx = { background, nucl };
     CPRBDFOpts bdf_opts = cpr_ode_bdf_default_opts();
     bdf_opts.rtol = cfg->numerical_precision; bdf_opts.atol = 1.0e-16;
+    if (cfg->show_progress && !cfg->verbose) {
+        fprintf(stderr, "  MT."); fflush(stderr);
+    }
     cpr_log(cfg, "nucl", "Solving nuclear network at mid temperature era"
                          " (T = %.4g -> %.4g MeV)", T_weak_MeV, T_nucl_MeV);
     clock_t _t_mt0 = clock();
@@ -301,6 +307,9 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
     CPRBDFOpts bdf_opts_lt = cpr_ode_bdf_default_opts();
     bdf_opts_lt.rtol = 10.0 * cfg->numerical_precision;
     bdf_opts_lt.atol = cpr_config_is_large(cfg) ? cfg->atol_large_LT : 1.0e-20;
+    if (cfg->show_progress && !cfg->verbose) {
+        fprintf(stderr, "  LT."); fflush(stderr);
+    }
     cpr_log(cfg, "nucl", "Solving nuclear network at low temperature era"
                          " (T = %.4g -> %.4g MeV)", T_nucl_MeV, cfg->T_end_MeV);
     clock_t _t_lt0 = clock();
@@ -312,6 +321,9 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
     }
     cpr_log(cfg, "nucl", "[LT] Finished (%s network, %zu nuclides) in %.2f s",
              cfg->network, n_lt, (double)(clock() - _t_lt0) / CLOCKS_PER_SEC);
+    if (cfg->show_progress && !cfg->verbose) {
+        fprintf(stderr, "  done.\n"); fflush(stderr);
+    }
 
     /* ---- Final abundances: the LT species list is the canonical name
      * list for any network (mirrors solve()'s self.abundance_names = species_L). ---- */

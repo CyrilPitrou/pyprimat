@@ -367,9 +367,10 @@ static PyObject *primat_c_run_bbn(PyObject *self, PyObject *args, PyObject *kwar
     const char *data_dir;
     PyObject *custom_network = NULL;
 
-    static char *kwlist[] = {"params", "data_dir", "custom_network", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "Os|O", kwlist,
-                                       &params, &data_dir, &custom_network))
+    int show_progress = 1; /* default: show phase markers (matches Python backend) */
+    static char *kwlist[] = {"params", "data_dir", "custom_network", "show_progress", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "Os|Oi", kwlist,
+                                       &params, &data_dir, &custom_network, &show_progress))
         return NULL;
     if (!PyDict_Check(params)) {
         PyErr_SetString(PyExc_TypeError, "params must be a dict");
@@ -430,6 +431,7 @@ static PyObject *primat_c_run_bbn(PyObject *self, PyObject *args, PyObject *kwar
         free_custom_network(&custom);
         return NULL;
     }
+    cfg.show_progress = show_progress;
 
     CPRResults results;
     int rc = cprimat_run(&cfg, &custom, &results, &errmsg);
@@ -512,14 +514,15 @@ static PyObject *primat_c_run_mc(PyObject *self, PyObject *args, PyObject *kwarg
     PyObject *custom_network = NULL;
     PyObject *prev_centrals_obj = NULL;
     PyObject *prev_values_obj = NULL;
+    int progress = 1; /* default: show progress (mirrors Python backend's progress=True) */
 
     static char *kwlist[] = {"params", "data_dir", "num_mc", "quantities",
                               "seed", "n_jobs", "custom_network",
-                              "prev_centrals", "prev_values", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OsiO|iiOOO", kwlist,
+                              "prev_centrals", "prev_values", "progress", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OsiO|iiOOOi", kwlist,
                                       &params, &data_dir, &num_mc, &quantities_obj,
                                       &seed, &n_jobs, &custom_network,
-                                      &prev_centrals_obj, &prev_values_obj))
+                                      &prev_centrals_obj, &prev_values_obj, &progress))
         return NULL;
     if (!PyDict_Check(params)) {
         PyErr_SetString(PyExc_TypeError, "params must be a dict");
@@ -639,7 +642,7 @@ static PyObject *primat_c_run_mc(PyObject *self, PyObject *args, PyObject *kwarg
     int rc = cpr_mc_uncertainty(num_mc, quantities, (size_t)n_q, data_dir,
                                  paramset, n_params, seed, n_jobs, &custom,
                                  prev_centrals, (const double * const *)prev_values, n_prev,
-                                 &out, &errmsg);
+                                 progress, &out, &errmsg);
     free_custom_network(&custom);
 
     free(prev_centrals);

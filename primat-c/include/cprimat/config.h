@@ -90,6 +90,7 @@ typedef struct {
 typedef struct {
     /* ---- general behaviour and numerical settings ---- */
     int verbose;
+    int show_progress; /* print [primat] HT./MT./LT./done. phase markers to stderr (default 1; suppressed during MC batch samples) */
     int debug;
     double numerical_precision;
     int numba_installed; /* unused in C (no JIT path); kept for CLI/ini parity */

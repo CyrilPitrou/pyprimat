@@ -17,6 +17,7 @@ Design
 """
 
 import re
+import sys
 import time
 import warnings
 import numpy as np
@@ -277,7 +278,7 @@ class PRIMAT:
     # solve(): integrate nuclear network ODEs
     # ======================================================================
 
-    def solve(self):
+    def solve(self, progress=True):
         """
         Integrate the nuclear network over the three temperature eras and
         return a dict of BBN observables.
@@ -301,7 +302,7 @@ class PRIMAT:
         corresponding hook) -- a minimal background with no neutrino-sector
         model simply omits them.
         """
-        self.nuclear.solve()
+        self.nuclear.solve(progress=progress)
 
         # For the large network, NuclearNetwork.solve() discovers nuclides
         # beyond the small/amax-restricted set (e.g. B10, C12, ...).  Extend the
@@ -695,7 +696,7 @@ def _mc_run_batch(base_params, rate_keys, quantities, seeds, custom_network=None
         if cfg.tau_n_normalization:
             cfg.tau_n = tau_n_sample
             inst.background.NormWeakRates = norm_times_tau_n / tau_n_sample
-        inst.solve()
+        inst.solve(progress=False)
         row = [inst.get_quantity(q) for q in quantities]
         if include_nuclides:
             # Capture nuclide names from the first sample for consistency
@@ -707,7 +708,8 @@ def _mc_run_batch(base_params, rate_keys, quantities, seeds, custom_network=None
 
 
 def _mc_collect_samples(base_params, rate_keys, quantities, seeds, n_jobs,
-                         custom_network=None, include_nuclides=False):
+                         custom_network=None, include_nuclides=False,
+                         progress=False):
     """Run :func:`_mc_run_batch` for a list of seeds and stack the results.
 
     Splits ``seeds`` into one chunk per worker so the expensive cosmological
@@ -730,6 +732,11 @@ def _mc_collect_samples(base_params, rate_keys, quantities, seeds, n_jobs,
 
     When ``include_nuclides=True``, nuclide abundances are appended to each
     row after the requested quantities.
+
+    When ``progress=True``, print a ``\\r``-updated sample count to stderr as
+    each worker chunk completes.  One update per chunk (= one per parallel
+    worker), which gives ~8 updates for a typical 8-CPU run -- enough to show
+    steady advancement without requiring per-sample IPC.
     """
     from joblib import Parallel, delayed, effective_n_jobs
 
@@ -737,17 +744,40 @@ def _mc_collect_samples(base_params, rate_keys, quantities, seeds, n_jobs,
         return np.empty((0, len(quantities)))
     n_chunks = max(1, min(len(seeds), effective_n_jobs(n_jobs)))
     chunks   = [list(c) for c in np.array_split(seeds, n_chunks)]
-    raw = Parallel(n_jobs=n_jobs)(
+    total    = len(seeds)
+    done     = 0
+
+    if progress:
+        _w = len(str(total))
+        print(f"\r[MC] {done:{_w}}/{total} samples ({0:3d}%)",
+              end='', file=sys.stderr, flush=True)
+
+    # return_as='generator' yields results in submission order as each worker
+    # completes its chunk, letting us update the progress counter without
+    # waiting for all chunks to finish before seeing any output.
+    gen = Parallel(n_jobs=n_jobs, return_as='generator')(
         delayed(_mc_run_batch)(base_params, rate_keys, quantities, chunk,
                                custom_network=custom_network,
                                include_nuclides=include_nuclides)
         for chunk in chunks
     )
-    return np.array([row for chunk in raw for row in chunk])
+
+    all_rows = []
+    for chunk_result in gen:
+        all_rows.extend(chunk_result)
+        done += len(chunk_result)
+        if progress:
+            pct = int(100 * done / total)
+            print(f"\r[MC] {done:{_w}}/{total} samples ({pct:3d}%)",
+                  end='', file=sys.stderr, flush=True)
+
+    if progress:
+        print(file=sys.stderr)   # newline after final update
+    return np.array(all_rows)
 
 
 def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
-                    custom_network=None):
+                    custom_network=None, progress=True):
     """Estimate nuclear-rate and neutron-lifetime uncertainties on BBN
     observables via Monte Carlo.
 
@@ -812,6 +842,12 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
         (``UpdateNuclearRates`` builds ``expsigma`` from it), so a custom
         rate's uncertainty is honoured automatically.  ``None`` (default)
         uses the standard, uncustomised network.
+    progress : bool, optional
+        When True (default), print a running ``N/total (XX%)`` counter to
+        stderr as samples complete, so the user can track advancement during
+        long MC runs.  One update per parallel worker chunk -- for
+        ``n_jobs=-1`` (all CPUs) this gives roughly ``cpu_count`` updates
+        over the full run.  Set to False to suppress all progress output.
 
     Returns
     -------
@@ -829,7 +865,11 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
     """
     from .network_data import load_reaction_names
 
-    explicit_quantities = [quantity] if isinstance(quantity, str) else list(quantity)
+    # quantity=None means "all standard observables + every tracked nuclide":
+    # resolved below from the central solve, so no extra probe run is needed.
+    explicit_quantities = ([] if quantity is None
+                           else [quantity] if isinstance(quantity, str)
+                           else list(quantity))
 
     base_params = dict(params or {})
     base_params.setdefault('verbose', False)
@@ -928,11 +968,26 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
         n_prev = 0
 
     # Only the samples beyond the reused prefix need solving.
-    new_seeds   = [seed + i for i in range(n_prev, num_mc)]
+    new_seeds = [seed + i for i in range(n_prev, num_mc)]
+    n_new     = len(new_seeds)
+
+    if progress and n_new > 0:
+        # Print a one-line banner before the progress counter starts so the
+        # user knows the total workload, including any reused prefix.
+        banner = f"[MC] Running {num_mc} sample{'s' if num_mc != 1 else ''}..."
+        if n_prev > 0:
+            banner += f" ({n_new} new, {n_prev} reused from prev)"
+        print(banner, file=sys.stderr, flush=True)
+    elif progress and n_new == 0:
+        print(f"[MC] {num_mc} sample{'s' if num_mc != 1 else ''} "
+              f"reused from prev (no new computation needed)",
+              file=sys.stderr, flush=True)
+
     new_samples = _mc_collect_samples(base_params, rate_keys, quantities,
                                       new_seeds, n_jobs,
                                       custom_network=custom_network,
-                                      include_nuclides=True)
+                                      include_nuclides=True,
+                                      progress=progress and n_new > 0)
     # Parse results: first len(quantities) columns are quantities, rest are nuclides
     if new_samples.shape[0] > 0:
         new_qty_samples = new_samples[:, :len(quantities)]

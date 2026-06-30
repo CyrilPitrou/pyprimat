@@ -43,6 +43,7 @@ observables dict -- ``Neff``, ``YPBBN``, ``YPCMB``, ``DoH``, ``He3oH``,
 """
 
 import os
+import sys
 import time
 import numpy as np
 from scipy.integrate import solve_ivp
@@ -97,7 +98,7 @@ class NuclearNetwork:
     # solve(): integrate nuclear network ODEs
     # ======================================================================
 
-    def solve(self):
+    def solve(self, progress=True):
         """
         Integrate the nuclear network over the three temperature eras.
 
@@ -107,6 +108,14 @@ class NuclearNetwork:
         (``Neff``, ``YPBBN``, ``DoH``, ...) is built by ``PRIMAT.solve()`` from
         ``self.Y_final`` and from ``background``'s optional neutrino-sector
         hooks -- it is no longer computed here.
+
+        Args:
+            progress: bool, default True.  When True and ``cfg.verbose`` is
+                False, print a compact one-line phase indicator to stderr
+                (``[primat]  HT  MT  LT  done.``) so the user can see the
+                solver is advancing without enabling full verbose output.
+                Set to False inside MC workers (:func:`primat.main._mc_run_batch`)
+                where per-sample dots would flood the terminal.
         """
         from .network_data import SPECIES_MD   # noqa: F401 (used for default-zero filling)
         cfg       = self.cfg
@@ -120,6 +129,12 @@ class NuclearNetwork:
 
         # Refresh nuclear rates with current variation parameters (p_*, delta_*)
         nucl.apply_variations(cfg)
+
+        # Quiet phase-progress: one compact stderr line when verbose=False so
+        # the user can confirm the solver is advancing without full verbosity.
+        # Suppressed when verbose=True (the verbose prints are more informative)
+        # and when progress=False (set by _mc_run_batch to avoid per-sample spam).
+        _show = progress and not cfg.verbose
 
         if cfg.verbose:
             _t0 = time.time()
@@ -205,6 +220,8 @@ class NuclearNetwork:
         T_start_MeV = cfg.T_start / cfg.MeV_to_Kelvin
         T_weak_MeV  = cfg.T_weak  / cfg.MeV_to_Kelvin
         T_nucl_MeV  = cfg.T_nucl  / cfg.MeV_to_Kelvin
+        if _show:
+            print("[primat]  HT.", end='', file=sys.stderr, flush=True)
         if cfg.verbose:
             print(f"[nucl-py]  Solving neutron decoupling at high temperature era"
                   f" (T = {T_start_MeV:.4g} -> {T_weak_MeV:.4g} MeV)")
@@ -227,6 +244,8 @@ class NuclearNetwork:
         if cfg.verbose:
             print(f"[nucl-py]  [HT] Finished solve_ivp in {time.time()-_t_ht0:.2f} s",
                   flush=True)
+        if _show:
+            print("  MT.", end='', file=sys.stderr, flush=True)
         Yn_HT_f, Yp_HT_f = sol_HT.y[0][-1], sol_HT.y[1][-1]
 
         # ------------------------------------------------------------------
@@ -273,6 +292,8 @@ class NuclearNetwork:
             print(f"[nucl-py]  [MT] Finished solve_ivp ({cfg.network} network, "
                   f"{len(mt_species)} species) in {time.time()-_t_mt0:.2f} s",
                   flush=True)
+        if _show:
+            print("  LT.", end='', file=sys.stderr, flush=True)
         # Extract MT final values by name — works for any network size.
         mt_final_raw = {s: sol_MT.y[i][-1] for i, s in enumerate(mt_species)}
 
@@ -298,6 +319,8 @@ class NuclearNetwork:
             print(f"[nucl-py]  [LT] Finished solve_ivp ({cfg.network} network, "
                   f"{len(species_L)} nuclides) in {time.time()-_t_lt0:.2f} s",
                   flush=True)
+        if _show:
+            print("  done.", file=sys.stderr)
         # Build LT final abundances by name; fill in 0 for any standard light
         # species that the chosen network does not track (e.g. heavy-nuclide-only
         # networks that drop He6 — though in practice all three standard networks
@@ -464,7 +487,7 @@ class NuclearNetwork:
 
         produces a file whose first lines read::
 
-            # nuclide       Y
+            nuclide       Y
             n             4.032109e-16
             p             7.530243e-01
             H2            1.835287e-05

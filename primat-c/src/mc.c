@@ -16,6 +16,47 @@
 #include <string.h>
 #include <unistd.h>
 
+/* Progress reporting: a shared counter (mutex-protected for cross-thread
+ * visibility) incremented by each worker after each successfully solved sample,
+ * read every 250 ms by a dedicated progress thread that prints a \r-updated
+ * line to stderr.  Only active when show_progress=1 in cpr_mc_uncertainty. */
+struct CPRProgressCtx {
+    pthread_mutex_t mu;
+    int n_done;   /* total samples completed so far (starts at n_prev_eff) */
+    int total;    /* num_mc: the target count shown to the user */
+    volatile int running; /* set to 0 by cpr_mc_uncertainty to stop the thread */
+};
+
+static void *progress_thread_fn(void *arg)
+{
+    struct CPRProgressCtx *ctx = arg;
+    /* Print the initial state immediately (before the first sleep) so the
+     * user sees "0/N (0%)" right away without waiting 250 ms. */
+    pthread_mutex_lock(&ctx->mu);
+    int last_done = ctx->n_done;
+    pthread_mutex_unlock(&ctx->mu);
+    int pct = ctx->total > 0 ? (int)(100L * last_done / ctx->total) : 0;
+    fprintf(stderr, "\r[MC] %d/%d samples (%3d%%)", last_done, ctx->total, pct);
+    fflush(stderr);
+
+    while (ctx->running) {
+        usleep(250000); /* 250 ms between updates */
+        pthread_mutex_lock(&ctx->mu);
+        int done = ctx->n_done;
+        pthread_mutex_unlock(&ctx->mu);
+        if (done != last_done) {
+            pct = ctx->total > 0 ? (int)(100L * done / ctx->total) : 0;
+            fprintf(stderr, "\r[MC] %d/%d samples (%3d%%)",
+                    done, ctx->total, pct);
+            fflush(stderr);
+            last_done = done;
+        }
+    }
+    /* Do NOT print the final "100%" line here: the caller (cpr_mc_uncertainty)
+     * prints it after joining this thread, ensuring exactly one final line. */
+    return NULL;
+}
+
 /* One worker's share of the work: a contiguous slice [seed_lo, seed_hi) of
  * sample seeds, writing its results directly into the shared `out->items`
  * value arrays at the matching sample index (seed - base_seed) -- safe
@@ -29,7 +70,8 @@ typedef struct {
     const CPRCustomNetwork *custom; /* GUI override, shared read-only across workers */
     const char * const *quantities;
     size_t n_quantities;
-    CPRMCResult *out;       /* shared; each worker only writes its own index range */
+    CPRMCResult *out;             /* shared; each worker only writes its own index range */
+    struct CPRProgressCtx *prog;  /* shared progress counter; NULL if show_progress=0 */
     char *errmsg;           /* this worker's first error, if any (NULL otherwise) */
 } CPRMCWorker;
 
@@ -51,6 +93,7 @@ static int worker_setup(const CPRMCWorker *w, CPRConfig *cfg, CPRPlasma *pl,
         free(set_err);
     }
     if (cpr_config_validate(cfg, errmsg)) { cpr_config_free(cfg); return 1; }
+    cfg->show_progress = 0; /* suppress per-sample phase markers; only the central solve and MC counter are shown */
 
     if (cpr_plasma_init(pl, cfg, errmsg)) { cpr_config_free(cfg); return 1; }
     if (cpr_nuclear_rates_init(nr, cfg, w->custom, errmsg)) {
@@ -145,6 +188,13 @@ static void *worker_main(void *arg)
             w->errmsg = serr;
             break;
         }
+        /* Increment the shared progress counter after each successful sample
+         * so the progress thread's display stays current. */
+        if (w->prog) {
+            pthread_mutex_lock(&w->prog->mu);
+            w->prog->n_done++;
+            pthread_mutex_unlock(&w->prog->mu);
+        }
     }
 
     cpr_background_free(&bg);
@@ -160,6 +210,7 @@ int cpr_mc_uncertainty(int num_mc, const char * const *quantities, size_t n_quan
                         int seed, int n_jobs, const CPRCustomNetwork *custom,
                         const double *prev_centrals, const double * const *prev_values,
                         size_t n_prev,
+                        int show_progress,
                         CPRMCResult *out, char **errmsg)
 {
     memset(out, 0, sizeof(*out));
@@ -245,6 +296,28 @@ int cpr_mc_uncertainty(int num_mc, const char * const *quantities, size_t n_quan
     }
     if (n_jobs > n_to_solve) n_jobs = n_to_solve;
 
+    /* Optional progress thread: reads the shared counter every 250 ms and
+     * prints a \r-updated "N/total (XX%)" line to stderr.  The counter starts
+     * at n_prev_eff (already-reused samples) and workers increment it after
+     * each successfully solved sample, so the display reflects true progress
+     * even when n_prev_eff > 0. */
+    struct CPRProgressCtx prog_ctx;
+    pthread_t prog_thr;
+    int prog_active = (show_progress && n_to_solve > 0);
+    if (prog_active) {
+        memset(&prog_ctx, 0, sizeof(prog_ctx));
+        pthread_mutex_init(&prog_ctx.mu, NULL);
+        prog_ctx.n_done  = (int)n_prev_eff;
+        prog_ctx.total   = num_mc;
+        prog_ctx.running = 1;
+        /* Banner line: total workload at a glance.  The thread itself prints
+         * the initial \r counter, so no duplicate initial line here. */
+        fprintf(stderr, "[MC] Running %d sample%s...\n",
+                num_mc, num_mc != 1 ? "s" : "");
+        fflush(stderr);
+        pthread_create(&prog_thr, NULL, progress_thread_fn, &prog_ctx);
+    }
+
     pthread_t *threads = malloc((size_t)n_jobs * sizeof(pthread_t));
     CPRMCWorker *workers = calloc((size_t)n_jobs, sizeof(CPRMCWorker));
 
@@ -262,7 +335,8 @@ int cpr_mc_uncertainty(int num_mc, const char * const *quantities, size_t n_quan
         workers[j] = (CPRMCWorker){
             .data_dir = data_dir, .base_params = base_params, .n_base_params = n_base_params,
             .seed_lo = cursor, .seed_hi = cursor + chunk, .base_seed = seed, .custom = custom,
-            .quantities = quantities, .n_quantities = n_quantities, .out = out, .errmsg = NULL,
+            .quantities = quantities, .n_quantities = n_quantities, .out = out,
+            .prog = prog_active ? &prog_ctx : NULL, .errmsg = NULL,
         };
         cursor += chunk;
         pthread_create(&threads[j], NULL, worker_main, &workers[j]);
@@ -276,6 +350,18 @@ int cpr_mc_uncertainty(int num_mc, const char * const *quantities, size_t n_quan
     }
     free(threads);
     free(workers);
+
+    /* Stop and join the progress thread, then print the single final "100%"
+     * line (with a newline) here -- after the thread exits -- so there is
+     * exactly one terminating line regardless of what intermediate updates
+     * the thread printed while workers were running. */
+    if (prog_active) {
+        prog_ctx.running = 0;
+        pthread_join(prog_thr, NULL);
+        pthread_mutex_destroy(&prog_ctx.mu);
+        fprintf(stderr, "\r[MC] %d/%d samples (100%%)\n", num_mc, num_mc);
+        fflush(stderr);
+    }
 
     if (first_err) {
         *errmsg = first_err;
