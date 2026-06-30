@@ -215,6 +215,10 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
      * user-configurable cfg->T_end_MeV. ---- */
     double T_start_K = cpr_T_start(), T_weak_K = cpr_T_weak(), T_nucl_K = cpr_T_nucl();
     double T_end_K = cpr_config_T_end(cfg);
+    /* MeV values of era boundaries, used only in verbose log messages. */
+    double T_start_MeV = T_start_K / cpr_MeV_to_Kelvin();
+    double T_weak_MeV  = T_weak_K  / cpr_MeV_to_Kelvin();
+    double T_nucl_MeV  = T_nucl_K  / cpr_MeV_to_Kelvin();
     double t_start = cpr_bg_t_of_T(background, T_start_K / cpr_MeV_to_Kelvin());
     double t_weak  = cpr_bg_t_of_T(background, T_weak_K  / cpr_MeV_to_Kelvin());
     double t_nucl  = cpr_bg_t_of_T(background, T_nucl_K  / cpr_MeV_to_Kelvin());
@@ -239,7 +243,8 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
     HTCtx ht_ctx = { background };
     CPRRKOpts rk_opts = cpr_ode_rk_default_opts();
     rk_opts.rtol = cfg->numerical_precision; rk_opts.atol = 1.0e-10;
-    cpr_log(cfg, "nucl", "Solving neutron decoupling at high temperature era");
+    cpr_log(cfg, "nucl", "Solving neutron decoupling at high temperature era"
+                         " (T = %.4g -> %.4g MeV)", T_start_MeV, T_weak_MeV);
     clock_t _t_ht0 = clock();
     if (cpr_ode_rk45(ht_rhs, &ht_ctx, t_start, t_weak, Y_ht, 2, rk_opts,
                       recorder_cb, &rec_ht, errmsg)) {
@@ -267,7 +272,8 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
     MTLTCtx mt_ctx = { background, nucl };
     CPRBDFOpts bdf_opts = cpr_ode_bdf_default_opts();
     bdf_opts.rtol = cfg->numerical_precision; bdf_opts.atol = 1.0e-16;
-    cpr_log(cfg, "nucl", "Solving nuclear network at mid temperature era");
+    cpr_log(cfg, "nucl", "Solving nuclear network at mid temperature era"
+                         " (T = %.4g -> %.4g MeV)", T_weak_MeV, T_nucl_MeV);
     clock_t _t_mt0 = clock();
     if (cpr_ode_bdf(mt_rhs, mt_jac, &mt_ctx, t_weak, t_nucl, Yi_MT, n_mt, bdf_opts,
                      recorder_cb, &rec_mt, errmsg)) {
@@ -295,7 +301,8 @@ int cpr_nuclear_network_solve(CPRNuclearNetwork *nn, const CPRConfig *cfg,
     CPRBDFOpts bdf_opts_lt = cpr_ode_bdf_default_opts();
     bdf_opts_lt.rtol = 10.0 * cfg->numerical_precision;
     bdf_opts_lt.atol = cpr_config_is_large(cfg) ? cfg->atol_large_LT : 1.0e-20;
-    cpr_log(cfg, "nucl", "Solving nuclear network at low temperature era");
+    cpr_log(cfg, "nucl", "Solving nuclear network at low temperature era"
+                         " (T = %.4g -> %.4g MeV)", T_nucl_MeV, cfg->T_end_MeV);
     clock_t _t_lt0 = clock();
     if (cpr_ode_bdf(lt_rhs, lt_jac, &lt_ctx, t_nucl, t_end, Yi_LT, n_lt, bdf_opts_lt,
                      recorder_cb, &rec_lt, errmsg)) {

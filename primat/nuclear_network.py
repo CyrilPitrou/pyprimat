@@ -201,8 +201,13 @@ class NuclearNetwork:
         # ------------------------------------------------------------------
         # High-temperature (HT) era: only n and p
         # ------------------------------------------------------------------
+        # Fixed era boundaries in MeV (10 / 1 / 0.11 MeV), used in verbose messages.
+        T_start_MeV = cfg.T_start / cfg.MeV_to_Kelvin
+        T_weak_MeV  = cfg.T_weak  / cfg.MeV_to_Kelvin
+        T_nucl_MeV  = cfg.T_nucl  / cfg.MeV_to_Kelvin
         if cfg.verbose:
-            print("[nucl-py]  Solving neutron decoupling at high temperature era")
+            print(f"[nucl-py]  Solving neutron decoupling at high temperature era"
+                  f" (T = {T_start_MeV:.4g} -> {T_weak_MeV:.4g} MeV)")
 
         def Yn_i_func(T):
             b = nTOp_bkwrd(T)
@@ -220,8 +225,8 @@ class NuclearNetwork:
         sol_HT = solve_ivp(Y_prime_HT, [t_start, t_weak], [Yn_i, Yp_i],
                            method='LSODA', rtol=cfg.numerical_precision, atol=1e-10)
         if cfg.verbose:
-            print((f"[nucl-py]  [HT] Finished solve_ivp in {time.time()-_t_ht0:.2f} s "
-                   f"(status={sol_HT.status}, nfev={sol_HT.nfev})"), flush=True)
+            print(f"[nucl-py]  [HT] Finished solve_ivp in {time.time()-_t_ht0:.2f} s",
+                  flush=True)
         Yn_HT_f, Yp_HT_f = sol_HT.y[0][-1], sol_HT.y[1][-1]
 
         # ------------------------------------------------------------------
@@ -247,7 +252,8 @@ class NuclearNetwork:
         # Mid-temperature (MT) era
         # ------------------------------------------------------------------
         if cfg.verbose:
-            print("[nucl-py]  Solving nuclear network at mid temperature era")
+            print(f"[nucl-py]  Solving nuclear network at mid temperature era"
+                  f" (T = {T_weak_MeV:.4g} -> {T_nucl_MeV:.4g} MeV)")
 
         # Saha (NSE) seed for all MT species except n and p, which come from
         # the HT solution.  The MT network's species list is determined by the
@@ -264,9 +270,9 @@ class NuclearNetwork:
                            method='BDF', jac=Jacobian_MT,
                            rtol=cfg.numerical_precision, atol=1e-15)
         if cfg.verbose:
-            print((f"[nucl-py]  [MT] Finished solve_ivp ({cfg.network} network, "
-                   f"{len(mt_species)} species) in {time.time()-_t_mt0:.2f} s "
-                   f"(status={sol_MT.status}, nfev={sol_MT.nfev})"), flush=True)
+            print(f"[nucl-py]  [MT] Finished solve_ivp ({cfg.network} network, "
+                  f"{len(mt_species)} species) in {time.time()-_t_mt0:.2f} s",
+                  flush=True)
         # Extract MT final values by name — works for any network size.
         mt_final_raw = {s: sol_MT.y[i][-1] for i, s in enumerate(mt_species)}
 
@@ -274,7 +280,8 @@ class NuclearNetwork:
         # Low-temperature (LT) era
         # ------------------------------------------------------------------
         if cfg.verbose:
-            print("[nucl-py]  Solving nuclear network at low temperature era")
+            print(f"[nucl-py]  Solving nuclear network at low temperature era"
+                  f" (T = {T_nucl_MeV:.4g} -> {cfg.T_end_MeV:.4g} MeV)")
 
         # Seed the LT vector from MT final values, filling any extra species
         # (present in the LT but absent in MT) with 0.  By looking up by name,
@@ -288,9 +295,9 @@ class NuclearNetwork:
                            method='BDF', jac=Jacobian_LT,
                            rtol=10.*cfg.numerical_precision, atol=atol)
         if cfg.verbose:
-            print((f"[nucl-py]  [LT] Finished solve_ivp ({cfg.network} network, "
-                   f"{len(species_L)} nuclides) in {time.time()-_t_lt0:.2f} s "
-                   f"(status={sol_LT.status}, nfev={sol_LT.nfev})"), flush=True)
+            print(f"[nucl-py]  [LT] Finished solve_ivp ({cfg.network} network, "
+                  f"{len(species_L)} nuclides) in {time.time()-_t_lt0:.2f} s",
+                  flush=True)
         # Build LT final abundances by name; fill in 0 for any standard light
         # species that the chosen network does not track (e.g. heavy-nuclide-only
         # networks that drop He6 — though in practice all three standard networks

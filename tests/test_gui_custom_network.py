@@ -130,7 +130,7 @@ def test_manage_button_opens_dialog_and_hands_off_to_create():
     hands off to the "Create custom network" dialog, closing the former."""
     at = AppTest.from_file(APP_PATH)
     at.run(timeout=60)
-    assert [b.label for b in at.sidebar.button] == ["Manage networks"]
+    assert [b.label for b in at.sidebar.button] == ["Manage networks", "Credits"]
 
     _open_manage_dialog(at)
     assert not at.exception

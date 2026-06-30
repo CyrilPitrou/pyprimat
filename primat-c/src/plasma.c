@@ -329,7 +329,7 @@ int cpr_plasma_init(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
         cpr_interp1d_free(&pl->d2P_QED);
         return 1;
     }
-    cpr_log(cfg, "init", "Tables loaded.");
+    cpr_log(cfg, "init", "QED pressure corrections tables loaded.");
     return 0;
 }
 

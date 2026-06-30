@@ -2008,6 +2008,7 @@ class UpdateNuclearRates:
         if cfg.verbose:
             print(f"[rates-py] MT network: {len(self._mt_net.names)-1} reactions over "
                   f"{len(self._mt_net.species)} nuclides.")
+            print(f"[rates-py] MT nuclides: {', '.join(self._mt_net.species)}")
             print(f"[rates-py] LT network: {len(self._lt_net.names)-1} reactions over "
                   f"{len(self._lt_net.species)} nuclides.")
             print(f"[rates-py] LT nuclides: {', '.join(self._lt_net.species)}")

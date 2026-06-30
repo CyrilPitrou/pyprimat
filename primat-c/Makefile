@@ -1,4 +1,4 @@
-CC ?= cc
+CC = gcc-mp-14
 # -MMD/-MP emit a per-object .d file listing the headers it #includes, so a
 # header edit (e.g. config.h, only #included transitively) correctly marks
 # every .o that depends on it stale 

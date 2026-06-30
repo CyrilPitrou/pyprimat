@@ -277,7 +277,7 @@ class Plasma:
         self._setup_integrand_impls(cfg)
         self._build_electron_tables(cfg)
         if cfg.verbose:
-            print("[init]  Tables loaded.")
+            print("[init]  QED pressure corrections tables loaded.")
 
     # ------------------------------------------------------------------
     # Initialisation helpers
