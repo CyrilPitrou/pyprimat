@@ -21,7 +21,7 @@
 #define CPRIMAT_ODE_BDF_H
 
 #include <stddef.h>
-#include "cprimat/ode_rk.h" /* reuses CPRODEFunc, CPRODEStepCB */
+#include "ode_rk.h" /* reuses CPRODEFunc, CPRODEStepCB */
 
 /* Analytic Jacobian callback: writes df_i/dy_j into J (row-major, n*n) at
  * (t, y). If NULL is passed to cpr_ode_bdf, a forward-difference Jacobian

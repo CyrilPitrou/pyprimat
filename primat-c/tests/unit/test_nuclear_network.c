@@ -45,11 +45,11 @@
  * to ~15-20%, with the numbers above re-verified to stay within CLAUDE.md's
  * bounds (in fact slightly tighter for `small`) -- `cpr_bg_T_of_a` itself,
  * and therefore every *query* made through the public API, is untouched. */
-#include "cprimat/constants.h"
-#include "cprimat/plasma.h"
-#include "cprimat/background.h"
-#include "cprimat/network_data.h"
-#include "cprimat/nuclear_network.h"
+#include "constants.h"
+#include "plasma.h"
+#include "background.h"
+#include "network_data.h"
+#include "nuclear_network.h"
 
 #include <math.h>
 #include <stdio.h>

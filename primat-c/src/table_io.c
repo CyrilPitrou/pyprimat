@@ -1,4 +1,4 @@
-#include "cprimat/table_io.h"
+#include "table_io.h"
 
 #include <ctype.h>
 #include <errno.h>

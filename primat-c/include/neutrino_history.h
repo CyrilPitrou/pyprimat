@@ -32,8 +32,8 @@
 #ifndef CPRIMAT_NEUTRINO_HISTORY_H
 #define CPRIMAT_NEUTRINO_HISTORY_H
 
-#include "cprimat/config.h"
-#include "cprimat/plasma.h"
+#include "config.h"
+#include "plasma.h"
 
 /* Resolves a data/NEVO/ data file, honouring a config override (mirrors
  * neutrino_history.resolve_nevo_path). `override` is one of

@@ -24,8 +24,8 @@
  * same continuously-maintained history (via change_D below), which is
  * exactly what makes scipy's BDF efficient at a given tolerance.
  */
-#include "cprimat/ode_bdf.h"
-#include "cprimat/linalg.h"
+#include "ode_bdf.h"
+#include "linalg.h"
 
 #include <float.h>
 #include <math.h>

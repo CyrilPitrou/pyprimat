@@ -1,6 +1,6 @@
 /* test_linalg.c -- checks cpr_solve_linear against a known 3x3 system and a
  * larger random system verified by residual, plus a singular matrix. */
-#include "cprimat/linalg.h"
+#include "linalg.h"
 
 #include <math.h>
 #include <stdio.h>

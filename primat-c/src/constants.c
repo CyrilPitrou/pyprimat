@@ -1,4 +1,4 @@
-#include "cprimat/constants.h"
+#include "constants.h"
 #include <math.h>
 
 /* Riemann zeta(3) (Apery's constant), needed by cpr_n0CMB() below. Python

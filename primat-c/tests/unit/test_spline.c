@@ -3,7 +3,7 @@
  * reproduce it exactly, both for natural and not-a-knot boundary
  * conditions), linear interpolation, and the rate-table resampler against
  * a known power law. */
-#include "cprimat/spline.h"
+#include "spline.h"
 
 #include <math.h>
 #include <stdio.h>

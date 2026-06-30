@@ -1,10 +1,10 @@
 /* cli.c -- see cprimat/cli.h. */
-#include "cprimat/cli.h"
-#include "cprimat/api.h"
-#include "cprimat/cache.h"
-#include "cprimat/config.h"
-#include "cprimat/ini.h"
-#include "cprimat/mc.h"
+#include "cli.h"
+#include "api.h"
+#include "cache.h"
+#include "config.h"
+#include "ini.h"
+#include "mc.h"
 
 #include <dirent.h>
 #include <math.h>

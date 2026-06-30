@@ -1,9 +1,9 @@
 /* network_data.c -- see cprimat/network_data.h. */
-#include "cprimat/network_data.h"
+#include "network_data.h"
 
-#include "cprimat/constants.h"
-#include "cprimat/spline.h"
-#include "cprimat/table_io.h"
+#include "constants.h"
+#include "spline.h"
+#include "table_io.h"
 
 #include <ctype.h>
 #include <math.h>

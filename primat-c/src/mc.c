@@ -1,13 +1,13 @@
 /* mc.c -- see cprimat/mc.h. Threaded port of primat/main.py's
  * mc_uncertainty/_mc_run_batch/_mc_collect_samples.
  */
-#include "cprimat/mc.h"
-#include "cprimat/api.h"
-#include "cprimat/plasma.h"
-#include "cprimat/background.h"
-#include "cprimat/network_data.h"
-#include "cprimat/nuclear_network.h"
-#include "cprimat/rng.h"
+#include "mc.h"
+#include "api.h"
+#include "plasma.h"
+#include "background.h"
+#include "network_data.h"
+#include "nuclear_network.h"
+#include "rng.h"
 
 #include <math.h>
 #include <pthread.h>

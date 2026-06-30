@@ -1,7 +1,7 @@
 /* test_ini.c -- verifies cpr_ini_load applies KEY=VALUE overrides on top of
  * defaults, and that examples/run_large_amax8.ini round-trips amax/network. */
-#include "cprimat/config.h"
-#include "cprimat/ini.h"
+#include "config.h"
+#include "ini.h"
 
 #include <stdio.h>
 #include <stdlib.h>

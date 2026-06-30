@@ -1,5 +1,5 @@
 /* network_builder.c -- see cprimat/network_builder.h. */
-#include "cprimat/network_builder.h"
+#include "network_builder.h"
 
 #include <math.h>
 #include <stdio.h>

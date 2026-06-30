@@ -10,7 +10,7 @@
 #ifndef CPRIMAT_CACHE_H
 #define CPRIMAT_CACHE_H
 
-#include "cprimat/config.h"
+#include "config.h"
 #include <stddef.h>
 
 /* One (key, value) pair of a fingerprint dict, pre-serialisation. */

@@ -1,7 +1,7 @@
 /* qed_pressure.c -- see cprimat/qed_pressure.h. */
-#include "cprimat/qed_pressure.h"
-#include "cprimat/quad.h"
-#include "cprimat/spline.h"
+#include "qed_pressure.h"
+#include "quad.h"
+#include "spline.h"
 
 #include <math.h>
 #include <stdio.h>

@@ -1,4 +1,4 @@
-#include "cprimat/cache.h"
+#include "cache.h"
 
 #include <math.h>
 #include <stdint.h>

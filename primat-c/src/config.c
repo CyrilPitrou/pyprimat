@@ -1,5 +1,5 @@
-#include "cprimat/config.h"
-#include "cprimat/constants.h"
+#include "config.h"
+#include "constants.h"
 
 #include <ctype.h>
 #include <math.h>

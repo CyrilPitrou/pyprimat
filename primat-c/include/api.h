@@ -25,10 +25,10 @@
 #ifndef CPRIMAT_API_H
 #define CPRIMAT_API_H
 
-#include "cprimat/config.h"
-#include "cprimat/background.h"
-#include "cprimat/network_data.h"
-#include "cprimat/nuclear_network.h"
+#include "config.h"
+#include "background.h"
+#include "network_data.h"
+#include "nuclear_network.h"
 #include <stddef.h>
 
 typedef struct {

@@ -32,10 +32,10 @@
 #ifndef CPRIMAT_BACKGROUND_H
 #define CPRIMAT_BACKGROUND_H
 
-#include "cprimat/config.h"
-#include "cprimat/plasma.h"
-#include "cprimat/neutrino_history.h"
-#include "cprimat/weak_rates.h"
+#include "config.h"
+#include "plasma.h"
+#include "neutrino_history.h"
+#include "weak_rates.h"
 #include <stddef.h>
 
 typedef enum { CPR_BG_STANDARD, CPR_BG_CUSTOM } CPRBackgroundKind;

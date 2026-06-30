@@ -28,8 +28,8 @@
 #ifndef CPRIMAT_WEAK_RATES_H
 #define CPRIMAT_WEAK_RATES_H
 
-#include "cprimat/config.h"
-#include "cprimat/neutrino_history.h"
+#include "config.h"
+#include "neutrino_history.h"
 #include <stddef.h>
 
 /* Fermi-Coulomb factor F(b) (Phys. Rep. S III.D); see corrections.FermiCoulomb. */

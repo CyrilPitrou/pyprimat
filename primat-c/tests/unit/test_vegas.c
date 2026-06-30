@@ -4,7 +4,7 @@
  * (the same failure mode weak_rates.c's deterministic-quadrature comments
  * warn about for naive single-pass quadrature -- VEGAS's adaptive
  * importance sampling should instead zoom in on it automatically). */
-#include "cprimat/vegas.h"
+#include "vegas.h"
 
 #include <math.h>
 #include <stdio.h>

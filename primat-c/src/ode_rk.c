@@ -3,7 +3,7 @@
  * 6) with standard PI-ish step-size control (the classic "err^(-1/5) with
  * safety factor and min/max clamps" rule, e.g. Hairer/Norsett/Wanner II.4).
  */
-#include "cprimat/ode_rk.h"
+#include "ode_rk.h"
 
 #include <math.h>
 #include <stdlib.h>

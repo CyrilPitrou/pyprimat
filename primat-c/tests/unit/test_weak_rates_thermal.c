@@ -31,9 +31,9 @@
  * relative-error/factor-of-N bounds (not bit-matches), and remain loose
  * enough to also absorb cpr_vegas_integrate's Monte-Carlo noise floor at
  * its default vegas_n_eval/vegas_n_itn budget. */
-#include "cprimat/constants.h"
-#include "cprimat/config.h"
-#include "cprimat/neutrino_history.h"
+#include "constants.h"
+#include "config.h"
+#include "neutrino_history.h"
 #define main weak_rates_main_disabled
 #include "../../src/weak_rates.c"
 #undef main

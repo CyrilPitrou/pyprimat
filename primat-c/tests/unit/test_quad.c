@@ -1,7 +1,7 @@
 /* test_quad.c -- checks cpr_quad_adaptive against closed-form integrals:
  * a polynomial (exact for Simpson regardless of tolerance), sin(x), and a
  * Gaussian (transcendental, needs genuine adaptivity to converge). */
-#include "cprimat/quad.h"
+#include "quad.h"
 
 #include <math.h>
 #include <stdio.h>

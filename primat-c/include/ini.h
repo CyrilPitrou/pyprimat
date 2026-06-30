@@ -10,7 +10,7 @@
 #ifndef CPRIMAT_INI_H
 #define CPRIMAT_INI_H
 
-#include "cprimat/config.h"
+#include "config.h"
 
 /* Loads `path`, applying every KEY=VALUE line to `cfg` via
  * cpr_config_set_by_name (so p_<rxn>/delta_<rxn> keys and ordinary

@@ -3,11 +3,11 @@
  * Reference: Pitrou, Coc, Uzan & Vangioni, Phys. Rep. 2018 (arXiv:1806.11095),
  * cited below as "Phys. Rep.".
  */
-#include "cprimat/background.h"
-#include "cprimat/constants.h"
-#include "cprimat/spline.h"
-#include "cprimat/ode_rk.h"
-#include "cprimat/log.h"
+#include "background.h"
+#include "constants.h"
+#include "spline.h"
+#include "ode_rk.h"
+#include "log.h"
 
 #include <math.h>
 #include <stdio.h>

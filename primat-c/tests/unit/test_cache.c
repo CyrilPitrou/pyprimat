@@ -15,8 +15,8 @@
  * spectral_distortions/radiative_corrections/finite_mass_corrections all
  * True, analytic_distortions False, every numeric default unchanged.)
  */
-#include "cprimat/cache.h"
-#include "cprimat/config.h"
+#include "cache.h"
+#include "config.h"
 
 #include <stdio.h>
 #include <stdlib.h>

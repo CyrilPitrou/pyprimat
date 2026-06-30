@@ -1,13 +1,13 @@
 /* api.c -- see cprimat/api.h. Port of primat/main.py's PyPR.__init__ +
  * PyPR.solve().
  */
-#include "cprimat/api.h"
-#include "cprimat/constants.h"
-#include "cprimat/plasma.h"
-#include "cprimat/background.h"
-#include "cprimat/network_data.h"
-#include "cprimat/nuclear_network.h"
-#include "cprimat/log.h"
+#include "api.h"
+#include "constants.h"
+#include "plasma.h"
+#include "background.h"
+#include "network_data.h"
+#include "nuclear_network.h"
+#include "log.h"
 
 #include <math.h>
 #include <stdio.h>

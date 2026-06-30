@@ -1,5 +1,5 @@
 /* spline.c -- see cprimat/spline.h. */
-#include "cprimat/spline.h"
+#include "spline.h"
 
 #include <math.h>
 #include <stdio.h>

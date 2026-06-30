@@ -13,8 +13,8 @@
  * the strongest possible cross-language compatibility check available
  * for this module.
  */
-#include "cprimat/plasma.h"
-#include "cprimat/constants.h"
+#include "plasma.h"
+#include "constants.h"
 
 #include <math.h>
 #include <stdio.h>

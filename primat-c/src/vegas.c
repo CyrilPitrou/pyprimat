@@ -17,8 +17,8 @@
  * iteration), this is more than sufficient for the ~1e-3 relative accuracy
  * the CCRTh thermal correction already targets (see weak_rates.c).
  */
-#include "cprimat/vegas.h"
-#include "cprimat/rng.h"
+#include "vegas.h"
+#include "rng.h"
 
 #include <math.h>
 #include <stdlib.h>

@@ -16,10 +16,10 @@
  * pure table interpolation (no ODE), so those use a much tighter
  * tolerance.
  */
-#include "cprimat/background.h"
-#include "cprimat/constants.h"
-#include "cprimat/config.h"
-#include "cprimat/plasma.h"
+#include "background.h"
+#include "constants.h"
+#include "config.h"
+#include "plasma.h"
 
 #include <math.h>
 #include <stdio.h>

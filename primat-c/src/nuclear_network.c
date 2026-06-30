@@ -3,12 +3,12 @@
  * Reference: Pitrou, Coc, Uzan & Vangioni, Phys. Rep. 2018 (arXiv:1806.11095),
  * cited below as "Phys. Rep.".
  */
-#include "cprimat/nuclear_network.h"
-#include "cprimat/constants.h"
-#include "cprimat/network_builder.h"
-#include "cprimat/ode_rk.h"
-#include "cprimat/ode_bdf.h"
-#include "cprimat/log.h"
+#include "nuclear_network.h"
+#include "constants.h"
+#include "network_builder.h"
+#include "ode_rk.h"
+#include "ode_bdf.h"
+#include "log.h"
 
 #include <math.h>
 #include <stdio.h>

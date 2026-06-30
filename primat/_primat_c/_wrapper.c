@@ -21,9 +21,9 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 
-#include "cprimat/api.h"
-#include "cprimat/config.h"
-#include "cprimat/mc.h"
+#include "api.h"
+#include "config.h"
+#include "mc.h"
 
 #include <stdlib.h>
 #include <string.h>

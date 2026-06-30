@@ -5,8 +5,8 @@
  * spectral_distortions=False = InstantaneousDecoupling -- the
  * AnalyticDistortion decorator is out of scope, see neutrino_history.h).
  */
-#include "cprimat/neutrino_history.h"
-#include "cprimat/constants.h"
+#include "neutrino_history.h"
+#include "constants.h"
 
 #include <math.h>
 #include <stdio.h>

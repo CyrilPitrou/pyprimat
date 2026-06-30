@@ -7,7 +7,7 @@
  * periodic-ish trajectory, checked only for boundedness/no blow-up since
  * it has no simple closed form).
  */
-#include "cprimat/ode_bdf.h"
+#include "ode_bdf.h"
 
 #include <math.h>
 #include <stdio.h>

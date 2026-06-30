@@ -8,8 +8,8 @@
  * cpr_qed_compute_tables end-to-end and a save/reload roundtrip through
  * table_io.c, matching the file format Python's save_qed_tables produces.
  */
-#include "cprimat/qed_pressure.h"
-#include "cprimat/table_io.h"
+#include "qed_pressure.h"
+#include "table_io.h"
 
 #include <math.h>
 #include <stdio.h>

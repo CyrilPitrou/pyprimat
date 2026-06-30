@@ -6,14 +6,14 @@
  * source vectorises over T with numpy for speed, which has no equivalent
  * benefit in C; the formulas are otherwise identical term-for-term.
  */
-#include "cprimat/weak_rates.h"
-#include "cprimat/constants.h"
-#include "cprimat/cache.h"
-#include "cprimat/table_io.h"
-#include "cprimat/spline.h"
-#include "cprimat/quad.h"
-#include "cprimat/vegas.h"
-#include "cprimat/log.h"
+#include "weak_rates.h"
+#include "constants.h"
+#include "cache.h"
+#include "table_io.h"
+#include "spline.h"
+#include "quad.h"
+#include "vegas.h"
+#include "log.h"
 
 #include <math.h>
 #include <stdio.h>

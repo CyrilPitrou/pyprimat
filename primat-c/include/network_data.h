@@ -28,8 +28,8 @@
 #ifndef CPRIMAT_NETWORK_DATA_H
 #define CPRIMAT_NETWORK_DATA_H
 
-#include "cprimat/config.h"
-#include "cprimat/network_builder.h"
+#include "config.h"
+#include "network_builder.h"
 
 #include <stddef.h>
 

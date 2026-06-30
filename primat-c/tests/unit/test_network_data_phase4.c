@@ -5,8 +5,8 @@
  * exercised inside cpr_nuclear_rates_init itself -- this test fails loudly
  * if that ever throws), and a basic sanity check that rhsLT/JacobianLT
  * produce finite, non-degenerate output at a representative (Y, T) point. */
-#include "cprimat/network_data.h"
-#include "cprimat/constants.h"
+#include "network_data.h"
+#include "constants.h"
 
 #include <math.h>
 #include <stdio.h>

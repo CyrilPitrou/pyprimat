@@ -1,5 +1,5 @@
 /* log.c -- see cprimat/log.h. */
-#include "cprimat/log.h"
+#include "log.h"
 
 #include <stdarg.h>
 #include <stdio.h>

@@ -25,8 +25,8 @@
 #ifndef CPRIMAT_PLASMA_H
 #define CPRIMAT_PLASMA_H
 
-#include "cprimat/config.h"
-#include "cprimat/spline.h"
+#include "config.h"
+#include "spline.h"
 
 /* ---------------------------------------------------------------------
  * Photons and SM neutrinos: pure functions of temperature, no cfg

@@ -31,9 +31,9 @@
 #ifndef CPRIMAT_NUCLEAR_NETWORK_H
 #define CPRIMAT_NUCLEAR_NETWORK_H
 
-#include "cprimat/config.h"
-#include "cprimat/background.h"
-#include "cprimat/network_data.h"
+#include "config.h"
+#include "background.h"
+#include "network_data.h"
 #include <stddef.h>
 
 typedef struct {

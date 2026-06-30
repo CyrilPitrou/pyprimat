@@ -200,7 +200,7 @@ The standalone executable looks for data files relative to its working directory
 
 ```
 primat-c/
-  include/cprimat/      # Public headers
+  include/      # Public headers
     api.h             # Main API functions
     config.h          # Configuration structure and functions
     network_data.h   # Network and reaction data structures
@@ -233,7 +233,7 @@ For advanced users who want to implement custom cosmological backgrounds or test
 - Custom NEVO tables for neutrino decoupling
 - Rate variation for sensitivity analysis
 
-See the `include/cprimat/` headers for the available API functions.
+See the `include/` headers for the available API functions.
 
 ## Error handling and debugging
 
@@ -266,7 +266,7 @@ print(f"C backend available: {HAS_C_BACKEND}")
 
 ## Version compatibility
 
-The `primat-c` version is kept in sync with the main `primat` package version. The version is defined in `include/cprimat/config.h` as `CPRIMAT_VERSION` and must match the version in `pyproject.toml`.
+The `primat-c` version is kept in sync with the main `primat` package version. The version is defined in `include/config.h` as `CPRIMAT_VERSION` and must match the version in `pyproject.toml`.
 
 ## Support and contribution
 

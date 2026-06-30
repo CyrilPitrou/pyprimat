@@ -1,7 +1,7 @@
 /* test_rng.c -- statistical sanity checks for the xoshiro256** / Box-Muller
  * RNG: not bit-matched to anything, just checked for range, determinism
  * given a seed, and mean/std convergence of the normal sampler. */
-#include "cprimat/rng.h"
+#include "rng.h"
 
 #include <math.h>
 #include <stdio.h>

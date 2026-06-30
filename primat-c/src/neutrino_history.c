@@ -1,8 +1,8 @@
 /* neutrino_history.c -- see cprimat/neutrino_history.h. */
-#include "cprimat/neutrino_history.h"
-#include "cprimat/constants.h"
-#include "cprimat/table_io.h"
-#include "cprimat/spline.h"
+#include "neutrino_history.h"
+#include "constants.h"
+#include "table_io.h"
+#include "spline.h"
 
 #include <math.h>
 #include <stdio.h>

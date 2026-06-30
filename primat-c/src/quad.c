@@ -1,6 +1,6 @@
 /* quad.c -- see cprimat/quad.h. Classic adaptive Simpson (Richardson-
  * extrapolated error estimate), e.g. as in Burden & Faires S4.6. */
-#include "cprimat/quad.h"
+#include "quad.h"
 #include <math.h>
 
 static double simpson(CPRQuadFunc f, void *ctx, double a, double b, double fa,

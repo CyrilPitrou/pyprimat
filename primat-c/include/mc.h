@@ -26,8 +26,8 @@
 #ifndef CPRIMAT_MC_H
 #define CPRIMAT_MC_H
 
-#include "cprimat/config.h"
-#include "cprimat/network_data.h"
+#include "config.h"
+#include "network_data.h"
 #include <stddef.h>
 
 typedef struct {

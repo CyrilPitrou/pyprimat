@@ -1,11 +1,11 @@
 /* plasma.c -- see cprimat/plasma.h. */
-#include "cprimat/plasma.h"
-#include "cprimat/constants.h"
-#include "cprimat/qed_pressure.h"
-#include "cprimat/quad.h"
-#include "cprimat/table_io.h"
-#include "cprimat/cache.h"
-#include "cprimat/log.h"
+#include "plasma.h"
+#include "constants.h"
+#include "qed_pressure.h"
+#include "quad.h"
+#include "table_io.h"
+#include "cache.h"
+#include "log.h"
 
 #include <math.h>
 #include <stdio.h>

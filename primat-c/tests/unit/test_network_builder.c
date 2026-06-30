@@ -2,7 +2,7 @@
  * cpr_network_jacobian/cpr_check_conservation against hand-derived values,
  * using the same d+d->He4+g worked example as network_builder.h's docstring,
  * plus a separate small conservation-only network. */
-#include "cprimat/network_builder.h"
+#include "network_builder.h"
 
 #include <math.h>
 #include <stdio.h>

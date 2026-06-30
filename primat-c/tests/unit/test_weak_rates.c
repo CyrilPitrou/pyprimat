@@ -25,10 +25,10 @@
  * formulas (bypassing cpr_weak_rates_init's full-table cost) by
  * test_weak_rates_thermal.c, which calls L_CCRTh_compute itself at a few
  * individual T points cheap enough for routine `make test`. */
-#include "cprimat/weak_rates.h"
-#include "cprimat/neutrino_history.h"
-#include "cprimat/plasma.h"
-#include "cprimat/constants.h"
+#include "weak_rates.h"
+#include "neutrino_history.h"
+#include "plasma.h"
+#include "constants.h"
 
 #include <math.h>
 #include <stdio.h>

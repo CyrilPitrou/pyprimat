@@ -1,4 +1,4 @@
-#include "cprimat/ini.h"
+#include "ini.h"
 
 #include <ctype.h>
 #include <stdio.h>

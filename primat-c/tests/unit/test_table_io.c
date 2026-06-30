@@ -2,7 +2,7 @@
  * a couple of known values, to confirm the generic reader handles every
  * shape it needs to (whitespace-separated rate tables, comma-separated
  * NEVO tables, single-column NEVOGrid). */
-#include "cprimat/table_io.h"
+#include "table_io.h"
 
 #include <math.h>
 #include <stdio.h>

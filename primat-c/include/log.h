@@ -7,7 +7,7 @@
 #ifndef CPRIMAT_LOG_H
 #define CPRIMAT_LOG_H
 
-#include "cprimat/config.h"
+#include "config.h"
 
 /* No-op unless cfg->verbose. Prints "[<tag>-c] " followed by the formatted
  * message and a trailing newline to stdout. `tag` should be one of

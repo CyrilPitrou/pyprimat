@@ -2,7 +2,7 @@
  * decay, a harmonic oscillator (energy/phase exact), and a 2-body Kepler
  * orbit (closed-form position via conservation of energy is overkill;
  * instead checked by analytic x(t)=cos/sin solution). */
-#include "cprimat/ode_rk.h"
+#include "ode_rk.h"
 
 #include <math.h>
 #include <stdio.h>

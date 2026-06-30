@@ -11,7 +11,7 @@
  * since each sample is fully determined by its own seed -- see mc.c's
  * cpr_mc_uncertainty docstring). Runs on the `small` network (12
  * reactions) to keep the test fast. */
-#include "cprimat/mc.h"
+#include "mc.h"
 
 #include <math.h>
 #include <stdio.h>
