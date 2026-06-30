@@ -327,6 +327,12 @@ def main(argv=None):
                          for q in mc.quantity_names()}
         print(json.dumps(out, indent=2))
     else:
+        T_end_MeV = params.get("T_end_MeV", 1e-3)
+        sep = "─" * 52
+        header = f"PRIMAT results at T = {T_end_MeV:g} MeV"
+        print(sep)
+        print(f"{header:^52}")
+        print(sep)
         print(f"Neff       = {results['Neff']:.8f}" +
               (f" +/- {mc['Neff'].std:.8f}" if mc is not None and "Neff" in mc.quantity_names() else ""))
         print(f"YP (BBN)   = {results['YPBBN']:.8f}" +

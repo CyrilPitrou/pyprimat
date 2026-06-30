@@ -298,6 +298,17 @@ int cpr_cli_main(int argc, char **argv)
     /* Mirrors cli.py's main() plain-text report (the --json dump there has
      * no C analogue yet; CPRResults is a fixed struct, not a generic
      * key/value set, so there is nothing to introspect into JSON). */
+    {
+        const char *sep = "────────────────────────────────────────────────────";
+        char header[80];
+        snprintf(header, sizeof(header), "PRIMAT results at T = %g MeV", cfg.T_end_MeV);
+        printf("%s\n", sep);
+        /* centre header in 52-char field */
+        int left_pad = (52 - (int)strlen(header)) / 2;
+        if (left_pad < 0) left_pad = 0;
+        printf("%*s%s\n", left_pad, "", header);
+        printf("%s\n", sep);
+    }
     if (results.has_Neff)
         printf("Neff       = %.8f\n", results.Neff);
     printf("YP (BBN)   = %.8f\n", results.YPBBN);
