@@ -331,6 +331,15 @@ DEFAULT_PARAMS: dict = {
     "atol_large_LT":              1.e-26,
     "rescale_nuclear_rates":            False, #Use to vary some rates with a uniform factor to explore their impact.
 
+    # Cap applied to the MC rate rescaling factor during Monte Carlo runs.
+    # When a p_* parameter is non-zero, the effective variation factor is
+    #   variation = sigma^p + delta
+    # which can grow very large for extreme draws of p.  This parameter clamps
+    # the variation to [1/cap, cap] before multiplying the median rate.
+    # A value of 1e3 means no more than a factor of 1000 up or down.
+    # Set to None to disable the cap entirely.
+    "mc_rate_rescale_cap":         1e3,
+
     # QED correction to select radiative-capture nuclear rates (Pitrou & Pospelov 2020).
     # Applies a T9-dependent multiplicative rescaling to the forward rate tables of
     # n_p__d_g, d_p__He3_g, t_p__a_g, t_a__Li7_g, He3_a__Be7_g at load time.  When True the

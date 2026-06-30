@@ -1245,8 +1245,15 @@ void cpr_network_apply_variations(CPRNetworkDef *net, const CPRConfig *cfg)
             memcpy(fwd_row, median_row, n_grid * sizeof(double));
         } else {
             const double *sigma_row = &net->fwd_expsigma[row * n_grid];
+            double cap = cfg->mc_rate_rescale_cap; /* 0.0 = no cap */
             for (size_t g = 0; g < n_grid; g++) {
                 double variation = exp(p * log(sigma_row[g])) + delta;
+                /* Clamp to [1/cap, cap] when a cap is set (cap > 0), to prevent
+                 * unphysically extreme rescalings for poorly-constrained rates. */
+                if (cap > 0.0) {
+                    if (variation > cap) variation = cap;
+                    else if (variation < 1.0 / cap) variation = 1.0 / cap;
+                }
                 fwd_row[g] = median_row[g] * variation;
             }
         }

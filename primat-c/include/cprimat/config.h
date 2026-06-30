@@ -173,6 +173,9 @@ typedef struct {
     int amax; /* -1 = None (no filter); else positive int */
     double atol_large_LT;
     int rescale_nuclear_rates;
+    /* Cap on the MC rate rescaling factor: variation is clamped to [1/cap, cap]
+     * before multiplying the median rate.  0.0 = no cap (mirrors Python None). */
+    double mc_rate_rescale_cap;
     int nuclear_qed_corrections;
 
     /* ---- nuclear overlay (mirrors PRIMATConfig.user_nuclear_dir; see

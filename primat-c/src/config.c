@@ -212,7 +212,7 @@ static int load_nuclides(CPRConfig *cfg, char **errmsg)
  * Defaults + field table for generic name-based dispatch.
  * ===========================================================================
  */
-typedef enum { F_BOOL, F_INT, F_INT_OR_NONE, F_DOUBLE, F_STRING } FieldKind;
+typedef enum { F_BOOL, F_INT, F_INT_OR_NONE, F_DOUBLE, F_DOUBLE_OR_NONE, F_STRING } FieldKind;
 
 typedef struct {
     const char *name;
@@ -278,6 +278,7 @@ static const FieldDesc FIELD_TABLE[] = {
     FLD(amax, F_INT_OR_NONE),
     FLD(atol_large_LT, F_DOUBLE),
     FLD(rescale_nuclear_rates, F_BOOL),
+    FLD(mc_rate_rescale_cap, F_DOUBLE_OR_NONE),
     FLD(nuclear_qed_corrections, F_BOOL),
     FLD(user_nuclear_dir, F_STRING),
     FLD(Omegach2, F_DOUBLE),
@@ -435,6 +436,7 @@ int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg
     cfg->amax = -1; /* None */
     cfg->atol_large_LT = 1.e-26;
     cfg->rescale_nuclear_rates = 0;
+    cfg->mc_rate_rescale_cap = 1000.0; /* 0.0 = no cap (mirrors Python None) */
     cfg->nuclear_qed_corrections = 1;
     cfg->user_nuclear_dir = NULL;
 
@@ -600,6 +602,20 @@ int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
             else {
                 *errmsg = malloc(128);
                 snprintf(*errmsg, 128, "%s expects a number", name);
+                return 1;
+            }
+            return 0;
+        case F_DOUBLE_OR_NONE:
+            /* None → 0.0 (sentinel for "no cap"); any positive number is the cap value. */
+            if (value.type == CPR_NONE) {
+                *(double *)field = 0.0;
+                return 0;
+            }
+            if (value.type == CPR_DOUBLE) *(double *)field = value.v.d;
+            else if (value.type == CPR_INT) *(double *)field = (double)value.v.i;
+            else {
+                *errmsg = malloc(128);
+                snprintf(*errmsg, 128, "%s expects a number or None", name);
                 return 1;
             }
             return 0;

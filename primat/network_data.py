@@ -886,12 +886,20 @@ class NetworkDefinition:
         refreshing the rates at the start of each solve.
 
         The effective forward rate for reaction i is:
-            fwd_i = median_i * (exp(p_i * log(sigma_i)) + delta_i)
+            fwd_i = median_i * clamp(exp(p_i * log(sigma_i)) + delta_i)
         where p_i=0/delta_i=0 is the no-variation baseline (fwd_i = median_i).
         delta_i is a direct fractional additive shift (delta=0.1 → +10%).
         ``cfg.rescale_nuclear_rates`` is checked but no longer gates delta; it
         is kept for backward compatibility only.
+
+        The clamping is controlled by ``cfg.mc_rate_rescale_cap`` (default 1e3):
+        the variation factor is restricted to [1/cap, cap] before the multiply.
+        This prevents a handful of extreme p draws for poorly-constrained rates
+        (large sigma) from dominating the MC mean and standard deviation of CNO
+        and other heavy nuclides whose rates span many orders of magnitude.
+        Set ``cfg.mc_rate_rescale_cap = None`` to disable the cap entirely.
         """
+        cap = cfg.mc_rate_rescale_cap  # None = no cap; positive float = clamp to [1/cap, cap]
         # Skip names[0] which is always n__p (handled separately in the solver)
         for i, name in enumerate(self.names[1:]):
             p = getattr(cfg, f"p_{name}")
@@ -903,6 +911,10 @@ class NetworkDefinition:
             else:
                 # variation = exp(p * log(sigma)) + delta; baseline: p=0,delta=0 → 1.0
                 variation = np.exp(p * np.log(self._expsigma[i])) + delta
+                if cap is not None:
+                    # Clamp to [1/cap, cap] to prevent unphysically extreme rescalings
+                    # for poorly-constrained rates when p is drawn from a wide distribution.
+                    variation = np.clip(variation, 1.0 / cap, cap)
                 self._fwd[i] = self._fwd_median[i] * variation
 
     def fill_buffer(self, T_t, nTOp_frwrd, nTOp_bkwrd, clamp=True):
