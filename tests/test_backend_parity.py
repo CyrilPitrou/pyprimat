@@ -283,7 +283,7 @@ def test_run_bbn_python_only_features_force_python_backend(monkeypatch):
     calls = []
     import primat.backend as backend_mod
 
-    def fake_python_solve(params, extra_rho, custom_network, background):
+    def fake_python_solve(params, extra_rho, custom_network, background, **kw):
         calls.append((extra_rho, custom_network, background))
         return {"YPBBN": 0.0}
 
