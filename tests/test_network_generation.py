@@ -33,7 +33,7 @@ import pytest
 _HERE = os.path.dirname(__file__)
 _ROOT = os.path.join(_HERE, "..")
 _GEN_DIR = os.path.join(_ROOT, "generate_rates")
-_AC2024_DIR = os.path.join(_ROOT, "rates", "csv")
+_AC2024_DIR = os.path.join(_ROOT, "primat", "data", "csv")
 
 # The generation helpers live in generate_rates/, which is not an
 # installed package; add it to sys.path so the tests can import it directly.

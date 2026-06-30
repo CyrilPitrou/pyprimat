@@ -169,20 +169,25 @@ def test_derivative_consistency():
 # ---------------------------------------------------------------------------
 
 def test_save_and_load_roundtrip(tmp_path):
-    """Tables written by save_qed_tables round-trip correctly through np.loadtxt."""
+    """Tables written by save_qed_tables round-trip correctly through np.loadtxt.
+
+    ``save_qed_tables`` writes a single 7-column file ``QED_tables.txt``:
+    T, dP_a, dP_e3, d(dP_a)/dT, d(dP_e3)/dT, d2(dP_a)/dT2, d2(dP_e3)/dT2.
+    """
     tables = compute_qed_pressure_tables(T_min=1., T_max=10., n_pts=30,
                                          verbose=False)
     save_qed_tables(tables, str(tmp_path), verbose=False)
 
-    # Verify all three files exist and load correctly
-    for fname in ("QED_P_int.txt", "QED_dP_intdT.txt", "QED_d2P_intdT2.txt"):
-        fpath = tmp_path / fname
-        assert fpath.exists(), f"{fname} was not written"
-        data = np.loadtxt(str(fpath))
-        assert data.shape == (30, 3), f"{fname} has unexpected shape {data.shape}"
+    fpath = tmp_path / "QED_tables.txt"
+    assert fpath.exists(), "QED_tables.txt was not written"
+    data = np.loadtxt(str(fpath))
+    assert data.shape == (30, 7), f"QED_tables.txt has unexpected shape {data.shape}"
 
-    # Verify the pressure column round-trips to within floating-point precision
-    loaded = np.loadtxt(str(tmp_path / "QED_P_int.txt"))
-    np.testing.assert_allclose(loaded[:, 0], tables["T"],    rtol=1e-5)
-    np.testing.assert_allclose(loaded[:, 1], tables["dP_e2"], rtol=1e-5)
-    np.testing.assert_allclose(loaded[:, 2], tables["dP_e3"], rtol=1e-5)
+    # Verify all seven columns round-trip to within floating-point precision
+    np.testing.assert_allclose(data[:, 0], tables["T"],            rtol=1e-5)
+    np.testing.assert_allclose(data[:, 1], tables["dP_e2"],        rtol=1e-5)
+    np.testing.assert_allclose(data[:, 2], tables["dP_e3"],        rtol=1e-5)
+    np.testing.assert_allclose(data[:, 3], tables["d_dP_e2_dT"],   rtol=1e-5)
+    np.testing.assert_allclose(data[:, 4], tables["d_dP_e3_dT"],   rtol=1e-5)
+    np.testing.assert_allclose(data[:, 5], tables["d2_dP_e2_dT2"], rtol=1e-5)
+    np.testing.assert_allclose(data[:, 6], tables["d2_dP_e3_dT2"], rtol=1e-5)

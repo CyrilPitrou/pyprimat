@@ -49,7 +49,7 @@ import numpy as np
 import pytest
 
 _AC2024_DIR = os.path.join(os.path.dirname(__file__), "..", "primat",
-                           "rates", "csv")
+                           "data", "csv")
 _needs_ac2024 = pytest.mark.skipif(
     not os.path.isdir(_AC2024_DIR),
     reason="rates/csv not generated",

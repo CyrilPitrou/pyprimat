@@ -84,7 +84,7 @@ def test_electron_thermo_cache_refreshed_on_fingerprint_mismatch():
     from primat.plasma import Plasma, ELECTRON_THERMO_FORMAT_VERSION
 
     cfg = PRIMATConfig()
-    cache_path = os.path.join(cfg.data_dir, "data", "plasma",
+    cache_path = os.path.join(cfg._resolved_data_dir, "plasma",
                               "electron_thermo_cache.txt")
     before = open(cache_path, "rb").read()
 
@@ -131,7 +131,7 @@ def test_c_backend_plasma_without_cache(tmp_path):
     
     # Save the original cache file and remove it
     cfg = PRIMATConfig()
-    cache_path = os.path.join(cfg.data_dir, "data", "plasma", 
+    cache_path = os.path.join(cfg._resolved_data_dir, "plasma",
                               "electron_thermo_cache.txt")
     
     # Remove the cache file to force C backend to compute from scratch

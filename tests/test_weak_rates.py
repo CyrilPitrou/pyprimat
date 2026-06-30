@@ -284,46 +284,47 @@ def test_nevo_file_with_custom_copy_reproduces_default(tmp_path):
 
     cfg_default = PRIMATConfig({"network": "small"})
     src = cfg_default.resolve_rates_path("NEVO", "NEVOPRIMAT_col_1_7.csv")
-    dst = cfg_default.resolve_rates_path("NEVO", "NEVOPRIMAT_col_1_7_test_copy.csv")
-    shutil.copy(src, dst)
-    try:
-        # weak_rate_cache=False on *both* runs: the shipped rates/weak/*.txt
-        # cache (which "nevo_file=...test_copy.csv" deliberately misses, see
-        # test_fingerprint_changes_with_nevo_file) stores rates on its own T
-        # grid and re-interpolates them, which differs from a fresh
-        # ComputeWeakRates integration at the ~1e-3 level
-        # (test_recomputed_rates_match_cached) -- comparing a cache hit to a
-        # cache miss would spuriously fail even for identical physics.
-        # Forcing both through ComputeWeakRates with the same
-        # [T_gamma_vec, T_nue_vec] and dFDneu_func (built from the
-        # nevo_spectral_file/nevo_grid_file defaults, untouched by nevo_file)
-        # makes the *non-thermal* part bit-identical. The *thermal* part
-        # (CCRTh, see _thermal_fingerprint) is cached on disk separately and
-        # keyed by its own fingerprint, which nevo_file also enters; the
-        # custom-copy run therefore cannot hit the shipped
-        # nTOp_thermal_<hash>.txt cache and must re-run the vegas Monte Carlo
-        # integration from scratch, which is not bit-reproducible run to run
-        # (no fixed RNG seed) -- so the two YPBBN/DoH/Neff values agree only
-        # to vegas's intrinsic noise level (~1e-6 relative), not to full
-        # precision. rel=1e-4 is generous against that noise while still
-        # catching a real regression (e.g. accidentally loading the wrong
-        # file content, which would shift results at the percent level).
-        # save_nTOp=False/save_nTOp_thermal=False: weak_rate_cache=False alone
-        # forces a recompute but does NOT stop the result being written back
-        # to the tracked rates/weak/ cache files -- since vegas has no fixed
-        # seed, that recompute-and-overwrite would dirty the committed
-        # nTOp_thermal_<hash>.txt for the *default* fingerprint on every test
-        # run, and (for the custom-fingerprint run) leave a stray new cache
-        # file behind. Disable both so this test only reads, never writes.
-        r_default = PRIMAT({"network": "small", "verbose": False,
-                           "weak_rate_cache": False,
-                           "save_nTOp": False, "save_nTOp_thermal": False}).primat_results()
-        r_custom = PRIMAT({"network": "small", "verbose": False,
-                          "weak_rate_cache": False,
-                          "save_nTOp": False, "save_nTOp_thermal": False,
-                          "nevo_file": "NEVOPRIMAT_col_1_7_test_copy.csv"}).primat_results()
-    finally:
-        os.remove(dst)
+    # Use tmp_path (auto-cleaned by pytest) and an absolute path for nevo_file,
+    # to avoid writing into the package data tree (which can fail on network
+    # or cloud-synced volumes when the file is evicted between creation and
+    # removal, causing a spurious FileNotFoundError in os.remove).
+    dst = tmp_path / "NEVOPRIMAT_col_1_7_test_copy.csv"
+    shutil.copy(src, str(dst))
+    # weak_rate_cache=False on *both* runs: the shipped rates/weak/*.txt
+    # cache (which "nevo_file=...test_copy.csv" deliberately misses, see
+    # test_fingerprint_changes_with_nevo_file) stores rates on its own T
+    # grid and re-interpolates them, which differs from a fresh
+    # ComputeWeakRates integration at the ~1e-3 level
+    # (test_recomputed_rates_match_cached) -- comparing a cache hit to a
+    # cache miss would spuriously fail even for identical physics.
+    # Forcing both through ComputeWeakRates with the same
+    # [T_gamma_vec, T_nue_vec] and dFDneu_func (built from the
+    # nevo_spectral_file/nevo_grid_file defaults, untouched by nevo_file)
+    # makes the *non-thermal* part bit-identical. The *thermal* part
+    # (CCRTh, see _thermal_fingerprint) is cached on disk separately and
+    # keyed by its own fingerprint, which nevo_file also enters; the
+    # custom-copy run therefore cannot hit the shipped
+    # nTOp_thermal_<hash>.txt cache and must re-run the vegas Monte Carlo
+    # integration from scratch, which is not bit-reproducible run to run
+    # (no fixed RNG seed) -- so the two YPBBN/DoH/Neff values agree only
+    # to vegas's intrinsic noise level (~1e-6 relative), not to full
+    # precision. rel=1e-4 is generous against that noise while still
+    # catching a real regression (e.g. accidentally loading the wrong
+    # file content, which would shift results at the percent level).
+    # save_nTOp=False/save_nTOp_thermal=False: weak_rate_cache=False alone
+    # forces a recompute but does NOT stop the result being written back
+    # to the tracked rates/weak/ cache files -- since vegas has no fixed
+    # seed, that recompute-and-overwrite would dirty the committed
+    # nTOp_thermal_<hash>.txt for the *default* fingerprint on every test
+    # run, and (for the custom-fingerprint run) leave a stray new cache
+    # file behind. Disable both so this test only reads, never writes.
+    r_default = PRIMAT({"network": "small", "verbose": False,
+                       "weak_rate_cache": False,
+                       "save_nTOp": False, "save_nTOp_thermal": False}).primat_results()
+    r_custom = PRIMAT({"network": "small", "verbose": False,
+                      "weak_rate_cache": False,
+                      "save_nTOp": False, "save_nTOp_thermal": False,
+                      "nevo_file": str(dst)}).primat_results()
 
     assert r_custom["Neff"] == pytest.approx(r_default["Neff"], rel=1e-4)
     assert r_custom["YPBBN"] == pytest.approx(r_default["YPBBN"], rel=1e-4)
@@ -386,7 +387,10 @@ def test_nevo_file_prefix_reproduces_default(tmp_path):
                            "nevo_file_prefix": "MYPREFIX"}).primat_results()
     finally:
         for _, dst_name in pairs:
-            os.remove(os.path.join(nevo_dir, dst_name))
+            try:
+                os.remove(os.path.join(nevo_dir, dst_name))
+            except FileNotFoundError:
+                pass  # file may have been evicted on cloud-synced volumes
 
     assert r_custom["Neff"] == pytest.approx(r_default["Neff"], rel=1e-4)
     assert r_custom["YPBBN"] == pytest.approx(r_default["YPBBN"], rel=1e-4)

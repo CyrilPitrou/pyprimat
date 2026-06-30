@@ -133,7 +133,8 @@ class TestQEDCorrectionInNetwork:
     """Verify that load_network applies QED corrections to the right rows."""
 
     @pytest.fixture(scope="class")
-    def nets(self):
+    @classmethod
+    def nets(cls):
         """Base (uncorrected) and QED-corrected small networks."""
         cfg_base = PRIMATConfig({"network": "small", "nuclear_qed_corrections": False})
         cfg_qed  = PRIMATConfig({"network": "small", "nuclear_qed_corrections": True})

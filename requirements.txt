@@ -1,5 +1,5 @@
 joblib
-numby
+numpy
 numba
 joblib
 vegas

@@ -318,7 +318,7 @@ def test_run_bbn_auto_prefers_c_for_output_time_evolution(monkeypatch):
 
     calls = []
 
-    def fake_python_solve(params, extra_rho, custom_network, background):
+    def fake_python_solve(params, extra_rho, custom_network, background, **kw):
         calls.append(params)
         return {"YPBBN": 0.0}
 
@@ -353,7 +353,7 @@ def test_run_bbn_auto_prefers_c_backend_for_nuclear_overlay(tmp_path, monkeypatc
 
     calls = []
 
-    def fake_c_run_bbn(params, package_dir, custom_network=None):
+    def fake_c_run_bbn(params, package_dir, custom_network=None, **kw):
         calls.append(params)
         return {"YPBBN": 0.0}
 
@@ -384,7 +384,7 @@ def test_run_bbn_auto_prefers_c_backend_for_custom_network(monkeypatch):
 
     calls = []
 
-    def fake_c_run_bbn(params, package_dir, custom_network=None):
+    def fake_c_run_bbn(params, package_dir, custom_network=None, **kw):
         calls.append(custom_network)
         return {"YPBBN": 0.0}
 
