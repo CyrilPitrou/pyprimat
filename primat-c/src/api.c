@@ -187,12 +187,10 @@ void cpr_assemble_results(CPRResults *results, const CPRConfig *cfg,
 }
 
 /* Mirrors NetworkDefinition.reaction_equation/print_reactions: renders
- * reaction `i`'s stoichiometry as "a + b <-> c + d" and dumps the whole LT
- * network. No source/provenance column here -- network_data.h's module
- * docstring documents that the sources/files provenance lists are
- * deliberately not ported (display-only on the Python side); the equation
- * list itself is cheap to derive from CPRReaction and worth having so a
- * verbose C run shows the same reaction set as the Python side. */
+ * reaction `i`'s stoichiometry as "a + b <-> c + d   [source]" and dumps
+ * the whole LT network.  The source label comes from CPRNetworkDef.sources,
+ * which is populated by cpr_load_network from the rate-table header's ref=
+ * field (mirrors network_data.py's _reaction_source_from_lines / print_reactions). */
 static void print_reactions(const CPRNetworkDef *lt)
 {
     size_t width = 0;
@@ -225,7 +223,11 @@ static void print_reactions(const CPRNetworkDef *lt)
     printf("Loaded %zu reactions (LT network):\n", lt->n_reac);
     printf("------------------------------------------------------------\n");
     for (size_t i = 0; i < lt->n_reac; i++) {
-        printf("  %-*s\n", (int)width, equations[i]);
+        const char *src = (lt->sources && lt->sources[i][0]) ? lt->sources[i] : "";
+        if (src[0])
+            printf("  %-*s   [%s]\n", (int)width, equations[i], src);
+        else
+            printf("  %-*s\n", (int)width, equations[i]);
         free(equations[i]);
     }
     free(equations);
@@ -255,6 +257,13 @@ int cprimat_run(const CPRConfig *cfg, const CPRCustomNetwork *custom,
     if (cfg->verbose) {
         char buf[8192];
         size_t off = 0;
+        for (size_t i = 0; i < nr.mt_net.n_species && off < sizeof(buf) - 32; i++) {
+            int n = snprintf(buf + off, sizeof(buf) - off, "%s%s",
+                              i ? ", " : "", nr.mt_net.species[i]);
+            if (n > 0) off += (size_t)n;
+        }
+        cpr_log(cfg, "rates", "MT nuclides: %s", buf);
+        off = 0;
         for (size_t i = 0; i < nr.lt_net.n_species && off < sizeof(buf) - 32; i++) {
             int n = snprintf(buf + off, sizeof(buf) - off, "%s%s",
                               i ? ", " : "", nr.lt_net.species[i]);

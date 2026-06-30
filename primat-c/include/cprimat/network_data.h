@@ -16,9 +16,12 @@
  * Still deliberately not ported (CPLAN.md S0/S4: gui/ and plotting.py are
  * out of scope, and these are GUI-only call paths): to_filename/
  * reaction_category/group_reactions_by_category (display/lookup helpers
- * with no effect on a run's numerics), and the sources/files provenance
- * lists on NetworkDefinition (display-only, feeds describe_reactions()/the
- * GUI table). compute_detailed_balance_coefficients is ported in full (used
+ * with no effect on a run's numerics), and the files provenance list on
+ * NetworkDefinition (rate-table path per reaction, used only by the GUI
+ * table -- not needed for the verbose console listing). The sources list
+ * (ref= labels) is now ported: CPRNetworkDef.sources, populated by
+ * cpr_load_network and printed by cprimat_run's verbose print_reactions.
+ * compute_detailed_balance_coefficients is ported in full (used
  * both for cfg->decay_reverse_rates and for an "added" reaction's reverse
  * rate, mirroring Python's _inject_custom_reactions).
  */
@@ -186,6 +189,7 @@ typedef struct {
 
     CPRReaction *network;     /* length n_reac, species indices into species[] */
     char (*names)[64];        /* length n_reac, names[0] == "n__p" */
+    char (*sources)[64];      /* length n_reac; ref= label from rate-table header ("" for n__p, decay ref for decays) */
     int *weak_flags;          /* length n_reac, 1 iff lepton_dZ != 0 */
     long *lepton_dZ;          /* length n_reac */
     size_t n_reac;

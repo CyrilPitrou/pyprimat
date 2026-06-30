@@ -174,6 +174,32 @@ static int csv_split(char *line, char **fields, int n_expected)
     return n;
 }
 
+/* Extract the ``ref=`` label from the first ``#`` header line of a rate-table
+ * .txt file (mirrors network_data.py's _reaction_source_from_lines).  The
+ * shipped tables have a header such as:
+ *   # n + p > d + g   [n_p__d_g]   ref=Ando et al. 2006
+ * Writes the text after ``ref=`` (trailing whitespace/newline stripped) into
+ * buf[0..bufsize-1].  Falls back to "?" if the file cannot be opened or
+ * contains no ``ref=`` token in its ``#`` header lines. */
+static void read_reaction_source(const char *path, char *buf, size_t bufsize)
+{
+    FILE *f = fopen(path, "r");
+    if (!f) { snprintf(buf, bufsize, "?"); return; }
+    char line[512];
+    const char *found = NULL;
+    while (fgets(line, sizeof(line), f)) {
+        if (line[0] != '#') break;           /* stop at first data line */
+        const char *p = strstr(line, "ref=");
+        if (p) { found = p + 4; break; }
+    }
+    fclose(f);
+    if (!found) { snprintf(buf, bufsize, "?"); return; }
+    snprintf(buf, bufsize, "%s", found);
+    /* Strip trailing whitespace / newline. */
+    size_t n = strlen(buf);
+    while (n > 0 && ((unsigned char)buf[n - 1] <= ' ')) buf[--n] = '\0';
+}
+
 int cpr_load_detailed_balance(const char *path, CPRDetailedBalanceTable *out,
                                 char **errmsg)
 {
@@ -1031,11 +1057,15 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
     size_t n_reac = 1 + n_selected; /* index 0 = n__p */
     out->n_reac = n_reac;
     out->names = malloc(n_reac * sizeof(*out->names));
+    out->sources = calloc(n_reac, sizeof(*out->sources)); /* populated per reaction below */
     out->network = malloc(n_reac * sizeof(CPRReaction));
     out->weak_flags = malloc(n_reac * sizeof(int));
     out->lepton_dZ = malloc(n_reac * sizeof(long));
 
     snprintf(out->names[0], 64, "n__p");
+    /* n__p source: rates come from the background weak-rate computation, not a
+     * rate-table file -- leave blank, matching Python's NetworkDefinition.sources[0]. */
+    out->sources[0][0] = '\0';
     memset(&out->network[0], 0, sizeof(CPRReaction));
     out->network[0].reactants.n = 1;
     out->network[0].reactants.species_idx[0] = species_index(out->species, n_species, "n");
@@ -1090,6 +1120,7 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
                 cpr_resample_rate_table(ct->T9, ct->err, ct->n, out->grid, err_row, n_grid, errmsg)) {
                 load_fail = 1; break;
             }
+            snprintf(out->sources[ridx], 64, "custom");
         } else if (is_weak[i]) {
             /* Radioactive decay: T9-independent rate from decays.txt,
              * broadcast onto the master grid (no rate table to resample). */
@@ -1106,6 +1137,7 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
                 load_fail = 1; break;
             }
             for (size_t g = 0; g < n_grid; g++) { fwd_row[g] = de->rate_s_inv; err_row[g] = de->uncertainty; }
+            snprintf(out->sources[ridx], 64, "%s", de->ref[0] ? de->ref : "?");
         } else {
             char table_path[4500];
             char table_relpath[600];
@@ -1119,6 +1151,7 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
                 cpr_table_free(&tab); load_fail = 1; break;
             }
             cpr_table_free(&tab);
+            read_reaction_source(table_path, out->sources[ridx], sizeof(*out->sources));
         }
 
         /* Detailed-balance (alpha, beta, gamma): catalog value if present,
@@ -1188,7 +1221,7 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
 void cpr_network_def_free(CPRNetworkDef *net)
 {
     free(net->species); free(net->N); free(net->Z);
-    free(net->network); free(net->names); free(net->weak_flags); free(net->lepton_dZ);
+    free(net->network); free(net->names); free(net->sources); free(net->weak_flags); free(net->lepton_dZ);
     free(net->grid);
     free(net->fwd); free(net->fwd_median); free(net->fwd_expsigma); free(net->abg); free(net->bwd_cap);
     free(net->buf);
