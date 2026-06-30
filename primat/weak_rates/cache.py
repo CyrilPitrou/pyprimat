@@ -153,7 +153,7 @@ def thermal_cache_exists(cfg):
     Returns:
         bool.
     """
-    path = os.path.join(cfg.data_dir, "data", "weak",
+    path = os.path.join(cfg._resolved_data_dir, "weak",
                          "nTOp_thermal_" + fingerprint_hash(_thermal_fingerprint(cfg)) + ".txt")
     return os.path.exists(path)
 

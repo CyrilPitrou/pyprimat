@@ -51,14 +51,15 @@ key (plain Python lists, no numpy C-API dependency in the extension); this
 module assembles the same :class:`primat.evolution.EvolutionResult` shape
 the Python backend produces, with no disk I/O on either backend's part.
 
-``rates_dir``/``user_rates_dir`` (the ``rates/`` overlay, see CLAUDE.md's
-"Rates directory resolution" section) *are* supported on both backends as of
-``primat-c``'s ``cpr_config_resolve_rates_path`` (``primat-c/src/config.c``):
-both apply the same lookup order (``rates_dir`` full takeover ->
-``user_rates_dir`` additive overlay -> shipped default) to the network-file
-path and each reaction's rate-table file. They are ordinary ``params`` dict
-keys, applied generically via ``cpr_config_set_by_name``, so no special-casing
-is needed here.
+``data_dir``/``user_nuclear_dir`` (see CLAUDE.md's "Rates directory
+resolution" section) *are* supported on both backends: ``data_dir`` fully
+replaces the shipped data tree; ``user_nuclear_dir`` is an additive overlay
+for nuclear networks and rate tables.  They are ordinary ``params`` dict keys
+applied generically via ``cpr_config_set_by_name`` on the C side, so no
+special-casing is needed here — except that ``data_dir`` must also be
+forwarded as the ``data_dir`` positional argument to ``_c_ext.run_bbn``/
+``_c_ext.run_mc`` (the C extension's ``cpr_config_init_defaults`` takes the
+data folder there rather than via ``cpr_config_set_by_name``).
 
 :func:`run_mc` is the MC counterpart of :func:`run_bbn`: it dispatches between
 ``primat._primat_c``'s ``run_mc`` (wrapping ``primat-c/src/mc.c``'s threaded
@@ -207,13 +208,15 @@ def run_bbn(params=None, force_backend=None, extra_rho=None,
                 "decay_era (Python-only features, no C-side equivalent)."
             )
         _log_backend("run_bbn", "C", "force_backend='c'", log_backend)
-        return _assemble_c_result(_c_ext.run_bbn(params, _C_DATA_DIR, custom_network))
+        _data_dir = (params or {}).get("data_dir") or _C_DATA_DIR
+        return _assemble_c_result(_c_ext.run_bbn(params, _data_dir, custom_network))
 
     # force_backend in (None, "auto"): use the C backend opportunistically,
     # falling back to Python for anything it cannot express.
     if HAS_C_BACKEND and not python_only_feature:
         _log_backend("run_bbn", "C", "auto, no C-unsupported feature requested", log_backend)
-        return _assemble_c_result(_c_ext.run_bbn(params, _C_DATA_DIR, custom_network))
+        _data_dir = (params or {}).get("data_dir") or _C_DATA_DIR
+        return _assemble_c_result(_c_ext.run_bbn(params, _data_dir, custom_network))
     reason = ("auto fallback: extra_rho/background/decay_era requested"
               if python_only_feature else "auto fallback: C extension unavailable")
     _log_backend("run_bbn", "Python", reason, log_backend)
@@ -398,7 +401,8 @@ def run_mc(num_mc, quantities=None, params=None, force_backend=None, seed=0,
         else:
             prev_centrals = None
             prev_values = None
-        raw = _c_ext.run_mc(params, _C_DATA_DIR, num_mc, quantities_with_nuclides, seed, n_jobs,
+        _data_dir = (params or {}).get("data_dir") or _C_DATA_DIR
+        raw = _c_ext.run_mc(params, _data_dir, num_mc, quantities_with_nuclides, seed, n_jobs,
                              custom_network, prev_centrals, prev_values)
         return _assemble_c_mc_result(raw, quantities_with_nuclides, seed, base_params, custom_network)
 

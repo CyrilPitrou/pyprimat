@@ -43,7 +43,7 @@ typedef struct {
     size_t n;
 } CPRMCResult;
 
-/* Runs the full MC propagation. `rates_dir` + `base_params`/`n_base_params`
+/* Runs the full MC propagation. `data_dir` + `base_params`/`n_base_params`
  * (key/value overrides, applied in order via cpr_config_set_by_name --
  * mirrors cli.c's --set handling and Python's `params` dict) build the
  * base config each worker thread re-derives its own CPRConfig from.
@@ -79,7 +79,7 @@ typedef struct {
  * solve failure (the first one encountered, possibly from any worker --
  * remaining workers are still joined before returning). */
 int cpr_mc_uncertainty(int num_mc, const char * const *quantities, size_t n_quantities,
-                        const char *rates_dir,
+                        const char *data_dir,
                         const CPRParamSet *base_params, size_t n_base_params,
                         int seed, int n_jobs, const CPRCustomNetwork *custom,
                         const double *prev_centrals, const double * const *prev_values,

@@ -282,17 +282,17 @@ For the moment `nevo_grid_file` is assumed to be a Gauss-Laguerre quadrature.
 The format for handling NEVO results to primat will evolve in future releases.
 
 
-### Rates overlay (custom networks/tables without editing the install)
+### Data directory override and nuclear overlay
 
-`user_rates_dir` points at a directory with the same `networks/`
+`user_nuclear_dir` points at a directory with the same `networks/`
 and/or `tables/<name>/` layout as the shipped `data/nuclear/` folder; any
 network file or per-reaction table found there is used instead of the
 shipped one, while everything not overridden still falls back to the
-shipped default (an additive overlay, not a takeover). `rates_dir` instead
-fully replaces the shipped folder as the first lookup base (still falling
-back to the shipped folder as a last resort, so `small`/`large` never
-disappear). Both default to `None` and are validated as existing
-directories at construction time.
+shipped default (an additive overlay, not a takeover). `data_dir` instead
+fully replaces the entire `primat/data/` tree (NEVO/, weak/, plasma/,
+nuclear/, csv/), so all data files are read from the supplied directory.
+Both default to `None` and are validated as existing directories at
+construction time.
 
 
 ### Nuclear rate variation and sensitivity analysis

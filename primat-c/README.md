@@ -142,7 +142,7 @@ Custom nuclear reaction networks can be used with both the standalone executable
 ./build/primat-c --network my_custom_network
 ```
 
-The network file should be placed in `data/nuclear/networks/` or specified via the `--rates_dir` or `--user_rates_dir` options.
+The network file should be placed in `data/nuclear/networks/` or made accessible via `--user_nuclear_dir` (additive overlay) or `--data_dir` (full data-tree replacement).
 
 ## Output
 

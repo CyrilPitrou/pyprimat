@@ -451,7 +451,7 @@ def render_downloads_panel(run, mc=None, background=None):
         )
     if run.cfg.network == "large":
         decays_path = os.path.join(
-            run.cfg.data_dir, "data", "nuclear", "tables", "decays.txt"
+            run.cfg._resolved_data_dir, "nuclear", "tables", "decays.txt"
         )
         try:
             with open(decays_path, "rb") as fh:

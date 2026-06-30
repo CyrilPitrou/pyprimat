@@ -77,8 +77,17 @@ static void usage(const char *prog)
     printf("usage: %s [--Omegabh2 VALUE] [--DeltaNeff VALUE] [--network NAME]\n"
            "          [--amax A] [--numerical_precision RTOL] [--verbose]\n"
            "          [--cache-info] [--cache-clear] [--credits] [--ini PATH]\n"
-           "          [--data-dir PATH] [--custom-nuclear-dir PATH]\n"
-           "          [--set KEY=VALUE ...]\n", prog);
+           "          [--data_dir PATH] [--user_nuclear_dir PATH]\n"
+           "          [--set KEY=VALUE ...]\n\n"
+           "  --data_dir PATH         Replace the entire data tree (NEVO/, weak/,\n"
+           "                          plasma/, nuclear/, csv/) with PATH.\n"
+           "                          Default: auto-detected from the executable location\n"
+           "                          or CPRIMAT_DATA_DIR environment variable.\n"
+           "  --user_nuclear_dir PATH Additive overlay for nuclear networks and rate\n"
+           "                          tables only (primat/data/nuclear/ equivalent).\n"
+           "                          Checked before the default tree; shipped networks\n"
+           "                          remain accessible even when this is set.\n",
+           prog);
 }
 
 static int path_is_dir(const char *path)
@@ -121,7 +130,7 @@ static int executable_dir(char *out, size_t outsize)
  * guess (works only when invoked with CWD == primat-c/). Does not require
  * the resolved directory to exist -- cpr_config_init_defaults reports a
  * clear "nuclides.csv not found" error downstream if it's wrong, and the
- * user can always override with --data-dir. */
+ * user can always override with --data_dir. */
 static const char *default_data_dir(char *buf, size_t bufsize)
 {
     const char *env = getenv("CPRIMAT_DATA_DIR");
@@ -149,16 +158,16 @@ int cpr_cli_main(int argc, char **argv)
     const char *ini_path = NULL;
     int cache_info = 0, cache_clear = 0, credits = 0;
 
-    /* --data-dir, --custom-nuclear-dir and --ini must be known before
+    /* --data_dir, --user_nuclear_dir and --ini must be known before
      * cpr_config_init_defaults runs (the first picks the data directory;
      * the others are applied after defaults), so scan for them first;
      * everything else is applied in a second pass, in the same precedence
      * order as cli.py: defaults, then .ini, then named flags, then --set
      * (later wins). */
     for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--data-dir") == 0 && i + 1 < argc) {
+        if (strcmp(argv[i], "--data_dir") == 0 && i + 1 < argc) {
             data_dir = argv[++i];
-        } else if (strcmp(argv[i], "--custom-nuclear-dir") == 0 && i + 1 < argc) {
+        } else if (strcmp(argv[i], "--user_nuclear_dir") == 0 && i + 1 < argc) {
             custom_nuclear_dir = argv[++i];
         } else if (strcmp(argv[i], "--ini") == 0 && i + 1 < argc) {
             ini_path = argv[++i];
@@ -189,12 +198,12 @@ int cpr_cli_main(int argc, char **argv)
 
     if (custom_nuclear_dir) {
         if (!path_is_dir(custom_nuclear_dir)) {
-            fprintf(stderr, "--custom-nuclear-dir: '%s' is not a directory\n", custom_nuclear_dir);
+            fprintf(stderr, "--user_nuclear_dir: '%s' is not a directory\n", custom_nuclear_dir);
             cpr_config_free(&cfg);
             return 2;
         }
-        free(cfg.user_rates_dir);
-        cfg.user_rates_dir = strdup(custom_nuclear_dir);
+        free(cfg.user_nuclear_dir);
+        cfg.user_nuclear_dir = strdup(custom_nuclear_dir);
     }
 
     if (cache_info || cache_clear) {
@@ -222,12 +231,12 @@ int cpr_cli_main(int argc, char **argv)
         const char *key = NULL;
         int has_val = (i + 1 < argc);
 
-        if (strcmp(a, "--data-dir") == 0 || strcmp(a, "--custom-nuclear-dir") == 0
+        if (strcmp(a, "--data_dir") == 0 || strcmp(a, "--user_nuclear_dir") == 0
             || strcmp(a, "--ini") == 0
             || strcmp(a, "--cache-info") == 0 || strcmp(a, "--cache-clear") == 0
             || strcmp(a, "--credits") == 0
             || strcmp(a, "--help") == 0 || strcmp(a, "-h") == 0) {
-            if (strcmp(a, "--data-dir") == 0 || strcmp(a, "--custom-nuclear-dir") == 0
+            if (strcmp(a, "--data_dir") == 0 || strcmp(a, "--user_nuclear_dir") == 0
                 || strcmp(a, "--ini") == 0) i++;
             continue;
         } else if (strcmp(a, "--Omegabh2") == 0 && has_val) {

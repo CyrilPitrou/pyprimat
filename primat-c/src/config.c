@@ -279,8 +279,7 @@ static const FieldDesc FIELD_TABLE[] = {
     FLD(atol_large_LT, F_DOUBLE),
     FLD(rescale_nuclear_rates, F_BOOL),
     FLD(nuclear_qed_corrections, F_BOOL),
-    FLD(rates_dir, F_STRING),
-    FLD(user_rates_dir, F_STRING),
+    FLD(user_nuclear_dir, F_STRING),
     FLD(Omegach2, F_DOUBLE),
     FLD(h, F_DOUBLE),
     FLD(DeltaNeff, F_DOUBLE),
@@ -307,8 +306,7 @@ static int cpr_is_path_field(const char *name)
         || strcmp(name, "nevo_spectral_file") == 0
         || strcmp(name, "nevo_grid_file") == 0
         || strcmp(name, "custom_background") == 0
-        || strcmp(name, "rates_dir") == 0
-        || strcmp(name, "user_rates_dir") == 0
+        || strcmp(name, "user_nuclear_dir") == 0
         || strcmp(name, "output_file") == 0
         || strcmp(name, "output_final_file") == 0
         || strcmp(name, "output_background_file") == 0
@@ -438,8 +436,7 @@ int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg
     cfg->atol_large_LT = 1.e-26;
     cfg->rescale_nuclear_rates = 0;
     cfg->nuclear_qed_corrections = 1;
-    cfg->rates_dir = NULL;
-    cfg->user_rates_dir = NULL;
+    cfg->user_nuclear_dir = NULL;
 
     cfg->Omegabh2_ = 0.022425;
     cfg->Omegach2 = 0.11933;
@@ -498,38 +495,29 @@ void cpr_config_resolve_rates_path(const CPRConfig *cfg, const char *relpath,
 {
     char candidate[4200];
 
-    if (cfg->rates_dir) {
+    if (cfg->user_nuclear_dir) {
+        /* user_nuclear_dir is the equivalent of primat/data/nuclear, so strip
+         * any leading "nuclear/" component before joining, then fall through
+         * to the legacy nested layout for compatibility. */
         if (strncmp(relpath, "nuclear/", 8) == 0) {
-            snprintf(candidate, sizeof(candidate), "%s/%s", cfg->rates_dir, relpath + 8);
+            snprintf(candidate, sizeof(candidate), "%s/%s", cfg->user_nuclear_dir, relpath + 8);
             if (path_exists(candidate)) {
                 snprintf(out, outsize, "%s", candidate);
                 return;
             }
         }
-        snprintf(candidate, sizeof(candidate), "%s/%s", cfg->rates_dir, relpath);
+        snprintf(candidate, sizeof(candidate), "%s/%s", cfg->user_nuclear_dir, relpath);
         if (path_exists(candidate)) {
             snprintf(out, outsize, "%s", candidate);
             return;
         }
     }
-    if (cfg->user_rates_dir) {
-        if (strncmp(relpath, "nuclear/", 8) == 0) {
-            snprintf(candidate, sizeof(candidate), "%s/%s", cfg->user_rates_dir, relpath + 8);
-            if (path_exists(candidate)) {
-                snprintf(out, outsize, "%s", candidate);
-                return;
-            }
-        }
-        snprintf(candidate, sizeof(candidate), "%s/%s", cfg->user_rates_dir, relpath);
-        if (path_exists(candidate)) {
-            snprintf(out, outsize, "%s", candidate);
-            return;
-        }
-    }
-    /* Shipped default, always tried last (and returned even if missing, so
-     * the caller's "file not found" error points at the expected default
-     * location -- mirrors PyPRConfig.resolve_rates_path). cfg->data_dir is
-     * the data folder itself (e.g. .../primat/data), not its parent. */
+    /* Resolved default (cfg->data_dir, set by cpr_config_init_defaults from
+     * the --data-dir flag / CPRIMAT_DATA_DIR env var / the Python backend's
+     * cfg._resolved_data_dir), always tried last (and returned even when
+     * missing, so the caller's "file not found" error points at the expected
+     * location). cfg->data_dir is the data folder itself
+     * (e.g. .../primat/data), not its parent. */
     snprintf(out, outsize, "%s/%s", cfg->data_dir, relpath);
 }
 
@@ -666,6 +654,15 @@ int cpr_config_validate(CPRConfig *cfg, char **errmsg)
 
     if (cfg->amax != -1 && cfg->amax < 1) {
         *errmsg = strdup("amax must be None (-1) or a positive integer");
+        return 1;
+    }
+
+    /* fEDE is the EDE fraction of the total energy density at its peak;
+     * background.c has (1 - fEDE) in the denominator, so fEDE >= 1 diverges. */
+    if (!(cfg->fEDE >= 0.0 && cfg->fEDE < 1.0)) {
+        *errmsg = malloc(128);
+        snprintf(*errmsg, 128,
+                 "fEDE=%.6g is out of range: must satisfy 0 <= fEDE < 1", cfg->fEDE);
         return 1;
     }
 

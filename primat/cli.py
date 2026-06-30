@@ -278,10 +278,10 @@ def main(argv=None):
         cfg = PRIMATConfig({})
         if args.cache_clear:
             n = clear_weak_cache(cfg)
-            print(f"Removed {n} cached weak-rate file(s) from {cfg.data_dir}/data/weak/.")
+            print(f"Removed {n} cached weak-rate file(s) from {cfg._resolved_data_dir}/weak/.")
         else:
             n = len(list_weak_cache_files(cfg))
-            print(f"{n} cached weak-rate file(s) in {cfg.data_dir}/data/weak/.")
+            print(f"{n} cached weak-rate file(s) in {cfg._resolved_data_dir}/weak/.")
         return 0
 
     # Only forward options the user actually set, so unset flags fall back
@@ -307,7 +307,7 @@ def main(argv=None):
         key, _, raw_value = entry.partition("=")
         params[key] = _parse_set_value(raw_value)
 
-    for key in ("rates_dir", "user_rates_dir"):
+    for key in ("data_dir", "user_nuclear_dir"):
         if params.get(key) is not None:
             print(_rates_overlay_notice(key, params[key]), file=sys.stderr)
 

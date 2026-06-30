@@ -175,18 +175,20 @@ typedef struct {
     int rescale_nuclear_rates;
     int nuclear_qed_corrections;
 
-    /* ---- data/nuclear overlay (mirrors PRIMATConfig.rates_dir/user_rates_dir; see
+    /* ---- nuclear overlay (mirrors PRIMATConfig.user_nuclear_dir; see
      * CLAUDE.md "Rates directory resolution"). NULL = unset (shipped data/nuclear/
      * tree only). Wired through cpr_config_resolve_rates_path() at the same
      * two call sites as the Python side: the network-file path
- * (data/nuclear/networks/<name>.txt) and each reaction's rate-table
- * file (data/nuclear/tables/<rxn>/<file>) -- NOT the reaction catalog
- * (nuclides.csv/reactions_large.csv/detailed_balance.csv) or decays.txt,
- * which stay on data_dir on both backends. Overlay roots are treated as
- * the equivalent of `primat/data/nuclear`, so they should contain
- * `networks/` and `tables/` directly. */
-    char *rates_dir;       /* full-takeover override directory */
-    char *user_rates_dir;  /* additive overlay directory, checked before the shipped default */
+     * (nuclear/networks/<name>.txt) and each reaction's rate-table
+     * file (nuclear/tables/<rxn>/<file>) -- NOT the reaction catalog
+     * (nuclides.csv/reactions_large.csv/detailed_balance.csv) or decays.txt,
+     * which stay on data_dir. Overlay roots are treated as the equivalent of
+     * `primat/data/nuclear`, so they should contain `networks/` and `tables/`
+     * directly.  The full data-tree takeover (PRIMATConfig.data_dir) is handled
+     * at the C level by cpr_config_init_defaults(data_dir): the Python
+     * backend.py passes cfg._resolved_data_dir there, so data_dir already
+     * reflects any user override before any field is set. */
+    char *user_nuclear_dir;  /* additive nuclear overlay, checked before the shipped default */
 
     /* ---- cosmological inputs ---- */
     double Omegabh2_; /* backing field; use cpr_config_set_Omegabh2() to set
@@ -249,18 +251,18 @@ double cpr_config_T_end(const CPRConfig *cfg);         /* [K] */
 int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg);
 
 /* Resolves `relpath` (e.g. "nuclear/networks/large.txt" or
- * "nuclear/tables/<rxn>/<file>.txt") through the same overlay chain as
- * PRIMATConfig.resolve_rates_path: cfg->rates_dir (full takeover) ->
- * cfg->user_rates_dir (additive overlay) -> cfg->data_dir + "/" + relpath
- * (shipped default, tried last so it is never unreachable). Overlay
- * directories are treated as the equivalent of `primat/data/nuclear`: the
- * resolver first tries `base/<relpath without a leading "nuclear/">` and
- * then the legacy nested layout `base/<relpath>` for compatibility. The
- * first candidate that exists on disk wins; if none exist, the
- * shipped-default path is written anyway (so callers get a "missing file"
- * error pointing at the expected default location). Writes into `out`
- * (size `outsize`, truncated/snprintf-safe like every other path builder in
- * this codebase). */
+ * "nuclear/tables/<rxn>/<file>.txt") through the overlay chain:
+ *   cfg->user_nuclear_dir (additive nuclear overlay, NULL = skip) ->
+ *   cfg->data_dir + "/" + relpath (resolved default, tried last so
+ *   shipped files are never unreachable when user_nuclear_dir is set).
+ * Overlay roots for user_nuclear_dir are treated as the equivalent of
+ * `primat/data/nuclear`: the resolver first tries
+ * `base/<relpath without a leading "nuclear/">` and then the legacy nested
+ * layout `base/<relpath>` for compatibility. The first candidate that
+ * exists on disk wins; if none exist, the resolved-default path is written
+ * anyway (so callers get a "missing file" error pointing at the expected
+ * location). Writes into `out` (size `outsize`,
+ * truncated/snprintf-safe like every other path builder in this codebase). */
 void cpr_config_resolve_rates_path(const CPRConfig *cfg, const char *relpath,
                                     char *out, size_t outsize);
 

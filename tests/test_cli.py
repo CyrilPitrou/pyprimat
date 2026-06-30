@@ -103,7 +103,7 @@ def test_cli_network_error_lists_overlay_candidates(tmp_path):
     expected = overlay / "networks" / "custom.txt"
 
     with pytest.raises(ValueError, match=re.escape(str(expected))):
-        main(["--set", f"user_rates_dir={overlay}", "--network", "custom"])
+        main(["--set", f"user_nuclear_dir={overlay}", "--network", "custom"])
 
 
 def test_cli_set_expands_tilde_in_path_values(monkeypatch, tmp_path, capsys):
@@ -116,10 +116,10 @@ def test_cli_set_expands_tilde_in_path_values(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("HOME", str(tmp_path))
     (tmp_path / "custom").mkdir()
 
-    rc = main(["--set", "user_rates_dir=~/custom", "--json"])
+    rc = main(["--set", "user_nuclear_dir=~/custom", "--json"])
     assert rc == 0
     err = capsys.readouterr().err
-    assert "tables and networks located in" in err
+    assert "nuclear networks and rate tables" in err
     assert str((tmp_path / "custom").resolve()) in err
 
 

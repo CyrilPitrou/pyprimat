@@ -31,8 +31,8 @@ _PATH_PARAMS = {
     "nevo_spectral_file",
     "nevo_grid_file",
     "custom_background",
-    "rates_dir",
-    "user_rates_dir",
+    "data_dir",
+    "user_nuclear_dir",
     "output_file",
     "output_final_file",
     "output_background_file",
@@ -67,25 +67,30 @@ def _expanduser_path(value):
 
 
 def _rates_overlay_notice(field: str, path: str) -> str:
-    """Render the startup note for a custom rates overlay directory.
+    """Render the startup note for a custom data/nuclear overlay directory.
 
     Parameters
     ----------
     field : str
-        Either ``"rates_dir"`` or ``"user_rates_dir"``.
+        Either ``"data_dir"`` (full-takeover data root) or
+        ``"user_nuclear_dir"`` (additive nuclear overlay).
     path : str
         Directory path already accepted by the config validator.
 
     Returns
     -------
     str
-        Human-readable notice explaining that nuclear networks and rate
-        tables under that directory participate in selection.
+        Human-readable notice explaining the effect of the override.
     """
-    label = "full-takeover" if field == "rates_dir" else "additive"
+    if field == "data_dir":
+        label = "full-takeover data directory"
+        detail = "entire data tree (NEVO/, nuclear/, weak/, plasma/, csv/) replaced"
+    else:
+        label = "additive nuclear overlay"
+        detail = "nuclear networks and rate tables"
     return (
-        f"[init]  {field} {label} overlay: tables and networks under "
-        f"{os.path.abspath(os.path.expanduser(os.fspath(path)))!r} are available for selection."
+        f"[init]  {field} {label} override: {detail} under "
+        f"{os.path.abspath(os.path.expanduser(os.fspath(path)))!r}."
     )
 
 
@@ -164,19 +169,19 @@ DEFAULT_PARAMS: dict = {
     # selected explicitly via nevo_file/nevo_spectral_file (those still win), and has no
     # effect when incomplete_decoupling=False (no NEVO file is read at all).
 
-    # ---- rates/ overlay (nuclear networks & rate tables) -------------------
-    # See PRIMATConfig.resolve_rates_path. Both default to None (shipped
-    # rates/ tree only). When set, a rates-relative path (e.g.
-    # "nuclear/networks/<name>.txt" or "nuclear/tables/<rxn>/<file>.txt") is
-    # looked up in this order: rates_dir (full takeover, e.g. a self-contained
-    # alternate rates tree) -> user_rates_dir (additive overlay for a user's
-    # own networks/tables, without touching the installed package) -> the
-    # shipped primat/data/ tree (so "small"/"large" never disappear even if
-    # only user_rates_dir is set and it doesn't contain them). Overlay roots
-    # are treated as the equivalent of primat/data/nuclear, so they should
-    # contain `networks/` and `tables/` directly.
-    "rates_dir":                  None, # Full-takeover override directory (must exist if set)
-    "user_rates_dir":             None, # Additive overlay directory, checked before the shipped defaults (must exist if set)
+    # ---- data directory override and nuclear overlay -----------------------
+    # See PRIMATConfig.resolve_rates_path and _resolved_data_dir. Both default
+    # to None (shipped primat/data/ tree). When data_dir is set it completely
+    # replaces the shipped data tree (NEVO/, weak/, plasma/, nuclear/, csv/
+    # must all be present under that directory). When user_nuclear_dir is set
+    # it is an additive overlay for nuclear networks and rate tables only
+    # (checked before the shipped tree, so "small"/"large" remain available
+    # even if only user_nuclear_dir is set and it doesn't contain them).
+    # Overlay roots for user_nuclear_dir are treated as the equivalent of
+    # primat/data/nuclear, so they should contain `networks/` and `tables/`
+    # directly.
+    "data_dir":          None, # Full-takeover data directory (must exist if set; replaces primat/data/)
+    "user_nuclear_dir":  None, # Additive overlay for nuclear networks & rate tables (must exist if set)
 
     # ---- background mode ---------------------------------------------------
     "external_scale_factor":      False, # If True, read the scale factor a(T_gamma) directly
@@ -520,6 +525,11 @@ class PRIMATConfig:
             else:
                 object.__setattr__(self, key, value)
 
+        # Apply data_dir early (before _load_nuclide_data) so nuclides.csv is
+        # read from the user-supplied root when one is provided.
+        if params and "data_dir" in params:
+            object.__setattr__(self, "data_dir", _expanduser_path(params["data_dir"]))
+
         # Load nuclide data from CSV
         self._load_nuclide_data()
 
@@ -550,6 +560,15 @@ class PRIMATConfig:
                     stacklevel=2,
                 )
 
+        # fEDE is a fraction of the total energy density at its peak, so it
+        # must satisfy 0 ≤ fEDE < 1.  The formula in background._setup_ede()
+        # has (1 - fEDE) in the denominator, which diverges at fEDE = 1.
+        if not (0. <= self.fEDE < 1.):
+            raise ValueError(
+                f"fEDE={self.fEDE!r} is out of range: must satisfy 0 ≤ fEDE < 1 "
+                "(fEDE is the EDE fraction of the total energy density at its peak)."
+            )
+
         # custom_background: force instantaneous decoupling and no spectral
         # distortions (the custom-background driver does not load NEVO tables
         # and uses the analytic T_ν(T_γ) formula instead).  Must be checked
@@ -577,10 +596,10 @@ class PRIMATConfig:
                     stacklevel=2,
                 )
 
-        # rates_dir/user_rates_dir: eagerly validate (mirrors the nevo_file
-        # pattern above) so a typo'd overlay path fails fast at construction
+        # data_dir/user_nuclear_dir: eagerly validate (mirrors the nevo_file
+        # pattern above) so a typo'd override path fails fast at construction
         # time rather than surfacing as a confusing "network not found" later.
-        for _field in ("rates_dir", "user_rates_dir"):
+        for _field in ("data_dir", "user_nuclear_dir"):
             _value = getattr(self, _field)
             if _value is not None and not os.path.isdir(_value):
                 raise ValueError(f"{_field}={_value!r} is not an existing directory")
@@ -591,14 +610,9 @@ class PRIMATConfig:
             path = self.resolve_rates_path("nuclear", "networks", f"{self.network}.txt")
             if not os.path.exists(path):
                 searched = []
-                if self.rates_dir is not None:
+                if self.user_nuclear_dir is not None:
                     searched.extend(_overlay_candidates(
-                        self.rates_dir,
-                        os.path.join("nuclear", "networks", f"{self.network}.txt"),
-                    ))
-                if self.user_rates_dir is not None:
-                    searched.extend(_overlay_candidates(
-                        self.user_rates_dir,
+                        self.user_nuclear_dir,
                         os.path.join("nuclear", "networks", f"{self.network}.txt"),
                     ))
                 searched.append(path)
@@ -831,7 +845,7 @@ class PRIMATConfig:
     def _load_nuclide_data(self):
         """Load mass excesses, spins, and (N, Z) from nuclides.csv."""
         import csv
-        path = os.path.join(self.data_dir, "data", "csv", "nuclides.csv")
+        path = os.path.join(self._resolved_data_dir, "csv", "nuclides.csv")
         
         self.Nuclides = {}
         self.NuclExcessMass = {}
@@ -845,42 +859,54 @@ class PRIMATConfig:
                 self.NuclExcessMass[name] = float(row['mass_excess_keV'])
                 self.NuclSpin[name] = float(row['spin'])
 
-    # Path helper: the primat/ package directory, where rates/ lives.
-    # Used only for *reading* package data; output paths are resolved against
-    # the current working directory (see PRIMAT._write_time_evolution /
-    # _write_final_result).
     @property
-    def data_dir(self) -> str:
-        return os.path.dirname(os.path.abspath(__file__))
+    def _pkg_data_dir(self) -> str:
+        """Package-shipped data root (``primat/data/``, contains NEVO/, nuclear/, weak/, plasma/, csv/).
+
+        This is the fixed fallback used when ``data_dir`` param is ``None``.
+        It always points to the installed package's own data tree regardless
+        of any user override.
+        """
+        return os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+
+    @property
+    def _resolved_data_dir(self) -> str:
+        """Resolved data root: the ``data_dir`` param when set, otherwise ``primat/data/``.
+
+        Use this everywhere a data-root path is needed instead of the old
+        ``cfg.data_dir + "/data"`` idiom.  Output paths are still resolved
+        against the current working directory (see PRIMAT._write_time_evolution
+        / _write_final_result).
+        """
+        return self.data_dir if self.data_dir else self._pkg_data_dir
 
     def resolve_rates_path(self, *parts: str) -> str:
-        """Resolve a path inside the ``rates/`` tree through the overlay chain.
+        """Resolve a path inside the nuclear data tree through the overlay chain.
 
-        Used by every caller that currently builds
-        ``os.path.join(cfg.data_dir, "data", ...)`` for a nuclear network or
-        rate-table file, so a user's ``rates_dir``/``user_rates_dir`` overlay
-        (see those fields' docstrings in ``DEFAULT_PARAMS``) is honoured
-        without touching the installed ``primat`` package.
+        Used by every caller that needs a nuclear network file or rate-table
+        file, so a user's ``user_nuclear_dir`` additive overlay (or a full
+        ``data_dir`` takeover — see those fields in ``DEFAULT_PARAMS``) is
+        honoured without touching the installed ``primat`` package.
 
         Lookup order (first existing path wins):
-          1. ``self.rates_dir`` (full takeover), if set.
-          2. ``self.user_rates_dir`` (additive overlay), if set.
-          3. the shipped ``primat/data/`` tree (always tried last, so
+          1. ``self.user_nuclear_dir`` (additive nuclear overlay), if set.
+          2. ``self._resolved_data_dir`` (either the user-supplied ``data_dir``
+             or the shipped ``primat/data/`` tree — always tried last so
              ``small``/``large`` and the default rate tables are never
-             unreachable just because an overlay is also configured).
+             unreachable just because ``user_nuclear_dir`` is also configured).
 
         If the relative path is not found under any candidate base, the
-        shipped-default path is returned anyway (not found), so callers get
+        resolved-default path is returned anyway (not found), so callers get
         a "missing file" error that points at the expected default location
         rather than at whichever overlay happened to be checked last.
 
         Args:
-            *parts: path components relative to a ``rates/`` root, e.g.
+            *parts: path components relative to a nuclear data root, e.g.
                 ``"nuclear", "networks", "large.txt"``.
 
         Returns:
             str: an absolute path (existing, if found under any candidate
-            base; otherwise the shipped-default path, for use in error
+            base; otherwise the resolved-default path, for use in error
             messages).
 
         Example:
@@ -889,11 +915,9 @@ class PRIMATConfig:
         """
         relpath = os.path.join(*parts) if parts else ""
         bases = []
-        if self.rates_dir:
-            bases.append(self.rates_dir)
-        if self.user_rates_dir:
-            bases.append(self.user_rates_dir)
-        bases.append(os.path.join(self.data_dir, "data"))  # shipped default, always last
+        if self.user_nuclear_dir:
+            bases.append(self.user_nuclear_dir)
+        bases.append(self._resolved_data_dir)  # shipped (or overridden) default, always last
         for base in bases:
             if relpath:
                 for candidate in _overlay_candidates(base, relpath):

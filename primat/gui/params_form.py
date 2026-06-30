@@ -255,7 +255,7 @@ def _bare(entry):
 
 @st.cache_resource(show_spinner=False)
 def _cfg():
-    """A throwaway ``PRIMATConfig`` for helpers that only need ``cfg.data_dir``."""
+    """A throwaway ``PRIMATConfig`` for helpers that only need ``cfg._resolved_data_dir``."""
     return PRIMATConfig()
 
 
@@ -664,7 +664,7 @@ class _DialogState:
                 # An on-disk alternate filename (e.g. a "*_parthenope3.0.txt"
                 # sibling) -- load_network's custom_tables mechanism only
                 # knows raw text, not filenames, so resolve to text here.
-                path = os.path.join(cfg.data_dir, "data", "nuclear", "tables", name, choice)
+                path = os.path.join(cfg._resolved_data_dir, "nuclear", "tables", name, choice)
                 try:
                     with open(path) as f:
                         replaced[name] = f.read()
@@ -685,7 +685,7 @@ def _decay_rates():
     from a genuinely tableless reaction.
     """
     from primat.network_data import _load_decay_table
-    tables_dir = os.path.join(_cfg().data_dir, "data", "nuclear", "tables")
+    tables_dir = os.path.join(_cfg()._resolved_data_dir, "nuclear", "tables")
     return _load_decay_table(tables_dir)
 
 
@@ -707,7 +707,7 @@ def _current_table_text(name):
     if choice in uploaded_for_name:
         return uploaded_for_name[choice]
     if choice:
-        path = os.path.join(_cfg().data_dir, "data", "nuclear", "tables", name, choice)
+        path = os.path.join(_cfg()._resolved_data_dir, "nuclear", "tables", name, choice)
         try:
             with open(path) as f:
                 return f.read()

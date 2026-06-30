@@ -269,14 +269,14 @@ def load_reaction_names(cfg_or_dir, network: str | None = None) -> list[str]:
     >>> len(load_reaction_names("/repo/data/nuclear/networks", "small"))
     12
     """
-    if hasattr(cfg_or_dir, "data_dir"):
+    if hasattr(cfg_or_dir, "_resolved_data_dir"):
         if hasattr(cfg_or_dir, "resolve_rates_path"):
-            # Honour the rates_dir/user_rates_dir overlay (see
+            # Honour the user_nuclear_dir overlay (see
             # PRIMATConfig.resolve_rates_path) so a user-supplied network
             # file does not require touching the installed package.
             nets_dir = cfg_or_dir.resolve_rates_path("nuclear", "networks")
         else:
-            nets_dir = os.path.join(cfg_or_dir.data_dir, "data", "nuclear", "networks")
+            nets_dir = os.path.join(cfg_or_dir._resolved_data_dir, "nuclear", "networks")
         network = network or cfg_or_dir.network
     else:
         nets_dir = os.fspath(cfg_or_dir)
@@ -954,14 +954,15 @@ class NetworkDefinition:
 
 
 def _default_data_dir() -> str:
-    """Package data root (``cfg.data_dir`` is always this same path).
+    """Package-shipped data root (``primat/data/``, containing nuclear/, csv/, etc.).
 
     Defined here so :func:`reaction_stoichiometry` and :func:`to_filename` can
     reach :func:`_reaction_catalog` without constructing a throwaway
     ``PRIMATConfig`` (which re-reads ``nuclides.csv`` and would create a
-    config<->nuclear circular import).
+    config<->nuclear circular import).  Equivalent to
+    ``PRIMATConfig()._pkg_data_dir``.
     """
-    return os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
 
 @lru_cache(maxsize=None)
@@ -971,14 +972,17 @@ def _reaction_catalog(data_dir: str):
     Parameters
     ----------
     data_dir : str
-        Package data root, i.e. ``cfg.data_dir`` (the directory ``data/``).  This is a fixed path for a given primat installation,
-        so the result is cached with :func:`functools.lru_cache`: the three
-        CSV files under ``data/csv/`` are read at most once per
-        process instead of on every :func:`load_network`,
+        Data root directory (the ``primat/data/`` directory or a user-supplied
+        replacement via ``cfg.data_dir``).  Contains ``csv/``, ``nuclear/``,
+        ``plasma/``, ``NEVO/``, ``weak/`` subdirectories.  This is a fixed path
+        for a given primat installation, so the result is cached with
+        :func:`functools.lru_cache`: the three CSV files under ``csv/`` are
+        read at most once per process instead of on every :func:`load_network`,
         :func:`reaction_stoichiometry` or :func:`to_filename` call.
+        Equivalent to ``cfg._resolved_data_dir``.
     """
-    base = os.path.join(data_dir, "data", "csv")
-    tables_dir = os.path.join(data_dir, "data", "nuclear", "tables")
+    base = os.path.join(data_dir, "csv")
+    tables_dir = os.path.join(data_dir, "nuclear", "tables")
     _, nuc_rows = _read_csv(os.path.join(base, "nuclides.csv"))
     nuc_order = [row[0] for row in nuc_rows]
     nuc_NZ = {row[0]: (int(row[1]), int(row[2])) for row in nuc_rows}
@@ -990,7 +994,7 @@ def _reaction_catalog(data_dir: str):
     # users can inspect or regenerate the catalog without changing loader code.
     rxn_path = os.path.join(base, "reactions_large.csv")
     if not os.path.exists(rxn_path):
-        rxn_path = os.path.join(data_dir, "data", "nuclear", "reactions_large.csv")
+        rxn_path = os.path.join(data_dir, "nuclear", "reactions_large.csv")
     _, rxn_rows = _read_csv(rxn_path)
     rxn_map = {row[0]: (row[1], row[2]) for row in rxn_rows}
     return tables_dir, base, nuc_order, nuc_NZ, db, rxn_map
@@ -1250,7 +1254,7 @@ def available_rate_tables(name: str, cfg) -> list[str]:
     name : str
         Bare reaction name (the folder under ``tables/`` to list).
     cfg : PRIMATConfig
-        Used only for ``cfg.data_dir``.
+        Used only for ``cfg._resolved_data_dir`` (via ``resolve_rates_path``).
 
     Returns
     -------
@@ -1262,7 +1266,7 @@ def available_rate_tables(name: str, cfg) -> list[str]:
     if hasattr(cfg, "resolve_rates_path"):
         reaction_dir = cfg.resolve_rates_path("nuclear", "tables", name)
     else:
-        reaction_dir = os.path.join(cfg.data_dir, "data", "nuclear", "tables", name)
+        reaction_dir = os.path.join(cfg._resolved_data_dir, "nuclear", "tables", name)
     if not os.path.isdir(reaction_dir):
         return []
     files = sorted(f for f in os.listdir(reaction_dir) if f.endswith(".txt"))
@@ -1649,7 +1653,7 @@ def _build_rate_tables(parsed, idx, custom_tables, tables_dir, grid, cfg, db):
             # the same folder are alternate candidate tables, e.g. a
             # "_parthenope3.0.txt" variant -- see available_rate_tables()).
             # Resolved per-file (not via the shared tables_dir) so a single
-            # user_rates_dir entry can override one reaction's table while
+            # user_nuclear_dir entry can override one reaction's table while
             # every other reaction still falls back to the shipped table --
             # an additive overlay, not a directory-wide takeover.
             if hasattr(cfg, "resolve_rates_path"):
@@ -1820,7 +1824,7 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
     bare_names, bare_to_file = _parse_network_entries(
         reaction_names, subset_file or cfg.network)
 
-    tables_dir, data_dir, nuc_order, nuc_NZ, db, rxn_map = _reaction_catalog(cfg.data_dir)
+    tables_dir, data_dir, nuc_order, nuc_NZ, db, rxn_map = _reaction_catalog(cfg._resolved_data_dir)
 
     rxn_map, db = _inject_custom_reactions(bare_names, custom_tables, rxn_map, db, cfg)
 

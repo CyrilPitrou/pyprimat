@@ -329,25 +329,25 @@ def test_run_bbn_auto_prefers_c_for_output_time_evolution(monkeypatch):
 
 
 @requires_c_backend
-def test_run_bbn_c_backend_honors_rates_overlay(tmp_path):
-    """rates_dir/user_rates_dir are supported on the C backend too (see
+def test_run_bbn_c_backend_honors_nuclear_overlay(tmp_path):
+    """user_nuclear_dir is supported on the C backend too (see
     primat-c's cpr_config_resolve_rates_path, primat-c/src/config.c): a
-    user_rates_dir-supplied network file is loadable end-to-end through
+    user_nuclear_dir-supplied network file is loadable end-to-end through
     force_backend="c" exactly like a shipped one."""
     net_dir = tmp_path / "networks"
     net_dir.mkdir(parents=True)
     (net_dir / "overlaynet.txt").write_text(
         "n_p__d_g, n_p__d_g_primat.txt\nd_p__He3_g, d_p__He3_g_primat.txt\n"
     )
-    params = {"network": "overlaynet", "user_rates_dir": str(tmp_path)}
+    params = {"network": "overlaynet", "user_nuclear_dir": str(tmp_path)}
     r_c = run_bbn(params, force_backend="c")
     r_py = run_bbn(params, force_backend="python")
     assert r_c["YPBBN"] == pytest.approx(r_py["YPBBN"], abs=1e-3)
 
 
-def test_run_bbn_auto_prefers_c_backend_for_rates_overlay(tmp_path, monkeypatch):
-    """'auto' dispatches to the C backend for a rates_dir/user_rates_dir
-    request too, now that both backends support the overlay -- only
+def test_run_bbn_auto_prefers_c_backend_for_nuclear_overlay(tmp_path, monkeypatch):
+    """'auto' dispatches to the C backend for a user_nuclear_dir request
+    too, now that both backends support the overlay -- only
     extra_rho/background (Python-only features) force Python."""
     import primat.backend as backend_mod
 
@@ -359,7 +359,7 @@ def test_run_bbn_auto_prefers_c_backend_for_rates_overlay(tmp_path, monkeypatch)
 
     monkeypatch.setattr(backend_mod, "HAS_C_BACKEND", True)
     monkeypatch.setattr(backend_mod, "_c_ext", type("M", (), {"run_bbn": staticmethod(fake_c_run_bbn)}))
-    run_bbn({"network": "small", "user_rates_dir": str(tmp_path)})
+    run_bbn({"network": "small", "user_nuclear_dir": str(tmp_path)})
     assert len(calls) == 1
 
 

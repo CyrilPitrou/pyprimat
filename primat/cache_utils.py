@@ -143,8 +143,8 @@ def write_cache_with_fingerprint(path: str, fingerprint: dict, columns, col_head
 # ---------------------------------------------------------------------------
 
 def weak_cache_dir(cfg) -> str:
-    """Return the ``primat/data/weak/`` directory for ``cfg.data_dir``."""
-    return os.path.join(cfg.data_dir, "data", "weak")
+    """Return the ``weak/`` directory under ``cfg._resolved_data_dir``."""
+    return os.path.join(cfg._resolved_data_dir, "weak")
 
 
 def list_weak_cache_files(cfg):

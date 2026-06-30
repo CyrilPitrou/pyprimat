@@ -21,7 +21,7 @@
  * value arrays at the matching sample index (seed - base_seed) -- safe
  * without locking since each worker's index range is disjoint. */
 typedef struct {
-    const char *rates_dir;
+    const char *data_dir;
     const CPRParamSet *base_params;
     size_t n_base_params;
     int seed_lo, seed_hi; /* this worker's seed range [lo, hi) */
@@ -40,7 +40,7 @@ typedef struct {
 static int worker_setup(const CPRMCWorker *w, CPRConfig *cfg, CPRPlasma *pl,
                          CPRNuclearRates *nr, CPRBackground *bg, char **errmsg)
 {
-    if (cpr_config_init_defaults(cfg, w->rates_dir, errmsg)) return 1;
+    if (cpr_config_init_defaults(cfg, w->data_dir, errmsg)) return 1;
     for (size_t i = 0; i < w->n_base_params; i++) {
         char *set_err = NULL;
         if (cpr_config_set_by_name(cfg, w->base_params[i].key, w->base_params[i].value, &set_err)) {
@@ -155,7 +155,7 @@ static void *worker_main(void *arg)
 }
 
 int cpr_mc_uncertainty(int num_mc, const char * const *quantities, size_t n_quantities,
-                        const char *rates_dir,
+                        const char *data_dir,
                         const CPRParamSet *base_params, size_t n_base_params,
                         int seed, int n_jobs, const CPRCustomNetwork *custom,
                         const double *prev_centrals, const double * const *prev_values,
@@ -190,7 +190,7 @@ int cpr_mc_uncertainty(int num_mc, const char * const *quantities, size_t n_quan
         /* Central value (all p_<rxn>=0, tau_n=cfg.tau_n): one ordinary
          * cprimat_run, exactly mirroring mc_uncertainty's `central_inst`. */
         CPRConfig central_cfg;
-        if (cpr_config_init_defaults(&central_cfg, rates_dir, errmsg)) {
+        if (cpr_config_init_defaults(&central_cfg, data_dir, errmsg)) {
             cpr_mc_result_free(out);
             return 1;
         }
@@ -260,7 +260,7 @@ int cpr_mc_uncertainty(int num_mc, const char * const *quantities, size_t n_quan
     for (int j = 0; j < n_jobs; j++) {
         int chunk = base + (j < rem ? 1 : 0);
         workers[j] = (CPRMCWorker){
-            .rates_dir = rates_dir, .base_params = base_params, .n_base_params = n_base_params,
+            .data_dir = data_dir, .base_params = base_params, .n_base_params = n_base_params,
             .seed_lo = cursor, .seed_hi = cursor + chunk, .base_seed = seed, .custom = custom,
             .quantities = quantities, .n_quantities = n_quantities, .out = out, .errmsg = NULL,
         };

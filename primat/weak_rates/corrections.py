@@ -389,7 +389,7 @@ class _RateContext:
         Nucleon axial coupling g_A and kappa_p - kappa_n, used by the
         finite-nucleon-mass Fokker-Planck expansion (_L_FMCCR).
     my_dir : str
-        cfg.data_dir, used to locate the thermal-correction cache files.
+        ``cfg._resolved_data_dir``, used to locate the thermal-correction cache files.
     """
     cfg: object
     me: float
@@ -880,7 +880,7 @@ def _L_CCRTh_interpolants(ctx):
     if not cfg.thermal_corrections:
         return (lambda T: 0.0), (lambda T: 0.0)
 
-    _td        = my_dir + "/data/weak/"
+    _td        = my_dir + "/weak/"
     _th_fp     = _thermal_fingerprint(cfg)
     _th_hash   = fingerprint_hash(_th_fp)
     _th_path   = _td + "nTOp_thermal_" + _th_hash + ".txt"
@@ -1321,7 +1321,7 @@ def _build_rate_context(Tvec, cfg):
 
     return _RateContext(cfg=cfg, me=me, mn=mn, mp=mp, Q=Q, xi_nu=cfg.munuOverTnu,
                         T_nuOverT=T_nuOverT, gA=cfg.gA, deltakappa=cfg.deltakappa,
-                        my_dir=cfg.data_dir)
+                        my_dir=cfg._resolved_data_dir)
 
 
 def _thermal_correction_interpolants(Tvec, cfg):

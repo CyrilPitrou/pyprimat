@@ -12,10 +12,11 @@
  *      primat/main.py's solve(); kept in sync per CLAUDE.md's backend-parity
  *      mandate -- see tests/test_backend_parity.py).
  *
- * `data_dir` is the directory containing rates/ (cfg.data_dir on the Python
- * side); the rates_dir/user_rates_dir Python-side overlay (config.py's
- * resolve_rates_path) has no C-side equivalent yet, so only the shipped
- * rates/ tree is reachable through this bridge for now.
+ * `data_dir` is the data root directory (cfg._resolved_data_dir on the Python
+ * side — the equivalent of primat/data/, passed in from backend.py).
+ * `user_nuclear_dir` (additive nuclear overlay) is an ordinary params key
+ * applied generically via cpr_config_set_by_name in step 2, so it reaches
+ * the C-side cpr_config_resolve_rates_path without special-casing here.
  */
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>

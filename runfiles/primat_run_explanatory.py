@@ -52,9 +52,9 @@ cfg = dict(
     # nevo_grid_file=None,            # override the y-grid for nevo_spectral_file
     # nevo_file_prefix="NEVOPRIMAT",  # base filename for the default NEVO thermo/spectral tables
 
-    # ---- data/ overlay (nuclear networks & rate tables) -------------------
-    # rates_dir=None,                 # full-takeover override directory for data/
-    # user_rates_dir=None,            # additive overlay for your own network/table additions (PRIMAT.md S4.3)
+    # ---- data directory override and nuclear overlay ----------------------
+    # data_dir=None,          # replace the entire primat/data/ tree (NEVO/, weak/, plasma/, nuclear/, csv/)
+    # user_nuclear_dir=None,  # additive overlay for nuclear networks & rate tables only (primat/data/nuclear/ equivalent)
 
     # ---- background mode ----------------------------------------------------
     # external_scale_factor=False,    # read a(T_gamma) directly from the NEVO table's x column
