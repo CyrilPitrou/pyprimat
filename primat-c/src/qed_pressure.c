@@ -165,16 +165,17 @@ void cpr_qed_tables_free(CPRQEDTables *t)
     memset(t, 0, sizeof(*t));
 }
 
-/* Writes a single 7-column QED_tables.txt matching numpy.savetxt(fmt="%.6E")
- * output from Python's save_qed_tables.  Columns:
- *   T [MeV]  dP_a [MeV^4]  dP_e3 [MeV^4]
- *   d(dP_a)/dT [MeV^3]  d(dP_e3)/dT [MeV^3]
- *   d2(dP_a)/dT2 [MeV^2]  d2(dP_e3)/dT2 [MeV^2]
- * All '#'-prefixed header lines are skipped by cpr_table_read. */
-int cpr_qed_save_tables(const CPRQEDTables *t, const char *plasma_dir, char **errmsg)
+/* Writes two 4-column files, one per order in e, matching
+ * numpy.savetxt(fmt="%.6E") output from Python's save_qed_tables. Each
+ * file's columns are: T [MeV]  dP [MeV^4]  d(dP)/dT [MeV^3]  d2(dP)/dT2
+ * [MeV^2]. All '#'-prefixed header lines are skipped by cpr_table_read. */
+static int write_one_qed_file(const char *path, const char *src_tag,
+                               const char *phys_tag, const char *ref_tag,
+                               const char *col_hdr,
+                               const double *T, const double *dP,
+                               const double *ddP, const double *d2dP,
+                               size_t n, char **errmsg)
 {
-    char path[1024];
-    snprintf(path, sizeof(path), "%s/QED_tables.txt", plasma_dir);
     FILE *fp = fopen(path, "w");
     if (!fp) {
         char buf[512];
@@ -182,18 +183,37 @@ int cpr_qed_save_tables(const CPRQEDTables *t, const char *plasma_dir, char **er
         *errmsg = strdup(buf);
         return 1;
     }
-    fprintf(fp, "# Source: CPRIMAT qed_pressure.c -- QED plasma-pressure corrections delta_P(T)\n");
-    fprintf(fp, "# delta_P_a [O(e^2), one-loop] and delta_P_e3 [O(e^3), ring/plasmon];\n");
-    fprintf(fp, "# Reference: Pitrou et al., Phys. Rep. (2018), eq. 47; PRIMAT-Main.m: dPa, dPe3\n");
-    fprintf(fp, "# T [MeV]       dP_a [MeV^4]      dP_e3 [MeV^4]"
-                "      d(dP_a)/dT [MeV^3]  d(dP_e3)/dT [MeV^3]"
-                "  d2(dP_a)/dT2 [MeV^2]  d2(dP_e3)/dT2 [MeV^2]\n");
-    for (size_t i = 0; i < t->n; i++)
-        fprintf(fp, "%.6E %.6E %.6E %.6E %.6E %.6E %.6E\n",
-                t->T[i],
-                t->dP_e2[i], t->dP_e3[i],
-                t->d_dP_e2_dT[i], t->d_dP_e3_dT[i],
-                t->d2_dP_e2_dT2[i], t->d2_dP_e3_dT2[i]);
+    fprintf(fp, "# Source: %s\n", src_tag);
+    fprintf(fp, "# %s\n", phys_tag);
+    fprintf(fp, "# Reference: %s\n", ref_tag);
+    fprintf(fp, "# %s\n", col_hdr);
+    for (size_t i = 0; i < n; i++)
+        fprintf(fp, "%.6E %.6E %.6E %.6E\n", T[i], dP[i], ddP[i], d2dP[i]);
     fclose(fp);
+    return 0;
+}
+
+int cpr_qed_save_tables(const CPRQEDTables *t, const char *plasma_dir, char **errmsg)
+{
+    char path_e2[1024], path_e3[1024];
+    snprintf(path_e2, sizeof(path_e2), "%s/QED_pressure_correction_e2.txt", plasma_dir);
+    snprintf(path_e3, sizeof(path_e3), "%s/QED_pressure_correction_e3.txt", plasma_dir);
+
+    if (write_one_qed_file(path_e2,
+            "CPRIMAT qed_pressure.c -- QED plasma-pressure correction delta_P_a(T)",
+            "delta_P_a: O(e^2), one-loop (Frenkel-Galitskii-Migdal)",
+            "Pitrou et al., Phys. Rep. (2018), eq. 47; PRIMAT-Main.m: dPa",
+            "T [MeV]       dP_a [MeV^4]      d(dP_a)/dT [MeV^3]  d2(dP_a)/dT2 [MeV^2]",
+            t->T, t->dP_e2, t->d_dP_e2_dT, t->d2_dP_e2_dT2, t->n, errmsg))
+        return 1;
+
+    if (write_one_qed_file(path_e3,
+            "CPRIMAT qed_pressure.c -- QED plasma-pressure correction delta_P_e3(T)",
+            "delta_P_e3: O(e^3), ring/plasmon (Blaizot-Zinn-Justin)",
+            "Pitrou et al., Phys. Rep. (2018), eq. 47; PRIMAT-Main.m: dPe3",
+            "T [MeV]       dP_e3 [MeV^4]     d(dP_e3)/dT [MeV^3]  d2(dP_e3)/dT2 [MeV^2]",
+            t->T, t->dP_e3, t->d_dP_e3_dT, t->d2_dP_e3_dT2, t->n, errmsg))
+        return 1;
+
     return 0;
 }

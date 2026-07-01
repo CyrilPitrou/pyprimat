@@ -53,13 +53,22 @@ int main(void)
     CHECK(close(t.cols[0][0], 3.289640684128431782e-03), "NEVOGrid first value");
     cpr_table_free(&t);
 
-    /* QED_tables.txt: 7 columns (T, dP_a, dP_e3, derivatives…), 4 comment lines. */
-    if (cpr_table_read("../primat/data/plasma/QED_tables.txt", 7, &t, &err)) {
-        printf("FAIL QED_tables read: %s\n", err);
+    /* QED_pressure_correction_e2.txt: 4 columns (T, dP_a, derivatives…), 4 comment lines. */
+    if (cpr_table_read("../primat/data/plasma/QED_pressure_correction_e2.txt", 4, &t, &err)) {
+        printf("FAIL QED_pressure_correction_e2 read: %s\n", err);
         return 1;
     }
-    CHECK(t.n_cols == 7, "QED_tables has 7 columns");
-    CHECK(close(t.cols[0][0], 1.0e-3), "QED_tables first T == 1e-3");
+    CHECK(t.n_cols == 4, "QED_pressure_correction_e2 has 4 columns");
+    CHECK(close(t.cols[0][0], 1.0e-3), "QED_pressure_correction_e2 first T == 1e-3");
+    cpr_table_free(&t);
+
+    /* QED_pressure_correction_e3.txt: 4 columns (T, dP_e3, derivatives…), 4 comment lines. */
+    if (cpr_table_read("../primat/data/plasma/QED_pressure_correction_e3.txt", 4, &t, &err)) {
+        printf("FAIL QED_pressure_correction_e3 read: %s\n", err);
+        return 1;
+    }
+    CHECK(t.n_cols == 4, "QED_pressure_correction_e3 has 4 columns");
+    CHECK(close(t.cols[0][0], 1.0e-3), "QED_pressure_correction_e3 first T == 1e-3");
     cpr_table_free(&t);
 
     if (failures) {

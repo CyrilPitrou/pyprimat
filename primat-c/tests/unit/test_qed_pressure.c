@@ -68,20 +68,29 @@ int main(void)
 
     /* Save and reload via table_io.c, exactly the "file mode" path
      * plasma.c will use; verifies cpr_qed_save_tables' on-disk format is
-     * self-consistent.  The saved file is QED_tables.txt with 7 columns. */
+     * self-consistent.  The saved files are QED_pressure_correction_e2.txt/
+     * QED_pressure_correction_e3.txt, each with 4 columns. */
     rc = cpr_qed_save_tables(&t, "/tmp", &err);
     CHECK(rc == 0, "cpr_qed_save_tables succeeds");
 
     CPRTable loaded;
-    rc = cpr_table_read("/tmp/QED_tables.txt", 7, &loaded, &err);
-    CHECK(rc == 0, "saved QED_tables.txt reloads via cpr_table_read");
-    CHECK(loaded.n_rows == t.n, "reloaded table has the same row count");
-    CHECK(fabs(loaded.cols[0][i10] - t.T[i10]) < 1e-6, "reloaded T column matches");
+    rc = cpr_table_read("/tmp/QED_pressure_correction_e2.txt", 4, &loaded, &err);
+    CHECK(rc == 0, "saved QED_pressure_correction_e2.txt reloads via cpr_table_read");
+    CHECK(loaded.n_rows == t.n, "reloaded e2 table has the same row count");
+    CHECK(fabs(loaded.cols[0][i10] - t.T[i10]) < 1e-6, "reloaded e2 T column matches");
     CHECK(fabs(loaded.cols[1][i10] - t.dP_e2[i10]) < fabs(t.dP_e2[i10]) * 1e-5 + 1e-12,
           "reloaded dP_a column (col 1) matches to file precision (%.6E)");
-    CHECK(fabs(loaded.cols[3][i10] - t.d_dP_e2_dT[i10])
+    CHECK(fabs(loaded.cols[2][i10] - t.d_dP_e2_dT[i10])
               < fabs(t.d_dP_e2_dT[i10]) * 1e-5 + 1e-12,
-          "reloaded d(dP_a)/dT column (col 3) matches to file precision (%.6E)");
+          "reloaded d(dP_a)/dT column (col 2) matches to file precision (%.6E)");
+    cpr_table_free(&loaded);
+
+    rc = cpr_table_read("/tmp/QED_pressure_correction_e3.txt", 4, &loaded, &err);
+    CHECK(rc == 0, "saved QED_pressure_correction_e3.txt reloads via cpr_table_read");
+    CHECK(loaded.n_rows == t.n, "reloaded e3 table has the same row count");
+    CHECK(fabs(loaded.cols[0][i10] - t.T[i10]) < 1e-6, "reloaded e3 T column matches");
+    CHECK(fabs(loaded.cols[1][i10] - t.dP_e3[i10]) < fabs(t.dP_e3[i10]) * 1e-5 + 1e-12,
+          "reloaded dP_e3 column (col 1) matches to file precision (%.6E)");
     cpr_table_free(&loaded);
 
     cpr_qed_tables_free(&t);

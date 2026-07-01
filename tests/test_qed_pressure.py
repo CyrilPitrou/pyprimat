@@ -171,23 +171,29 @@ def test_derivative_consistency():
 def test_save_and_load_roundtrip(tmp_path):
     """Tables written by save_qed_tables round-trip correctly through np.loadtxt.
 
-    ``save_qed_tables`` writes a single 7-column file ``QED_tables.txt``:
-    T, dP_a, dP_e3, d(dP_a)/dT, d(dP_e3)/dT, d2(dP_a)/dT2, d2(dP_e3)/dT2.
+    ``save_qed_tables`` writes two 4-column files, one per order in e:
+    ``QED_pressure_correction_e2.txt`` (T, dP_a, d(dP_a)/dT, d2(dP_a)/dT2) and
+    ``QED_pressure_correction_e3.txt`` (T, dP_e3, d(dP_e3)/dT, d2(dP_e3)/dT2).
     """
     tables = compute_qed_pressure_tables(T_min=1., T_max=10., n_pts=30,
                                          verbose=False)
     save_qed_tables(tables, str(tmp_path), verbose=False)
 
-    fpath = tmp_path / "QED_tables.txt"
-    assert fpath.exists(), "QED_tables.txt was not written"
-    data = np.loadtxt(str(fpath))
-    assert data.shape == (30, 7), f"QED_tables.txt has unexpected shape {data.shape}"
+    fpath_e2 = tmp_path / "QED_pressure_correction_e2.txt"
+    fpath_e3 = tmp_path / "QED_pressure_correction_e3.txt"
+    assert fpath_e2.exists(), "QED_pressure_correction_e2.txt was not written"
+    assert fpath_e3.exists(), "QED_pressure_correction_e3.txt was not written"
+    data_e2 = np.loadtxt(str(fpath_e2))
+    data_e3 = np.loadtxt(str(fpath_e3))
+    assert data_e2.shape == (30, 4), f"QED_pressure_correction_e2.txt has unexpected shape {data_e2.shape}"
+    assert data_e3.shape == (30, 4), f"QED_pressure_correction_e3.txt has unexpected shape {data_e3.shape}"
 
-    # Verify all seven columns round-trip to within floating-point precision
-    np.testing.assert_allclose(data[:, 0], tables["T"],            rtol=1e-5)
-    np.testing.assert_allclose(data[:, 1], tables["dP_e2"],        rtol=1e-5)
-    np.testing.assert_allclose(data[:, 2], tables["dP_e3"],        rtol=1e-5)
-    np.testing.assert_allclose(data[:, 3], tables["d_dP_e2_dT"],   rtol=1e-5)
-    np.testing.assert_allclose(data[:, 4], tables["d_dP_e3_dT"],   rtol=1e-5)
-    np.testing.assert_allclose(data[:, 5], tables["d2_dP_e2_dT2"], rtol=1e-5)
-    np.testing.assert_allclose(data[:, 6], tables["d2_dP_e3_dT2"], rtol=1e-5)
+    # Verify all four columns of each file round-trip to within floating-point precision
+    np.testing.assert_allclose(data_e2[:, 0], tables["T"],            rtol=1e-5)
+    np.testing.assert_allclose(data_e2[:, 1], tables["dP_e2"],        rtol=1e-5)
+    np.testing.assert_allclose(data_e2[:, 2], tables["d_dP_e2_dT"],   rtol=1e-5)
+    np.testing.assert_allclose(data_e2[:, 3], tables["d2_dP_e2_dT2"], rtol=1e-5)
+    np.testing.assert_allclose(data_e3[:, 0], tables["T"],            rtol=1e-5)
+    np.testing.assert_allclose(data_e3[:, 1], tables["dP_e3"],        rtol=1e-5)
+    np.testing.assert_allclose(data_e3[:, 2], tables["d_dP_e3_dT"],   rtol=1e-5)
+    np.testing.assert_allclose(data_e3[:, 3], tables["d2_dP_e3_dT2"], rtol=1e-5)

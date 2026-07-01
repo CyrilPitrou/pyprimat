@@ -78,19 +78,22 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
     }
     pl->qed_active = 1;
 
-    char plasma_dir[4096], new_file[4200];
+    char plasma_dir[4096], e2_file[4200], e3_file[4200], old_file[4200];
     /* Legacy 3-file names for backward compat with old cached copies. */
     char p_file_leg[4200], dp_file_leg[4200], d2p_file_leg[4200];
     snprintf(plasma_dir,   sizeof(plasma_dir),   "%s/plasma", cfg->data_dir);
-    snprintf(new_file,     sizeof(new_file),      "%s/QED_tables.txt", plasma_dir);
+    snprintf(e2_file,      sizeof(e2_file),       "%s/QED_pressure_correction_e2.txt", plasma_dir);
+    snprintf(e3_file,      sizeof(e3_file),       "%s/QED_pressure_correction_e3.txt", plasma_dir);
+    snprintf(old_file,     sizeof(old_file),      "%s/QED_tables.txt", plasma_dir);
     snprintf(p_file_leg,   sizeof(p_file_leg),    "%s/QED_P_int.txt", plasma_dir);
     snprintf(dp_file_leg,  sizeof(dp_file_leg),   "%s/QED_dP_intdT.txt", plasma_dir);
     snprintf(d2p_file_leg, sizeof(d2p_file_leg),  "%s/QED_d2P_intdT2.txt", plasma_dir);
 
-    int new_present    = file_exists(new_file);
+    int split_present  = file_exists(e2_file) && file_exists(e3_file);
+    int old_present    = file_exists(old_file);
     int legacy_present = file_exists(p_file_leg) && file_exists(dp_file_leg)
                          && file_exists(d2p_file_leg);
-    int files_present  = new_present || legacy_present;
+    int files_present  = split_present || old_present || legacy_present;
     int recompute = cfg->recompute_qed_corrections;
 
     if (recompute || !files_present) {
@@ -127,10 +130,31 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
      * with linear extrapolation outside the table (matches
      * interp1d(kind='linear', fill_value="extrapolate")). */
     CPRTable tab;
-    if (new_present) {
-        /* New 7-column format: T, dP_a, dP_e3, d(dP_a)/dT, d(dP_e3)/dT,
+    if (split_present) {
+        /* Current format: two 4-column files, one per order in e
+         * (T, dP, d(dP)/dT, d2(dP)/dT2), summed column-by-column. Both
+         * files share the same T grid (generated together), so the e2
+         * file's T column is used for both interpolants' x-axis. */
+        CPRTable tab_e2, tab_e3;
+        if (cpr_table_read(e2_file, 4, &tab_e2, errmsg)) return 1;
+        if (cpr_table_read(e3_file, 4, &tab_e3, errmsg)) { cpr_table_free(&tab_e2); return 1; }
+        CPRInterp1D *targets[3] = { &pl->P_QED, &pl->dP_QED, &pl->d2P_QED };
+        for (int k = 0; k < 3; k++) {
+            targets[k]->is_spline = 0;
+            targets[k]->n = tab_e2.n_rows;
+            targets[k]->x = malloc(tab_e2.n_rows * sizeof(double));
+            targets[k]->y = malloc(tab_e2.n_rows * sizeof(double));
+            for (size_t i = 0; i < tab_e2.n_rows; i++) {
+                targets[k]->x[i] = tab_e2.cols[0][i];
+                targets[k]->y[i] = tab_e2.cols[k + 1][i] + tab_e3.cols[k + 1][i];
+            }
+        }
+        cpr_table_free(&tab_e2);
+        cpr_table_free(&tab_e3);
+    } else if (old_present) {
+        /* Older 7-column format: T, dP_a, dP_e3, d(dP_a)/dT, d(dP_e3)/dT,
          * d2(dP_a)/dT2, d2(dP_e3)/dT2. */
-        if (cpr_table_read(new_file, 7, &tab, errmsg)) return 1;
+        if (cpr_table_read(old_file, 7, &tab, errmsg)) return 1;
         /* col indices: 0=T, 1=dP_a, 2=dP_e3, 3=ddP_a/dT, 4=ddP_e3/dT,
          *              5=d2dP_a/dT2, 6=d2dP_e3/dT2 */
         int col_pairs[3][2] = { {1,2}, {3,4}, {5,6} };

@@ -4,7 +4,7 @@
 generate_qed_tables.py
 ======================
 Standalone script to recompute the QED plasma-pressure correction tables
-and write them to ``primat/rates/plasma/``.
+and write them to ``primat/data/plasma/``.
 
 These tables store δP(T), dδP/dT, and d²δP/dT² — the finite-temperature
 QED corrections to the EM plasma pressure that enter the background
@@ -32,10 +32,9 @@ Usage::
     # Also compute the O(e^4) two-loop exchange term (very slow):
     python generate_rates/generate_qed_tables.py --include-dPb
 
-The output files are written to ``primat/rates/plasma/``:
-  - ``QED_P_int.txt``     — δP columns: [T, δP_a, δP_{e3}]
-  - ``QED_dP_intdT.txt``  — dδP/dT
-  - ``QED_d2P_intdT2.txt`` — d²δP/dT²
+The output files are written to ``primat/data/plasma/``:
+  - ``QED_pressure_correction_e2.txt`` — T, δP_a, d(δP_a)/dT, d²(δP_a)/dT²  [O(e²)]
+  - ``QED_pressure_correction_e3.txt`` — T, δP_{e3}, d(δP_{e3})/dT, d²(δP_{e3})/dT²  [O(e³)]
 
 Physical background
 -------------------
@@ -81,7 +80,7 @@ def main():
                              "correction δP_b (very slow: ~10 s per point).")
     parser.add_argument("--output-dir", default=None,
                         help="Output directory for QED_*.txt files.  "
-                             "Default: <repo_root>/primat/rates/plasma/")
+                             "Default: <repo_root>/primat/data/plasma/")
     args = parser.parse_args()
 
     plasma_dir = args.output_dir or os.path.join(_repo_root, "primat", "rates", "plasma")

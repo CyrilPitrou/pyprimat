@@ -13,8 +13,8 @@
  *                                Justin), positive, ~10x smaller.
  *
  * (The O(alpha^2) two-loop exchange term dPb is not ported: primat's
- * shipped tables never include it, and CPLAN.md S7a scopes this module to
- * the pieces plasma.c actually loads.)
+ * shipped tables never include it, so this module is scoped to the pieces
+ * plasma.c actually loads.)
  *
  * Both terms are built from two Fermi-Dirac phase-space integrals, I01(x)
  * and I2m1(x) with x = me/T (cpr_qed_I01, cpr_qed_I2m1 below).
@@ -99,13 +99,13 @@ int cpr_qed_compute_tables(double T_min, double T_max, size_t n_pts,
 
 void cpr_qed_tables_free(CPRQEDTables *t);
 
-/* Writes data/plasma/QED_tables.txt: a single 7-column file with columns
- *   T [MeV]  dP_a [MeV^4]  dP_e3 [MeV^4]
- *   d(dP_a)/dT [MeV^3]  d(dP_e3)/dT [MeV^3]
- *   d2(dP_a)/dT2 [MeV^2]  d2(dP_e3)/dT2 [MeV^2]
- * in the same %.6E whitespace-separated format Python's save_qed_tables
- * produces (plasma.c's "file mode" loader reads it back) -- so a
- * recompute-and-save cycle through this function is byte-for-byte
+/* Writes data/plasma/QED_pressure_correction_e2.txt and QED_pressure_correction_e3.txt: two 4-column
+ * files, one per order in e, each with columns
+ *   T [MeV]  dP [MeV^4]  d(dP)/dT [MeV^3]  d2(dP)/dT2 [MeV^2]
+ * (QED_pressure_correction_e2.txt holds dP_a [O(e^2)], QED_pressure_correction_e3.txt holds dP_e3
+ * [O(e^3)]) in the same %.6E whitespace-separated format Python's
+ * save_qed_tables produces (plasma.c's "file mode" loader reads them back)
+ * -- so a recompute-and-save cycle through this function is byte-for-byte
  * interchangeable with the Python one. `plasma_dir` is the path to
  * data/plasma/ (no trailing slash required). Returns 0 on success,
  * nonzero with *errmsg set (caller frees) on a file-write failure. */

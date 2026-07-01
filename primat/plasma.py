@@ -304,14 +304,16 @@ class Plasma:
 
         Three modes (controlled by ``cfg.recompute_qed_corrections``):
 
-        **File mode** (default, ``recompute_qed_corrections=False``, file present):
-            Loads ``data/plasma/QED_tables.txt``: a 7-column file with columns
-            T [MeV], δP_a [MeV^4], δP_{e3} [MeV^4], d(δP_a)/dT [MeV^3],
-            d(δP_{e3})/dT [MeV^3], d²(δP_a)/dT² [MeV^2], d²(δP_{e3})/dT²
-            [MeV^2].  The two δP columns are summed to give the total correction.
-            (Backward compat: if ``QED_tables.txt`` is absent but the legacy
-            ``QED_P_int.txt`` / ``QED_dP_intdT.txt`` / ``QED_d2P_intdT2.txt``
-            trio is present, those 3-column files are loaded instead.)
+        **File mode** (default, ``recompute_qed_corrections=False``, files present):
+            Loads ``data/plasma/QED_pressure_correction_e2.txt`` and
+            ``QED_pressure_correction_e3.txt``: two 4-column files, each with columns
+            T [MeV], δP [MeV^4], d(δP)/dT [MeV^3], d²(δP)/dT² [MeV^2] — one
+            for δP_a [O(e²)], one for δP_{e3} [O(e³)].  The two files' values
+            (and derivatives) are summed to give the total correction.
+            (Backward compat: if the two-file pair is absent, falls back to
+            the older single 7-column ``QED_tables.txt``, then to the even
+            older legacy ``QED_P_int.txt`` / ``QED_dP_intdT.txt`` /
+            ``QED_d2P_intdT2.txt`` trio, in that order.)
 
         **Analytic fallback** (``recompute_qed_corrections=False``, files absent):
             Calls :func:`primat.qed_pressure.compute_qed_pressure_tables`
@@ -336,16 +338,20 @@ class Plasma:
             return
 
         plasma_dir    = os.path.join(cfg._resolved_data_dir, "plasma")
-        new_file      = os.path.join(plasma_dir, "QED_tables.txt")
-        # Legacy 3-file names kept for backward compat with old cached copies.
+        e2_file       = os.path.join(plasma_dir, "QED_pressure_correction_e2.txt")
+        e3_file       = os.path.join(plasma_dir, "QED_pressure_correction_e3.txt")
+        # Older single-file format, kept for backward compat with old cached copies.
+        old_file      = os.path.join(plasma_dir, "QED_tables.txt")
+        # Even older legacy 3-file names, same reason.
         p_file_leg    = os.path.join(plasma_dir, "QED_P_int.txt")
         dp_file_leg   = os.path.join(plasma_dir, "QED_dP_intdT.txt")
         d2p_file_leg  = os.path.join(plasma_dir, "QED_d2P_intdT2.txt")
 
-        new_present    = os.path.exists(new_file)
+        split_present  = os.path.exists(e2_file) and os.path.exists(e3_file)
+        old_present    = os.path.exists(old_file)
         legacy_present = (os.path.exists(p_file_leg) and os.path.exists(dp_file_leg)
                           and os.path.exists(d2p_file_leg))
-        files_present  = new_present or legacy_present
+        files_present  = split_present or old_present or legacy_present
         recompute = cfg.recompute_qed_corrections
 
         if recompute or not files_present:
@@ -371,9 +377,20 @@ class Plasma:
             return
 
         # Load from the saved file(s), linear interpolation matches file precision.
-        if new_present:
-            # New format: single 7-column file (T, dP_a, dP_e3, derivatives…).
-            t = np.loadtxt(new_file)
+        if split_present:
+            # Current format: two 4-column files, one per order in e
+            # (T, dP, d(dP)/dT, d2(dP)/dT2), summed column-by-column.
+            t2 = np.loadtxt(e2_file)
+            t3 = np.loadtxt(e3_file)
+            self.PQEDofT = interp1d(t2[:, 0], t2[:, 1] + t3[:, 1], bounds_error=False,
+                            fill_value="extrapolate", assume_sorted=False, kind='linear')
+            self.dPQEDdT = interp1d(t2[:, 0], t2[:, 2] + t3[:, 2], bounds_error=False,
+                            fill_value="extrapolate", assume_sorted=False, kind='linear')
+            self.d2PQEDdT2 = interp1d(t2[:, 0], t2[:, 3] + t3[:, 3], bounds_error=False,
+                              fill_value="extrapolate", assume_sorted=False, kind='linear')
+        elif old_present:
+            # Older format: single 7-column file (T, dP_a, dP_e3, derivatives…).
+            t = np.loadtxt(old_file)
             self.PQEDofT = interp1d(t[:, 0], t[:, 1] + t[:, 2], bounds_error=False,
                             fill_value="extrapolate", assume_sorted=False, kind='linear')
             self.dPQEDdT = interp1d(t[:, 0], t[:, 3] + t[:, 4], bounds_error=False,
