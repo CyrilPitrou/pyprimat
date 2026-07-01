@@ -1,6 +1,6 @@
 # Parthenope-3.0 small-network rate extraction
 
-Reproducible extraction of the 12 PyPRIMAT *small-network* thermonuclear rates
+Reproducible extraction of the 12 primat *small-network* thermonuclear rates
 from the Parthenope 3.0 Fortran source, using the **default `PIS2020`** nuclear
 rate selection (`dpg=ddn=ddp="PIS2020"`).
 
@@ -10,7 +10,7 @@ The long polynomial fits in `parthenope3.0.f` are error-prone to retype, so we
 **do not** transcribe them.  Instead `frag_*.f` are *verbatim* line ranges cut
 from `parthenope3.0.f`:
 
-| fragment | parthenope3.0.f lines | reaction (f-index) | pyprimat name |
+| fragment | parthenope3.0.f lines | reaction (f-index) | primat name |
 |----------|----------------------|--------------------|---------------|
 | frag_temp | 1744–1790 | temperature-power factors | — |
 | frag_r12  | 1794–1818 | H(n,g)H2     f(12) | npTOdg |
@@ -27,7 +27,7 @@ from `parthenope3.0.f`:
 | frag_r24  | 2184–2232 | Li7(p,a)He4  f(24) | Li7pTOaa |
 | frag_ex   | 3550–3575 | underflow-safe `ex()` | — |
 
-`assemble.py` wraps these fragments in a loop over the PyPRIMAT master T9 grid
+`assemble.py` wraps these fragments in a loop over the primat master T9 grid
 (500 log-spaced points, 1e-3…10 GK) and emits, per reaction:
 
     t9   f(idx)   sqrt((1+drate_up)/(1+drate_lo))
@@ -43,7 +43,7 @@ where a published fit first extrapolates to a negative rate (well outside the
 range Parthenope ever evaluates it), the rate is filled by log-log linear
 extrapolation of the two lowest valid points and the error is held constant.
 That region is dynamically frozen for BBN; the fill only keeps the table
-positive/monotone for PyPRIMAT's log-log resampler.
+positive/monotone for primat's log-log resampler.
 
 ## Rebuild
 

@@ -3,7 +3,7 @@
 
 We embed the exact fixed-form Fortran code for each small-network reaction
 (extracted by line range from parthenope3.0.f, PIS2020 default branches) inside
-a loop over the PyPRIMAT master T9 grid and emit, per reaction:
+a loop over the primat master T9 grid and emit, per reaction:
 
     t9   f(idx)   sqrt((1+drate2)/(1+drate1))
 

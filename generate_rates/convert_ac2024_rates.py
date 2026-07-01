@@ -83,7 +83,7 @@ for _p in (_HERE, os.path.dirname(_HERE)):     # generate_rates/ and repo root
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-# Standard target grid: single-sourced from PyPRIMAT's own master-grid
+# Standard target grid: single-sourced from primat's own master-grid
 # defaults (primat.config.DEFAULT_PARAMS["rate_grid_*"]) so the generator
 # and the runtime grid-resampling in pypr.nuclear.UpdateNuclearRates can never
 # silently drift apart.  DEFAULT_PARAMS is a plain dict,
@@ -95,7 +95,7 @@ GRID_T9_MIN = DEFAULT_PARAMS["rate_grid_T9_min"]
 GRID_T9_MAX = DEFAULT_PARAMS["rate_grid_T9_max"]
 
 # Output directory for per-reaction rate tables (.txt). Hardcoded -- this is
-# the only location PyPRIMAT's load_network reads rate tables from, so there
+# the only location primat's load_network reads rate tables from, so there
 # is no use case for writing them elsewhere.
 TABDIR = "primat/data/nuclear/tables"
 
@@ -217,7 +217,7 @@ def expand_ref(ref):
 #     own spelling and keeping filenames short.
 #   * The CSVs (reactions_large.csv etc., built in write_network_files via
 #     nuclide_table.resolve_token/canonical_name) spell nuclides out in full
-#     (He4/H2/H3/...), matching PyPRIMAT's runtime ``Nuclides`` keys.
+#     (He4/H2/H3/...), matching primat's runtime ``Nuclides`` keys.
 # _CANON_TOKEN below only affects filenames; resolve_token/canonical_name in
 # nuclide_table.py are the single source of truth for the CSV spelling.
 # ---------------------------------------------------------------------------
@@ -915,7 +915,7 @@ _ANALYTIC_REACTIONS = [
 # ---------------------------------------------------------------------------
 # Network / nuclide / detailed-balance generation
 # ---------------------------------------------------------------------------
-# The rate *files* above give PyPRIMAT the numbers; the files below give it the
+# The rate *files* above give primat the numbers; the files below give it the
 # *structure* it needs to assemble the large network without any hand-coding:
 #   * reactions_large.csv : one row per reaction (name, reactants, products),
 #   * nuclides.csv        : every nuclide it touches, with N, Z, A, Q, mass, spin,
@@ -1010,7 +1010,7 @@ def write_network_files(reactions, tab_blocks, nubase_path, outdir, suffix="_pri
          A and charge Q; abort on any violation.
       3. Compute (alpha, beta, gamma) for every reversible (non-decay) reaction
          from nuclide data, and cross-check against the AC2024 tabulated values.
-      4. Emit the three CSVs PyPRIMAT reads at run time, plus
+      4. Emit the three CSVs primat reads at run time, plus
          ``LARGE_NETWORK_FILE`` (the large-network reaction list, i.e. the
          ``name`` column of ``reactions_large.csv``).
 
@@ -1300,7 +1300,7 @@ def _parse_args(argv):
                    help="write each tabulated reaction on its own native T9 grid "
                         "(~60 points from the AC2024 file) instead of reinterpolating "
                         "onto the standard 500-point grid.  Analytic reactions always "
-                        "use the standard grid.  PyPRIMAT's load_network resamples all "
+                        "use the standard grid.  primat's load_network resamples all "
                         "tables to a master grid at init, so mixing grids is safe.")
     return p.parse_args(argv)
 
@@ -1311,7 +1311,7 @@ def _generate_tabulated(args, grid):
     Returns the parsed blocks (needed downstream for the CSV/cross-check
     stage).  With ``--keep-source-grid``, each file is written on its own
     native AC2024 T9 grid (~60 points) instead of the standard grid;
-    PyPRIMAT's ``load_network`` resamples all tables to a master grid at init,
+    primat's ``load_network`` resamples all tables to a master grid at init,
     so mixing grids is safe.
     """
     tab_blocks = parse_blocks(args.input)
@@ -1389,7 +1389,7 @@ def main(argv=None):
 
     # 4. Network structure: deduce nuclides + reactions + detailed balance,
     #    run the formal A/Q conservation check, and emit the three CSVs (plus
-    #    large.txt) that PyPRIMAT reads at run time to assemble the large
+    #    large.txt) that primat reads at run time to assemble the large
     #    network.
     reactions = unified_reactions(tab_blocks, ana_blocks)
     write_network_files(reactions, tab_blocks, args.nubase, args.datadir, args.suffix)

@@ -3,7 +3,7 @@
 nuclide_table.py
 ================
 Offline helpers (used only by the rate/network *generation* command, never at
-PyPRIMAT run time) that turn the reaction list extracted from AC2024 +
+primat run time) that turn the reaction list extracted from AC2024 +
 PRIMAT-main.m into:
 
   1. the **set of nuclides** the network touches, each resolved to its
@@ -13,7 +13,7 @@ PRIMAT-main.m into:
 
 Why offline.  These quantities never change for a fixed PRIMAT version, and the
 NUBASE2020 table is ~760 kB, so we resolve everything once here and bake the
-result into small CSV files that PyPRIMAT simply reads at start-up
+result into small CSV files that primat simply reads at start-up
 (``nuclides.csv``, ``detailed_balance.csv``).
 
 Token convention.  Reaction sides come from the AC2024/PRIMAT sources as token
@@ -22,7 +22,7 @@ nucleons ``n``/``p``, ordinary nuclides ``Be9``/``C12``/..., the photon ``g``
 (or ``2g``), and the beta-decay leptons ``Bm`` (electron, e^-) and ``Bp``
 (positron, e^+).  :func:`resolve_token` maps any of these to a canonical record;
 nuclides are keyed by a canonical name (``n``, ``p``, ``H2``, ``H3``, ``He3``,
-``He4``, ``Be9``, ...) chosen to match PyPRIMAT's existing ``Nuclides`` keys.
+``He4``, ``Be9``, ...) chosen to match primat's existing ``Nuclides`` keys.
 """
 import re
 from collections import Counter
@@ -55,12 +55,12 @@ class Token:
 
 
 def canonical_name(Z, A):
-    """Canonical nuclide name from (Z, A), matching PyPRIMAT's ``Nuclides`` keys.
+    """Canonical nuclide name from (Z, A), matching primat's ``Nuclides`` keys.
 
     The bare nucleons are special-cased to ``n``/``p``; everything else is the
     element symbol followed by the mass number (``H2``, ``H3``, ``He4``,
     ``Be9``, ``C12``, ...).  This deliberately yields ``H2`` (not ``d``) so the
-    generated ``nuclides.csv`` lines up with the names PyPRIMAT already uses.
+    generated ``nuclides.csv`` lines up with the names primat already uses.
     """
     if (Z, A) == (0, 1):
         return "n"
