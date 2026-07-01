@@ -18,6 +18,7 @@ primat -> results" contract is identical to ``runfiles/primat_run.py`` and
 the ``primat`` console script (``primat/cli.py``).
 """
 import json
+import os
 import time
 import types
 
@@ -42,6 +43,15 @@ st.set_page_config(
     page_icon="⚛️",  # atom symbol
     layout="wide",
 )
+
+# Which BBN backend every solve/quick-MC in this process uses, set by
+# `primat-gui --backend {auto,c,python}` (primat/gui/launcher.py) via this
+# env var -- Streamlit re-execs app.py as a plain script on every rerun, so
+# a CLI flag can only reach here through the environment, not through argv.
+# Defaults to "auto" (same default as primat.backend.run_bbn/run_mc), which
+# picks the C backend whenever it is available -- this is what lets
+# `primat-gui --backend python` exercise the pure-Python backend instead.
+_GUI_BACKEND = os.environ.get("PRIMAT_GUI_BACKEND", "auto")
 
 
 @st.cache_resource(show_spinner=False)
@@ -140,7 +150,7 @@ def _solve(params_items):
 
     status.markdown("### Solving the BBN network…")
     result = backend.run_bbn(full_params, custom_network=custom_network,
-                              log_backend=True)
+                              force_backend=_GUI_BACKEND, log_backend=True)
     status.empty()
     # cfg/nucl are solve-free (PRIMATConfig + UpdateNuclearRates only --
     # mirrors _build_preview below), so building them here costs nothing
@@ -148,8 +158,28 @@ def _solve(params_items):
     cfg = PRIMATConfig(params)
     nucl = UpdateNuclearRates(cfg, custom_network=custom_network)
     run = GuiRun(result, cfg, nucl)
-    backend_used = "C" if backend.HAS_C_BACKEND else "Python (C extension unavailable)"
+    backend_used = _describe_backend_used(params)
     return run, time.time() - t0, backend_used
+
+
+def _describe_backend_used(params):
+    """Name the backend :func:`primat.backend.run_bbn` actually used for
+    ``params`` under the GUI-wide ``_GUI_BACKEND`` selection, for the
+    "BBN solve with <X> backend" caption in ``app.main``.
+
+    Mirrors ``run_bbn``'s own fallback logic (``primat/backend.py``) rather
+    than calling it a second time: ``force_backend="python"`` always solves
+    in Python; ``force_backend="c"`` always solves in C (``run_bbn`` itself
+    raises if the C extension is unavailable, so reaching this point means
+    it succeeded); ``force_backend="auto"`` (the default) opportunistically
+    uses C whenever ``backend.HAS_C_BACKEND`` is set, falling back to Python
+    otherwise -- e.g. a source checkout where the C extension wasn't built.
+    """
+    if _GUI_BACKEND == "python":
+        return "Python (--backend python)"
+    if _GUI_BACKEND == "c":
+        return "C (--backend c)"
+    return "C" if backend.HAS_C_BACKEND else "Python (C extension unavailable)"
 
 
 def _quick_mc(params_items, num_mc, run):
@@ -223,8 +253,8 @@ def _quick_mc(params_items, num_mc, run):
     quantities = [q for q in _RATIO_FORMAT if q in run.results]
     status.markdown("### Running BBN error estimation…")
     mc = backend.run_mc(num_mc, quantities,
-                         params=mc_params, seed=0, prev=prev,
-                         custom_network=custom_network)
+                         params=mc_params, force_backend=_GUI_BACKEND,
+                         seed=0, prev=prev, custom_network=custom_network)
     status.empty()
     elapsed = time.time() - t0
     st.session_state["_quick_mc_cache"] = (params_items, mc)

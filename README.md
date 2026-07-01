@@ -144,7 +144,9 @@ primat-gui
 The browser-based app offers a parameter form, interactive abundance-evolution
 plot, and final-abundances panel. It supports custom networks, time-evolution
 output, and can use either the C or Python backend (automatically selected
-like the CLI).
+like the CLI, or pinned for the whole session with `primat-gui --backend
+{auto,c,python}`, e.g. `primat-gui --backend python` to exercise the
+pure-Python backend).
 
 ### 4. Example scripts (development/source-only)
 
