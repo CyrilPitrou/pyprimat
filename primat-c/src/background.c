@@ -33,13 +33,37 @@
  * interpolation noise and any genuine sub-floor value are replaced by 0. */
 #define WEAK_RATE_FLOOR 1.0e-28
 
-/* Fixed (not cfg->numerical_precision-derived) tolerance for the two
- * background ODEs below (a(T) entropy conservation, t(a) Hubble
- * integration) -- see the first call site's comment for the empirical
- * justification (closes a ~1-3% end-to-end BBN-abundance gap traced to
- * RK45-vs-LSODA discretization at the Python-nominal tolerance). */
-#define BG_ODE_RTOL 1.0e-15
-#define BG_ODE_ATOL 1.0e-15
+/* Fixed (not cfg->numerical_precision-derived) tolerance for the
+ * background ODE(s) below (the combined a(T)/t(T) 2D ODE, Branch E) --
+ * see the first call site's comment for the empirical justification
+ * (closes a ~1-3% end-to-end BBN-abundance gap traced to RK45-vs-LSODA
+ * discretization at the Python-nominal tolerance).
+ *
+ * Historically this had to be set as tight as 1e-15 because the solution
+ * at the desired output grid was obtained by *piecewise-linear*
+ * interpolation of the accepted RK45 steps: with a loose tolerance the
+ * stepper takes large steps, and O(h^2) linear-interpolation error
+ * between sparse points corrupted a(T)/t(a) downstream. Forcing rtol/atol
+ * to 1e-15 hid that interpolation error at the cost of a hugely
+ * oversampled stepper.
+ *
+ * Branch A: cpr_ode_rk45 now supports dense-output evaluation (ode_rk.h,
+ * `dense_cb`/cpr_ode_dense_eval), used by setup_background_and_cosmo's
+ * CPRDensePath to evaluate the solution at any query point via the
+ * Dormand-Prince continuous extension polynomial -- locally as accurate
+ * as the step itself, no separate interpolation error to hide. This lets
+ * rtol/atol be loosened by ~5 orders of magnitude: empirically, 1e-7
+ * through 1e-12 were tried against the small/large+amax=8 reference
+ * numbers (CLAUDE.md's "Validation before committing"); 1e-7 already
+ * nudges D/H outside CLAUDE.md's +-3e-9 bound, while 1e-8 through 1e-12
+ * stay comfortably within +-1.2e-9. 1e-10 is chosen as a safety margin
+ * below that edge rather than chasing the exact breakeven, since the
+ * combined ODE is cheap regardless (2-D, smooth, dense-output already
+ * removing the dominant cost) and the BBN-abundance sensitivity to
+ * a(T)/t(a) discretization error documented above leaves little room for
+ * complacency. */
+#define BG_ODE_RTOL 1.0e-10
+#define BG_ODE_ATOL 1.0e-10
 
 static double clamp_raw_weak_rate(double rate)
 {
@@ -76,50 +100,93 @@ static double bg_dPQEDdT(const CPRPlasma *pl, double Tg)
 }
 
 /* ---------------------------------------------------------------------
- * Growable (t, y) path recorder used by the two background ODEs below
- * (a(T) entropy-conservation, t(a) Hubble integration). ode_rk.h's
- * cpr_ode_rk45 has no t_eval (it returns only the final state); Python's
- * solve_ivp(..., t_eval=...) effectively does the same thing this does --
- * dense-output interpolation of the accepted-step solution onto a
- * prescribed grid -- so recording every accepted step here and
- * interpolating onto the desired grid afterwards (see bg_path_eval) is a
- * faithful (if differently-stepped) match, not an approximation of a
- * fundamentally different scheme. RK45 in place of LSODA for these two
- * smooth, non-stiff ODEs is exactly what ode_rk.h's own header comment
- * anticipates.
- * ------------------------------------------------------------------- */
+ * Growable per-step recorder for the background ODEs below (the combined
+ * a(T)/t(T) 2D ODE, and the external_scale_factor mode's 1D t(a) ODE):
+ * stores the RAW Dormand-Prince dense-output ingredients (y_old, hh,
+ * k1,k3,k4,k5,k6,k7) for every accepted step, via ode_rk.h's dense_cb
+ * mechanism, so the solution can be evaluated AFTER the solve completes at
+ * full dense-output accuracy (locally as accurate as the step itself -- no
+ * separate, lower-order interpolation error on top of the ODE's own
+ * accuracy) at query points that are not necessarily known in advance
+ * (unlike ode_rk.h's t_eval/y_eval, which needs the whole grid up front).
+ * This is needed here because the second output grid this file queries
+ * (bg->t_vec, over a uniform-in-log(a) grid) is only determined AFTER the
+ * first grid (bg->lnT_sol) has been solved and inverted via T_of_a -- see
+ * combined_bg_rhs's docstring below. Both ODEs integrate strictly
+ * ascending (dir=+1), so steps are recorded in increasing t0 order and a
+ * plain binary search brackets any query. */
 typedef struct {
-    double *t, *y;
-    size_t n, cap;
-} CPRPath;
+    double *t0, *hh;              /* per-step: start time, step span; length nsteps */
+    double *y_old, *k1, *k3, *k4, *k5, *k6, *k7; /* per-step, n components each; length nsteps*n */
+    size_t n;                      /* ODE dimension (1 or 2 here) */
+    size_t nsteps, cap;
+} CPRDensePath;
 
-static void path_init(CPRPath *p) { p->t = NULL; p->y = NULL; p->n = 0; p->cap = 0; }
-
-static void path_push(CPRPath *p, double t, double y)
+static void dense_path_init(CPRDensePath *p, size_t n)
 {
-    if (p->n == p->cap) {
+    memset(p, 0, sizeof(*p));
+    p->n = n;
+}
+
+static void dense_path_push(double t0, double hh, const double *y_old,
+                              const double *k1, const double *k3, const double *k4,
+                              const double *k5, const double *k6, const double *k7,
+                              size_t n, void *ctx)
+{
+    CPRDensePath *p = ctx;
+    (void)n; /* == p->n by construction (one CPRDensePath per ODE dimension) */
+    if (p->nsteps == p->cap) {
         p->cap = p->cap ? p->cap * 2 : 64;
-        p->t = realloc(p->t, p->cap * sizeof(double));
-        p->y = realloc(p->y, p->cap * sizeof(double));
+        p->t0 = realloc(p->t0, p->cap * sizeof(double));
+        p->hh = realloc(p->hh, p->cap * sizeof(double));
+        p->y_old = realloc(p->y_old, p->cap * p->n * sizeof(double));
+        p->k1 = realloc(p->k1, p->cap * p->n * sizeof(double));
+        p->k3 = realloc(p->k3, p->cap * p->n * sizeof(double));
+        p->k4 = realloc(p->k4, p->cap * p->n * sizeof(double));
+        p->k5 = realloc(p->k5, p->cap * p->n * sizeof(double));
+        p->k6 = realloc(p->k6, p->cap * p->n * sizeof(double));
+        p->k7 = realloc(p->k7, p->cap * p->n * sizeof(double));
     }
-    p->t[p->n] = t;
-    p->y[p->n] = y;
-    p->n++;
+    size_t i = p->nsteps;
+    p->t0[i] = t0;
+    p->hh[i] = hh;
+    memcpy(&p->y_old[i * p->n], y_old, p->n * sizeof(double));
+    memcpy(&p->k1[i * p->n], k1, p->n * sizeof(double));
+    memcpy(&p->k3[i * p->n], k3, p->n * sizeof(double));
+    memcpy(&p->k4[i * p->n], k4, p->n * sizeof(double));
+    memcpy(&p->k5[i * p->n], k5, p->n * sizeof(double));
+    memcpy(&p->k6[i * p->n], k6, p->n * sizeof(double));
+    memcpy(&p->k7[i * p->n], k7, p->n * sizeof(double));
+    p->nsteps++;
 }
 
-static void path_step_cb(double t, const double *y, size_t n, void *ctx)
+static void dense_path_free(CPRDensePath *p)
 {
-    (void)n;
-    path_push((CPRPath *)ctx, t, y[0]);
+    free(p->t0); free(p->hh); free(p->y_old);
+    free(p->k1); free(p->k3); free(p->k4); free(p->k5); free(p->k6); free(p->k7);
+    memset(p, 0, sizeof(*p));
 }
 
-static void path_free(CPRPath *p) { free(p->t); free(p->y); p->n = p->cap = 0; }
-
-/* Evaluates the recorded path's piecewise-linear interpolant at `tq`
- * (`t` ascending, since both ODEs below integrate forward from t0<t1). */
-static double path_eval(const CPRPath *p, double tq)
+/* Evaluates the recorded path at `tq` (anywhere in [t0[0], t0[last]+hh[last]])
+ * via the exact Dormand-Prince dense-output polynomial for the bracketing
+ * step, writing `p->n` components into `out` (caller-allocated). Binary
+ * search for the bracketing step (t0 ascending, since both ODEs using this
+ * integrate with dir=+1); theta is clamped to [0,1] to absorb roundoff at
+ * the very first/last query (mirrors cpr_ode_rk45's own t_eval `eps`
+ * handling of the same boundary-roundoff issue). */
+static void dense_path_eval(const CPRDensePath *p, double tq, double *out)
 {
-    return cpr_interp_linear(p->t, p->y, p->n, tq, CPR_EXTRAP_LINEAR);
+    size_t lo = 0, hi = p->nsteps - 1;
+    while (lo < hi) {
+        size_t mid = (lo + hi + 1) / 2;
+        if (p->t0[mid] <= tq) lo = mid; else hi = mid - 1;
+    }
+    double theta = (tq - p->t0[lo]) / p->hh[lo];
+    if (theta < 0.0) theta = 0.0;
+    if (theta > 1.0) theta = 1.0;
+    cpr_ode_dense_eval(theta, p->hh[lo], &p->y_old[lo * p->n], &p->k1[lo * p->n],
+                        &p->k3[lo * p->n], &p->k4[lo * p->n], &p->k5[lo * p->n],
+                        &p->k6[lo * p->n], &p->k7[lo * p->n], p->n, out);
 }
 
 /* ---------------------------------------------------------------------
@@ -143,7 +210,6 @@ static void setup_lcdm(CPRBackground *bg)
     double rhocrit100 = cpr_config_rhocOverh2(cfg);
 
     bg->has_lcdm = 1;
-    bg->lcdm_use_exact = 0; /* radiation-domination approx until a_of_T is built */
     bg->rhocdm_a3 = cfg->Omegach2 * rhocrit100;
 
     double Omegalambdah2 = cfg->h * cfg->h - cpr_config_get_Omegabh2(cfg) - cfg->Omegach2;
@@ -185,7 +251,7 @@ static void setup_ede(CPRBackground *bg)
  * Friedmann expansion rate (StandardBackground.Hubble).
  * ------------------------------------------------------------------- */
 double cpr_bg_Hubble(const CPRBackground *bg, double Tg, double Tnue, double Tnumu,
-                      double Tnutau)
+                      double Tnutau, double a)
 {
     const CPRConfig *cfg = bg->cfg;
     const CPRPlasma *thermo = bg->plasma;
@@ -216,10 +282,12 @@ double cpr_bg_Hubble(const CPRBackground *bg, double Tg, double Tnue, double Tnu
     double rho_tot = rho_pl + rho_3nu + cpr_plasma_rho_nu_extra(thermo, Tg);
 
     if (bg->has_lcdm) {
-        double a_cdm = bg->lcdm_use_exact
-                        ? cpr_bg_a_of_T(bg, Tg)
-                        : (g_const.T0CMB / cpr_MeV_to_Kelvin()) / Tg; /* radiation-domination bootstrap */
-        rho_tot += bg->rhocdm_a3 / (a_cdm * a_cdm * a_cdm) + bg->rholambda;
+        /* `a` is always supplied exactly by the caller now (Branch E: the
+         * combined a(T)/t(T) ODE below always carries x=ln(a*T) in its own
+         * state, so a=exp(x-lnT) is recovered analytically at every RHS
+         * evaluation -- no "not yet built" a(T) to bootstrap around, unlike
+         * the old sequential two-ODE scheme this replaced). */
+        rho_tot += bg->rhocdm_a3 / (a * a * a) + bg->rholambda;
     }
     if (bg->has_ede) {
         rho_tot += 2.0 * bg->rhocEDEac / (1.0 + pow(bg->TcEDE / Tg, bg->EDE_exponent));
@@ -235,23 +303,20 @@ double cpr_bg_Hubble(const CPRBackground *bg, double Tg, double Tnue, double Tnu
  * StandardBackground: a(T)/t(a) ODEs + weak rates.
  * ------------------------------------------------------------------- */
 
-typedef struct { CPRBackground *bg; } DlnaDlnTCtx;
-
 /* d(ln a)/d(ln T) = -(3 sbar + T dsbar/dT) / (N_NEVO + 3 sbar), the EM
  * entropy-conservation ODE driving a(T_gamma) (Phys. Rep. S2; see
- * background.py's _setup_background_and_cosmo docstring, "minimal mode"). */
-static int dlnadlnT_rhs(double lnT, const double *y, double *ydot, void *ctx_)
+ * background.py's _setup_background_and_cosmo docstring, "minimal mode").
+ * Used directly only by combined_bg_rhs below now (Branch E); kept as a
+ * free-standing helper rather than inlined since its formula/derivation
+ * comment is referenced from there. */
+static double dlnadlnT_value(CPRBackground *bg, double T)
 {
-    (void)y;
-    DlnaDlnTCtx *c = ctx_;
-    double T = exp(lnT);
     double s, ds_dT;
-    cpr_plasma_spl_and_dspl_dT(c->bg->plasma, T, &s, &ds_dT);
+    cpr_plasma_spl_and_dspl_dT(bg->plasma, T, &s, &ds_dT);
     double sb = s / (T * T * T);
     double dsbdT = ds_dT / (T * T * T) - 3.0 * s / (T * T * T * T);
-    double N = cpr_nu_N_NEVO_of_Tg(&c->bg->nh, T);
-    ydot[0] = -(3.0 * sb + T * dsbdT) / (N + 3.0 * sb);
-    return 0;
+    double N = cpr_nu_N_NEVO_of_Tg(&bg->nh, T);
+    return -(3.0 * sb + T * dsbdT) / (N + 3.0 * sb);
 }
 
 /* `T_of_a_smooth` is a *local-only* cubic spline over the same
@@ -273,7 +338,16 @@ static int dlnadlnT_rhs(double lnT, const double *y, double *ydot, void *ctx_)
  * stepper was fighting, without touching `cpr_bg_T_of_a`'s own linear
  * behaviour or this ODE's accuracy contract (BG_ODE_RTOL/ATOL, the
  * solution itself, are unchanged -- only how cheaply the same tolerance is
- * reached). */
+ * reached).
+ *
+ * Branch E note: this dtdlna_rhs/T_of_a_smooth pair is now used ONLY for
+ * cfg->external_scale_factor=True, where a(T) is already a closed-form
+ * algebraic function of T (no entropy ODE to combine with -- see
+ * setup_background_and_cosmo's external_scale_factor branch) so there is
+ * no "first ODE" to fold dt/d(ln a) into; the combined 2D ODE below
+ * (combined_bg_rhs) replaces this pair for the default (minimal,
+ * !external_scale_factor) mode, where both a(T) and t(T) genuinely come
+ * from ODEs and can share one integration. */
 typedef struct { CPRBackground *bg; const CPRCubicSpline *T_of_a_smooth; } DtDlnaCtx;
 
 /* dt/d(ln a) = 1/H(a), with T(a) read from the just-built a(T) inverse
@@ -287,7 +361,101 @@ static int dtdlna_rhs(double lna, const double *y, double *ydot, void *ctx_)
     double Tnue = cpr_nu_Tnue_of_Tg(&c->bg->nh, Tg);
     double Tnumu = cpr_nu_Tnumu_of_Tg(&c->bg->nh, Tg);
     double Tnutau = cpr_nu_Tnutau_of_Tg(&c->bg->nh, Tg);
-    ydot[0] = 1.0 / cpr_bg_Hubble(c->bg, Tg, Tnue, Tnumu, Tnutau);
+    ydot[0] = 1.0 / cpr_bg_Hubble(c->bg, Tg, Tnue, Tnumu, Tnutau, a);
+    return 0;
+}
+
+/* ---------------------------------------------------------------------
+ * Branch E: combined a(T)/t(T) 2D ODE (minimal mode, !external_scale_factor).
+ *
+ * State y[0] = x = ln(a*T), y[1] = trel (a *relative*, uncalibrated cosmic
+ * time -- see "Boundary condition" below), both integrated over the SAME
+ * independent variable lnT -- instead of the old two sequential ODEs
+ * (d(ln a)/d(ln T) over lnT, then dt/d(ln a) over lna) bridged by the
+ * not-a-knot cubic spline T_of_a_smooth above. This eliminates that spline
+ * build/free and the second cpr_ode_rk45 call entirely: `a` is recovered
+ * analytically at every RHS evaluation as a = exp(y[0] - lnT) (no lookup,
+ * no spline), so H(T,a) -- needed by the t-component RHS -- is always
+ * evaluated exactly (see cpr_bg_Hubble's explicit `a` parameter).
+ *
+ * Variable choice for y[0]: x = ln(a*T), rather than the simpler
+ * y[0] = ln(a), is used because a*T is O(1)-ish throughout the integration
+ * (entropy conservation keeps a*T close to its asymptotic z0 value,
+ * drifting only by a relative O(10%) across the e+e- annihilation/
+ * neutrino-decoupling era), whereas ln(a) alone spans a huge dynamic range.
+ * This keeps x's own RK45 error control (ode_rk.c's per-component scale =
+ * atol + rtol*|y_i|, NOT a single shared scale across components) as
+ * meaningful at the fixed BG_ODE_ATOL used here as the original
+ * dlnadlnT_rhs's own y=ln(a) state.
+ *
+ * Variable choice for y[1]: deliberately raw cosmic time, NOT tau=ln(t).
+ * The natural candidate boundary condition for t is the standard
+ * radiation-domination relation t_ini = 1/(2 H(T_start_cosmo)), valid deep
+ * in the early, fully relativistic universe -- but T_start_cosmo's
+ * *default* value is not always far enough above the shipped NEVO heating
+ * table's support for the algebraic, N=0 closed-form entropy-conservation
+ * shortcut used for a_end below to also give an exact a_ini at
+ * T_start_cosmo (unlike T_end, which IS safely below the table's low edge,
+ * so a_end's shortcut is exact). Anchoring tau=ln(t) at T_start_cosmo via
+ * that same shortcut would then carry a small systematic error at exactly
+ * the boundary condition.
+ *
+ * Using *raw* t instead sidesteps this: dt/d(ln T) = dt/d(ln a) *
+ * d(ln a)/d(ln T) = (1/H) * dlna_dlnT has NO dependence on the current
+ * value of t itself (unlike d(ln t)/d(ln T), which divides by t), so this
+ * component's ODE is exactly LINEAR in t: any two solutions differing only
+ * by their initial condition differ by the SAME additive constant at every
+ * lnT. This means y[1] can be integrated from an arbitrary placeholder (0
+ * here) anchored at T_end -- the SAME point x is exactly anchored at
+ * (a_end, algebraic, N_NEVO(T_end) == 0) -- alongside x in one single ODE
+ * call, and the genuinely correct, absolute t(T) recovered AFTERWARDS by a
+ * trivial O(1) additive shift: once the pass is solved, a_ini =
+ * a(T_start_cosmo) is read off EXACTLY from the just-solved x trajectory
+ * (no algebraic approximation needed at T_start_cosmo any more), giving an
+ * exact t_ini = 1/(2 H(T_start_cosmo, a_ini)); the shift
+ * C = t_ini - trel(T_start_cosmo) then makes t(lnT) = trel(lnT) + C match
+ * the original code's t(a) ODE bit-for-bit in its boundary condition (same
+ * t_ini formula, same exact a_ini), while still requiring only ONE
+ * cpr_ode_rk45 call. See setup_background_and_cosmo for where C is
+ * computed and applied.
+ *
+ * (The raw-vs-log choice for y[1] has no adverse conditioning effect on the
+ * RK45 step-size controller despite t spanning many decades: ode_rk.c's
+ * error scale is per-component, scale_i = atol + rtol*|y_i|, so each
+ * component is normalised by its OWN magnitude independently -- there is
+ * no single shared scale across x and trel for a magnitude mismatch to
+ * degrade.)
+ * ------------------------------------------------------------------- */
+typedef struct { CPRBackground *bg; } CombinedBgCtx;
+
+static int combined_bg_rhs(double lnT, const double *y, double *ydot, void *ctx_)
+{
+    CombinedBgCtx *c = ctx_;
+    CPRBackground *bg = c->bg;
+    double T = exp(lnT);
+
+    /* Same entropy-conservation RHS as the original dlnadlnT_rhs (a-
+     * independent -- only T enters, via the EM plasma's reduced entropy
+     * sbar=s/T^3 and the NEVO heating function N). */
+    double dlna_dlnT = dlnadlnT_value(bg, T);
+
+    /* x = ln(a*T) => dx/d(ln T) = d(ln a)/d(ln T) + 1. */
+    ydot[0] = dlna_dlnT + 1.0;
+
+    /* a recovered analytically from the state -- the key simplification
+     * that lets this RHS evaluate H(T,a) exactly without a T(a) lookup. */
+    double a = exp(y[0] - lnT);
+
+    double Tnue   = cpr_nu_Tnue_of_Tg(&bg->nh, T);
+    double Tnumu  = cpr_nu_Tnumu_of_Tg(&bg->nh, T);
+    double Tnutau = cpr_nu_Tnutau_of_Tg(&bg->nh, T);
+    double H = cpr_bg_Hubble(bg, T, Tnue, Tnumu, Tnutau, a);
+
+    /* trel: dt/d(ln T) = dt/d(ln a) * d(ln a)/d(ln T) = (1/H) * dlna_dlnT
+     * (chain rule; dt/d(ln a) = 1/H is the original dtdlna_rhs's RHS). No
+     * t-dependence on the right side -- see the variable-choice comment
+     * above for why this is exactly what makes the post-hoc shift valid. */
+    ydot[1] = dlna_dlnT / H;
     return 0;
 }
 
@@ -327,50 +495,80 @@ static int setup_background_and_cosmo(CPRBackground *bg, char **errmsg)
     double zend = z0 / pow(sbar_end / cpr_s0bar(), 1.0 / 3.0);
     double a_end = zend / Tend;
 
+    /* Fixed (not cfg->numerical_precision-derived) tolerance for the
+     * background ODE(s) below -- see BG_ODE_RTOL's docstring above for the
+     * empirical justification. Tolerance, NOT matched to Python's nominal
+     * 0.1*numerical_precision: RK45 (explicit, Dormand-Prince) and Python's
+     * LSODA achieve materially different *actual* accuracy at the same
+     * *nominal* rtol for this ODE -- confirmed empirically by running the
+     * full small/large+amax=8 BBN solve (nuclear_network.c) with this
+     * tolerance at the Python-nominal value vs. progressively tighter
+     * ones: at 0.1*1e-7=1e-8 the resulting YP(BBN)/D-H/Yn were off by
+     * -0.14%/-1.8%/-3.5% from CLAUDE.md's reference numbers (BBN
+     * abundances are exponentially sensitive to T(t)/a(T) near freeze-out,
+     * so this small a(T) error is greatly amplified downstream); at
+     * BG_ODE_RTOL/BG_ODE_ATOL below the same comparison is within
+     * 0.002%/0.001%/0.005% -- inside CLAUDE.md's stated +-1e-5 (YP) and
+     * +-3e-9 (D/H) bounds. Decoupled from cfg->numerical_precision (rather
+     * than e.g. dividing it by a fixed factor) because this ODE is low-
+     * dimensional, smooth, and cheap regardless of tolerance -- there is no
+     * performance reason to ever loosen it, even for a fast/rough run; a
+     * user wanting an even higher-precision *reference* run already has
+     * other knobs for that (see CLAUDE.md's "Validation before
+     * committing" reference-run setup). */
+    CPRRKOpts bg_ode_opts = cpr_ode_rk_default_opts();
+    bg_ode_opts.rtol = BG_ODE_RTOL;
+    bg_ode_opts.atol = BG_ODE_ATOL;
+
+    /* Combined-path state, populated and kept alive (across the a_sol_asc/
+     * T_sol_asc build below) only in the default (!external_scale_factor)
+     * branch -- see combined_bg_rhs's docstring above for why a single 2D
+     * ODE replaces the old sequential a(T)+t(a) pair. Reused further down
+     * to fill bg->t_vec via dense_path_eval, instead of a second ODE solve. */
+    CPRDensePath combined_path;
+    int have_combined_path = 0;
+
     bg->external_scale_factor = cfg->external_scale_factor;
     if (bg->external_scale_factor) {
         bg->K_ext = a_end / cpr_nu_x_of_Tg(&bg->nh, Tend);
+        /* bg->lna_sol is left unallocated-but-unused here: cpr_bg_a_of_T
+         * checks bg->external_scale_factor first and never reads it in this
+         * mode. No ODE needed for a(T) -- only t(T) is solved below, via
+         * the old dtdlna_rhs/T_of_a_smooth pair (no entropy ODE exists here
+         * to combine it with). */
     } else {
-        DlnaDlnTCtx ctx = { bg };
-        CPRPath path;
-        path_init(&path);
-        double y[1] = { log(a_end) };
-        CPRRKOpts opts = cpr_ode_rk_default_opts();
-        /* Tolerance, NOT matched to Python's nominal 0.1*numerical_precision
-         * (see BG_ODE_RTOL's docstring above): RK45 (explicit, Dormand-Prince)
-         * and Python's LSODA achieve materially different *actual* accuracy
-         * at the same *nominal* rtol for this ODE -- confirmed empirically by
-         * running the full small/large+amax=8 BBN solve (nuclear_network.c)
-         * with this tolerance at the Python-nominal value vs. progressively
-         * tighter ones: at 0.1*1e-7=1e-8 the resulting YP(BBN)/D-H/Yn were off
-         * by -0.14%/-1.8%/-3.5% from CLAUDE.md's reference numbers (BBN
-         * abundances are exponentially sensitive to T(t)/a(T) near freeze-out,
-         * so this small a(T) error is greatly amplified downstream); at
-         * BG_ODE_RTOL/BG_ODE_ATOL below the same comparison is within
-         * 0.002%/0.001%/0.005% -- inside CLAUDE.md's stated +-1e-5 (YP) and
-         * +-3e-9 (D/H) bounds. Retightening ode_bdf.c (a *different*,
-         * unrelated solver -- see the project memory note on that earlier,
-         * abandoned hypothesis) made no measurable difference; this a(T)/t(a)
-         * background accuracy was the actual bottleneck all along. Decoupled
-         * from cfg->numerical_precision (rather than e.g. dividing it by a
-         * fixed factor) because this ODE is 1-dimensional, smooth, and cheap
-         * regardless of tolerance -- there is no performance reason to ever
-         * loosen it, even for a fast/rough run; a user wanting an even higher-
-         * precision *reference* run already has other knobs for that (see
-         * CLAUDE.md's "Validation before committing" reference-run setup). */
-        opts.rtol = BG_ODE_RTOL;
-        opts.atol = BG_ODE_ATOL;
+        /* Boundary condition for the combined 2D ODE: x is anchored at
+         * T_end exactly as the old dlnadlnT_rhs ODE was (x_ini = ln(a_end)
+         * + ln(T_end), a_end the algebraic entropy-conservation value just
+         * computed above); y[1] (trel) starts from an arbitrary placeholder
+         * at the SAME point -- see combined_bg_rhs's "Variable choice for
+         * y[1]" docstring for why T_end (not T_start_cosmo) must be the
+         * shared anchor for the default config, and why an uncalibrated
+         * trel can still be corrected into an exact t(T) after the fact. */
+        CombinedBgCtx ctx = { bg };
+        dense_path_init(&combined_path, 2);
+        CPRRKOpts opts = bg_ode_opts;
+        opts.dense_cb = dense_path_push;
+        opts.dense_ctx = &combined_path;
+        double y2[2] = { log(a_end) + log(Tend), 0.0 };
         char *err = NULL;
-        int rc = cpr_ode_rk45(dlnadlnT_rhs, &ctx, log(Tend), log(Tstartcosmo), y, 1, opts,
-                               path_step_cb, &path, &err);
+        /* Single combined call replaces the old two cpr_ode_rk45 calls
+         * (a(T) over lnT, then t(a) over lna) plus the intermediate
+         * not-a-knot cubic spline bridging them -- see combined_bg_rhs's
+         * top comment. Integrated ASCENDING (T_end -> T_start_cosmo). */
+        int rc = cpr_ode_rk45(combined_bg_rhs, &ctx, log(Tend), log(Tstartcosmo), y2, 2,
+                               opts, NULL, NULL, &err);
         if (rc) {
-            path_free(&path); free(T_sol);
+            dense_path_free(&combined_path); free(T_sol);
             *errmsg = err;
             return 1;
         }
-        for (size_t i = 0; i < bg->n_Tsol; i++)
-            bg->lna_sol[i] = path_eval(&path, bg->lnT_sol[i]);
-        path_free(&path);
+        have_combined_path = 1;
+        for (size_t i = 0; i < bg->n_Tsol; i++) {
+            double out2[2];
+            dense_path_eval(&combined_path, bg->lnT_sol[i], out2);
+            bg->lna_sol[i] = out2[0] - bg->lnT_sol[i]; /* a = exp(x - lnT) */
+        }
     }
 
     /* a_grid = a_of_T(T_sol): descending in `a` since T_sol ascends and a
@@ -390,46 +588,75 @@ static int setup_background_and_cosmo(CPRBackground *bg, char **errmsg)
     double a_ini = cpr_bg_a_of_T(bg, Tstartcosmo);
     double a_fin = cpr_bg_a_of_T(bg, Tend); /* == a_end by construction */
 
-    double Tnue_s = cpr_nu_Tnue_of_Tg(&bg->nh, Tstartcosmo);
-    double Tnumu_s = cpr_nu_Tnumu_of_Tg(&bg->nh, Tstartcosmo);
-    double Tnutau_s = cpr_nu_Tnutau_of_Tg(&bg->nh, Tstartcosmo);
-    double t_ini = 1.0 / (2.0 * cpr_bg_Hubble(bg, Tstartcosmo, Tnue_s, Tnumu_s, Tnutau_s));
-
-    bg->n_bg = bg->n_Tsol; /* same grid density for the t(a) integration */
+    bg->n_bg = bg->n_Tsol; /* same grid density for the t(a) sampling below */
     double *lna_samp = malloc(bg->n_bg * sizeof(double));
     for (size_t i = 0; i < bg->n_bg; i++) {
         double frac = (bg->n_bg == 1) ? 0.0 : (double)i / (double)(bg->n_bg - 1);
         lna_samp[i] = log(a_ini) + frac * (log(a_fin) - log(a_ini));
     }
 
-    /* See DtDlnaCtx's docstring above: a smooth spline over the same nodes
-     * cpr_bg_T_of_a interpolates linearly, used only as this ODE's RHS. */
-    CPRCubicSpline T_of_a_smooth;
-    char *spl_err = NULL;
-    if (cpr_cubic_spline_fit_notaknot(bg->a_sol_asc, bg->T_sol_asc, bg->n_Tsol,
-                                       &T_of_a_smooth, &spl_err)) {
-        free(T_sol); free(lna_samp);
-        *errmsg = spl_err;
-        return 1;
-    }
-    DtDlnaCtx tctx = { bg, &T_of_a_smooth };
-    CPRPath tpath;
-    path_init(&tpath);
-    double yt[1] = { t_ini };
-    CPRRKOpts topts = cpr_ode_rk_default_opts();
-    /* Same fixed-tolerance rationale as the a(T) ODE above (BG_ODE_RTOL's
-     * docstring) -- this t(a) integration is the other half of the
-     * empirically-confirmed bottleneck. */
-    topts.rtol = BG_ODE_RTOL;
-    topts.atol = BG_ODE_ATOL;
-    char *terr = NULL;
-    int trc = cpr_ode_rk45(dtdlna_rhs, &tctx, log(a_ini), log(a_fin), yt, 1, topts,
-                            path_step_cb, &tpath, &terr);
-    cpr_cubic_spline_free(&T_of_a_smooth);
-    if (trc) {
-        path_free(&tpath); free(T_sol); free(lna_samp);
-        *errmsg = terr;
-        return 1;
+    /* t(T)/t(a): cfg->external_scale_factor still needs its own ODE here
+     * (a(T) there is a closed-form algebraic function, not an ODE solution,
+     * so there is no entropy-conservation "first ODE" to fold dt/d(ln a)
+     * into -- see DtDlnaCtx's docstring above). The default (!external_
+     * scale_factor) branch instead reuses `combined_path` (already solved
+     * above, alongside a(T)) via dense_path_eval plus a constant shift --
+     * no second ODE call (see combined_bg_rhs's "Variable choice for
+     * y[1]"). */
+    CPRDensePath tpath;
+    int have_tpath = 0;
+    double combined_t_shift = 0.0;
+    if (bg->external_scale_factor) {
+        double Tnue_s = cpr_nu_Tnue_of_Tg(&bg->nh, Tstartcosmo);
+        double Tnumu_s = cpr_nu_Tnumu_of_Tg(&bg->nh, Tstartcosmo);
+        double Tnutau_s = cpr_nu_Tnutau_of_Tg(&bg->nh, Tstartcosmo);
+        double t_ini = 1.0 / (2.0 * cpr_bg_Hubble(bg, Tstartcosmo, Tnue_s, Tnumu_s, Tnutau_s, a_ini));
+
+        /* See DtDlnaCtx's docstring above: a smooth spline over the same
+         * nodes cpr_bg_T_of_a interpolates linearly, used only as this
+         * ODE's RHS. */
+        CPRCubicSpline T_of_a_smooth;
+        char *spl_err = NULL;
+        if (cpr_cubic_spline_fit_notaknot(bg->a_sol_asc, bg->T_sol_asc, bg->n_Tsol,
+                                           &T_of_a_smooth, &spl_err)) {
+            free(T_sol); free(lna_samp);
+            *errmsg = spl_err;
+            return 1;
+        }
+        DtDlnaCtx tctx = { bg, &T_of_a_smooth };
+        dense_path_init(&tpath, 1);
+        CPRRKOpts topts = bg_ode_opts;
+        topts.dense_cb = dense_path_push;
+        topts.dense_ctx = &tpath;
+        double yt[1] = { t_ini };
+        char *terr = NULL;
+        int trc = cpr_ode_rk45(dtdlna_rhs, &tctx, log(a_ini), log(a_fin), yt, 1, topts,
+                                NULL, NULL, &terr);
+        cpr_cubic_spline_free(&T_of_a_smooth);
+        if (trc) {
+            dense_path_free(&tpath); free(T_sol); free(lna_samp);
+            *errmsg = terr;
+            return 1;
+        }
+        have_tpath = 1;
+    } else {
+        /* Calibrate combined_path's uncalibrated trel into an absolute t:
+         * a_ini = a(T_start_cosmo) now comes EXACTLY from the just-solved
+         * x trajectory (no algebraic approximation needed, unlike the
+         * abandoned tau-anchored-at-T_start_cosmo attempt -- see
+         * combined_bg_rhs's docstring), so t_ini = 1/(2 H(T_start_cosmo,
+         * a_ini)) is the same exact radiation-domination boundary value the
+         * old t(a) ODE used. trel's own RHS has no t-dependence (shown in
+         * combined_bg_rhs), so shifting the whole trel(lnT) curve by the
+         * constant C = t_ini - trel(T_start_cosmo) gives the true t(lnT)
+         * at every point, not just at T_start_cosmo. */
+        double Tnue_s = cpr_nu_Tnue_of_Tg(&bg->nh, Tstartcosmo);
+        double Tnumu_s = cpr_nu_Tnumu_of_Tg(&bg->nh, Tstartcosmo);
+        double Tnutau_s = cpr_nu_Tnutau_of_Tg(&bg->nh, Tstartcosmo);
+        double t_ini = 1.0 / (2.0 * cpr_bg_Hubble(bg, Tstartcosmo, Tnue_s, Tnumu_s, Tnutau_s, a_ini));
+        double out2[2];
+        dense_path_eval(&combined_path, log(Tstartcosmo), out2);
+        combined_t_shift = t_ini - out2[1];
     }
 
     bg->t_vec = malloc(bg->n_bg * sizeof(double));
@@ -440,18 +667,35 @@ static int setup_background_and_cosmo(CPRBackground *bg, char **errmsg)
     bg->Tnutau_vec = malloc(bg->n_bg * sizeof(double));
     bg->Tnu_vec = malloc(bg->n_bg * sizeof(double));
     for (size_t i = 0; i < bg->n_bg; i++) {
-        bg->t_vec[i] = path_eval(&tpath, lna_samp[i]);
         double a = exp(lna_samp[i]);
         bg->a_vec[i] = a;
-        bg->Tg_vec[i] = cpr_bg_T_of_a(bg, a);
-        bg->Tnue_vec[i] = cpr_nu_Tnue_of_Tg(&bg->nh, bg->Tg_vec[i]);
-        bg->Tnumu_vec[i] = cpr_nu_Tnumu_of_Tg(&bg->nh, bg->Tg_vec[i]);
-        bg->Tnutau_vec[i] = cpr_nu_Tnutau_of_Tg(&bg->nh, bg->Tg_vec[i]);
+        double Tg = cpr_bg_T_of_a(bg, a);
+        bg->Tg_vec[i] = Tg;
+        /* t(a): external mode reads the dedicated tpath at this lna_samp
+         * point directly (its own natural independent variable); the
+         * default mode instead reads the (shift-calibrated) trel off the
+         * combined a(T)/t(T) path at the corresponding lnT = log(Tg) (its
+         * natural independent variable) -- no extra ODE solve, just one
+         * more dense-output lookup on the path already built above, plus
+         * the constant shift computed once outside this loop. */
+        if (have_tpath) {
+            double out1[1];
+            dense_path_eval(&tpath, lna_samp[i], out1);
+            bg->t_vec[i] = out1[0];
+        } else {
+            double out2[2];
+            dense_path_eval(&combined_path, log(Tg), out2);
+            bg->t_vec[i] = out2[1] + combined_t_shift;
+        }
+        bg->Tnue_vec[i] = cpr_nu_Tnue_of_Tg(&bg->nh, Tg);
+        bg->Tnumu_vec[i] = cpr_nu_Tnumu_of_Tg(&bg->nh, Tg);
+        bg->Tnutau_vec[i] = cpr_nu_Tnutau_of_Tg(&bg->nh, Tg);
         double e4 = (pow(bg->Tnue_vec[i], 4.0) + pow(bg->Tnumu_vec[i], 4.0)
                      + pow(bg->Tnutau_vec[i], 4.0)) / 3.0;
         bg->Tnu_vec[i] = pow(e4, 0.25);
     }
-    path_free(&tpath);
+    if (have_tpath) dense_path_free(&tpath);
+    if (have_combined_path) dense_path_free(&combined_path);
     free(T_sol);
     free(lna_samp);
 
@@ -466,7 +710,6 @@ static int setup_background_and_cosmo(CPRBackground *bg, char **errmsg)
 
     bg->has_scale_factor = 1;
     bg->has_heating_table = cfg->incomplete_decoupling;
-    bg->lcdm_use_exact = 1; /* _replace_LCDM_with_exact: a_of_T is now ready */
 
     return 0;
 }
@@ -982,7 +1225,7 @@ int cpr_bg_write_time_evolution(const CPRBackground *bg, const char *path, int n
             double Tnue = 0.0, Tnumu = 0.0, Tnutau = 0.0;
             /* For StandardBackground, this should always return 1 */
             if (cpr_bg_Tnu_of_t(bg, t, &Tnue, &Tnumu, &Tnutau)) {
-                double H = cpr_bg_Hubble(bg, T, Tnue, Tnumu, Tnutau);
+                double H = cpr_bg_Hubble(bg, T, Tnue, Tnumu, Tnutau, a);
 
                 data[i * n_cols + 2] = a;
                 data[i * n_cols + 3] = H;

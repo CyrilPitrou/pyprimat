@@ -121,7 +121,8 @@ static void test_ede(void)
     CHECK(cpr_bg_init_standard(&bg, &cfg, &pl, &err) == 0, "cpr_bg_init_standard succeeds with EDE active");
 
     double Tnu = cpr_nu_Tnue_of_Tg(&bg.nh, 1.0);
-    CHECK(close_rel(cpr_bg_Hubble(&bg, 1.0, Tnu, Tnu, Tnu), 0.7166027791506387, 1e-2),
+    double a_at_1MeV = cpr_bg_a_of_T(&bg, 1.0);
+    CHECK(close_rel(cpr_bg_Hubble(&bg, 1.0, Tnu, Tnu, Tnu, a_at_1MeV), 0.7166027791506387, 1e-2),
           "Hubble(1 MeV) with EDE active matches Python");
     CHECK(close_rel(cpr_bg_t_of_T(&bg, 0.1), 118.818566451818, 1e-2),
           "t_of_T(0.1 MeV) with EDE active matches Python");

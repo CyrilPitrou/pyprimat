@@ -60,12 +60,15 @@ typedef struct {
     double TcEDE;          /* [MeV] */
     double rhocEDEac;      /* [MeV^4] */
     double EDE_exponent;   /* 3*wnEDE + 3 */
-    /* CDM uses the radiation-domination approximation a(T)~=T0CMB/T while
-     * the a(T)/t(a) ODEs are being solved (cpr_bg_a_of_T is not usable as
-     * its own ODE's RHS input), then switches to the exact a_of_T once
-     * available -- mirrors _setup_LCDM's rho_CDM_approx/rho_CDM split and
-     * _replace_LCDM_with_exact's later swap. Set by cpr_bg_init_standard. */
-    int lcdm_use_exact;
+    /* Historical note (pre-Branch E): CDM used to use the radiation-
+     * domination approximation a(T)~=T0CMB/T while the a(T)/t(a) ODEs were
+     * being solved sequentially (cpr_bg_Hubble had no way to know `a`
+     * exactly until the first ODE -- a(T) -- was fully solved and splined),
+     * then switched to the exact a_of_T once available. Since the combined
+     * a(T)/t(T) 2D ODE (setup_background_and_cosmo) always carries `a` in
+     * its own state vector (x = ln(a*T)), cpr_bg_Hubble now takes `a`
+     * directly as an explicit parameter and is always exact -- no bootstrap,
+     * no `lcdm_use_exact` flag needed any more. */
 
     /* ---- Neutrino sector (StandardBackground: NEVO table or instantaneous,
      * via neutrino_history.c; CustomBackground: always instantaneous,
@@ -156,9 +159,13 @@ double cpr_bg_t_of_a(const CPRBackground *bg, double a);
 
 /* ---- Friedmann expansion rate H [s^-1] at Tg and the three flavour
  * neutrino temperatures [MeV] (CPR_BG_STANDARD only -- CustomBackground
- * has no Hubble()/extra_rho machinery, mirroring Python). ---- */
+ * has no Hubble()/extra_rho machinery, mirroring Python). `a` is the scale
+ * factor at this Tg, supplied explicitly by the caller (always known
+ * exactly -- either read off the combined a(T)/t(T) ODE's state vector
+ * while it is being solved, or looked up via cpr_bg_a_of_T once solved;
+ * see background.c's setup_background_and_cosmo). ---- */
 double cpr_bg_Hubble(const CPRBackground *bg, double Tg, double Tnue, double Tnumu,
-                      double Tnutau);
+                      double Tnutau, double a);
 
 /* Per-flavour neutrino temperature [MeV] at cosmic time t [s] -- mirrors
  * Background.Tnu_of_t (background.py). For CPR_BG_STANDARD, linearly

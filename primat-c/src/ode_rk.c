@@ -31,6 +31,55 @@ static const double A71 = 35.0 / 384.0, A73 = 500.0 / 1113.0, A74 = 125.0 / 192.
 static const double B1s = 5179.0 / 57600.0, B3s = 7571.0 / 16695.0, B4s = 393.0 / 640.0,
                      B5s = -92097.0 / 339200.0, B6s = 187.0 / 2100.0, B7s = 1.0 / 40.0;
 
+/* Dense-output ("free" continuous extension) coefficients for the Dormand-
+ * Prince RK5(4)7 pair, order 4 accurate, requiring no extra f() evaluations
+ * beyond the 7 stage derivatives k1..k7 already computed for the step. This
+ * is the standard quartic-in-theta interpolant for this Butcher tableau
+ * (Shampine 1986; the same construction underlies scipy's
+ * `scipy.integrate.RK45` dense output, `scipy/integrate/_ivp/rk.py`'s `P`
+ * matrix for the `RK45` class -- BSD-licensed, and reproduced here from
+ * that primary source's exact rational coefficients to guarantee bit-
+ * faithful agreement with a well-tested reference implementation):
+ *
+ *   y(t_old + theta*h) = y_old + h * sum_{s in {1,3,4,5,6,7}} k_s * P_s(theta)
+ *
+ * where P_s(theta) = P[s][0]*theta + P[s][1]*theta^2 + P[s][2]*theta^3
+ * + P[s][3]*theta^4, theta = (t - t_old)/h in [0,1]. Row 2 (k2) is
+ * identically zero, matching A72=0 in the Butcher tableau above, so k2 is
+ * never needed here. By construction P_s(0)=0 for every s (so theta=0
+ * reduces to y_old exactly) and sum_s P_s(1) equals the 5th-order weights
+ * A71/A73/.../A76 above (so theta=1 reduces to y5 exactly) -- verified
+ * numerically in test_ode_rk.c. */
+static const double DOP_P1[4] = { 1.0, -8048581381.0 / 2820520608.0,
+                                   8663915743.0 / 2820520608.0, -12715105075.0 / 11282082432.0 };
+static const double DOP_P3[4] = { 0.0, 131558114200.0 / 32700410799.0,
+                                   -68118460800.0 / 10900136933.0, 87487479700.0 / 32700410799.0 };
+static const double DOP_P4[4] = { 0.0, -1754552775.0 / 470086768.0,
+                                   14199869525.0 / 1410260304.0, -10690763975.0 / 1880347072.0 };
+static const double DOP_P5[4] = { 0.0, 127303824393.0 / 49829197408.0,
+                                   -318862633887.0 / 49829197408.0, 701980252875.0 / 199316789632.0 };
+static const double DOP_P6[4] = { 0.0, -282668133.0 / 205662961.0,
+                                   2019193451.0 / 616988883.0, -1453857185.0 / 822651844.0 };
+static const double DOP_P7[4] = { 0.0, 40617522.0 / 29380423.0,
+                                   -110615467.0 / 29380423.0, 69997945.0 / 29380423.0 };
+
+void cpr_ode_dense_eval(double theta, double hh, const double *y_old,
+                         const double *k1, const double *k3, const double *k4,
+                         const double *k5, const double *k6, const double *k7,
+                         size_t n, double *out)
+{
+    double th1 = theta, th2 = th1 * theta, th3 = th2 * theta, th4 = th3 * theta;
+    double b1 = DOP_P1[0] * th1 + DOP_P1[1] * th2 + DOP_P1[2] * th3 + DOP_P1[3] * th4;
+    double b3 = DOP_P3[0] * th1 + DOP_P3[1] * th2 + DOP_P3[2] * th3 + DOP_P3[3] * th4;
+    double b4 = DOP_P4[0] * th1 + DOP_P4[1] * th2 + DOP_P4[2] * th3 + DOP_P4[3] * th4;
+    double b5 = DOP_P5[0] * th1 + DOP_P5[1] * th2 + DOP_P5[2] * th3 + DOP_P5[3] * th4;
+    double b6 = DOP_P6[0] * th1 + DOP_P6[1] * th2 + DOP_P6[2] * th3 + DOP_P6[3] * th4;
+    double b7 = DOP_P7[0] * th1 + DOP_P7[1] * th2 + DOP_P7[2] * th3 + DOP_P7[3] * th4;
+    for (size_t i = 0; i < n; i++)
+        out[i] = y_old[i] + hh * (b1 * k1[i] + b3 * k3[i] + b4 * k4[i]
+                                   + b5 * k5[i] + b6 * k6[i] + b7 * k7[i]);
+}
+
 CPRRKOpts cpr_ode_rk_default_opts(void)
 {
     CPRRKOpts o;
@@ -40,6 +89,11 @@ CPRRKOpts cpr_ode_rk_default_opts(void)
     o.h_min = 0.0;
     o.h_max = 0.0;
     o.max_steps = 100000;
+    o.t_eval = NULL;
+    o.n_eval = 0;
+    o.y_eval = NULL;
+    o.dense_cb = NULL;
+    o.dense_ctx = NULL;
     return o;
 }
 
@@ -62,6 +116,12 @@ int cpr_ode_rk45(CPRODEFunc f, void *ctx, double t0, double t1, double *y, size_
     double *y4 = malloc(n * sizeof(double));
 
     double t = t0;
+    /* Cursor into opts.t_eval: points strictly before t_eval[eval_idx] (in
+     * the integration direction) have already been filled into y_eval.
+     * t_eval is required to be sorted in the same direction as the
+     * integration, so a single forward-only cursor suffices -- no need to
+     * re-scan from the start on every step. */
+    size_t eval_idx = 0;
     /* Crude initial step: a small fraction of the total span, refined by
      * the controller within the first couple of steps regardless. */
     double h = (opts.h_init > 0.0) ? opts.h_init : span / 100.0;
@@ -117,7 +177,31 @@ int cpr_ode_rk45(CPRODEFunc f, void *ctx, double t0, double t1, double *y, size_
         double err_norm = sqrt(err2 / (double)n);
 
         if (err_norm <= 1.0 || h <= (opts.h_min > 0.0 ? opts.h_min : 0.0) * 1.0001) {
-            /* Accept the step. */
+            /* Accept the step. Fill any requested dense-output points that
+             * fall within [t, t+hh] (this step's span) and/or invoke
+             * dense_cb, *before* t/y are advanced to the new state, since
+             * both need the step's starting point y_old=y (still un-
+             * overwritten here) and its stage derivatives k1..k7 (k1 not
+             * yet FSAL-recycled into k7 below). */
+            if (opts.t_eval != NULL) {
+                double t_new = t + hh;
+                /* eps: small tolerance (relative to the total integration
+                 * span) absorbing roundoff in t_new (built by repeated
+                 * float addition) vs. a t_eval value intended to land
+                 * exactly on it -- e.g. the very last point, where t_new
+                 * is forced equal to t1 bit-for-bit by the "do not step
+                 * past t1" clamp above, but earlier points accumulate the
+                 * usual ULP-level drift. */
+                double eps = 1e-9 * span;
+                while (eval_idx < opts.n_eval
+                       && dir * (opts.t_eval[eval_idx] - t_new) <= eps) {
+                    double theta = (opts.t_eval[eval_idx] - t) / hh;
+                    cpr_ode_dense_eval(theta, hh, y, k1, k3, k4, k5, k6, k7, n,
+                                       opts.y_eval + eval_idx * n);
+                    eval_idx++;
+                }
+            }
+            if (opts.dense_cb) opts.dense_cb(t, hh, y, k1, k3, k4, k5, k6, k7, n, opts.dense_ctx);
             t += hh;
             memcpy(y, y5, n * sizeof(double));
             memcpy(k1, k7, n * sizeof(double)); /* FSAL: reuse k7 as next k1 */
