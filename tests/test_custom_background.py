@@ -108,10 +108,15 @@ def test_custom_background_matches_reference(ref_run, tmp_path):
     bg_file = str(tmp_path / "background.tsv")
     _write_background_file(ref_run.background, bg_file)
 
-    r_custom = PRIMAT({
-        "custom_background": bg_file,
-        "network":           "small",
-    })
+    # incomplete_decoupling/spectral_distortions default to True, which
+    # custom_background overrides with a warning; that override behaviour is
+    # covered by test_custom_background_warns_* below, not here.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        r_custom = PRIMAT({
+            "custom_background": bg_file,
+            "network":           "small",
+        })
     r_custom.solve()
 
     ref = ref_run.results
@@ -207,8 +212,10 @@ def test_custom_background_missing_columns(tmp_path):
     np.savetxt(bad_file, np.ones((5, 2)), delimiter='\t',
                header="T\tt", comments='')
 
-    with pytest.raises(ValueError, match="missing required columns"):
-        PRIMAT({"custom_background": bad_file, "network": "small"})
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with pytest.raises(ValueError, match="missing required columns"):
+            PRIMAT({"custom_background": bad_file, "network": "small"})
 
 
 def test_custom_background_external_scale_factor_conflict():

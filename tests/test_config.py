@@ -24,7 +24,9 @@ def test_unknown_key_warns():
 
 
 def test_unknown_key_does_not_raise():
-    PRIMATConfig({"totally_unknown": 99})
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        PRIMATConfig({"totally_unknown": 99})
 
 
 def test_omegabh2_to_eta0b_positive():
