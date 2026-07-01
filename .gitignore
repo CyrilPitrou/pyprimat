@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+*.so
+
+
+# macOS
+.DS_Store
+
+# Editors
+.vscode/
+
+# Stray backup files
+*.restored
+*~
+
+# primat output
+output_time_evolution.tsv
+results/
+notebooks/plots/
+notebooks/results/
+
+# One-off scratch scripts / studies, not part of the package or test suite.
+scratch/
+
+# graphify knowledge-graph cache (local-only)
+graphify-out/
+
+# Local-only files: not committed to the repository
+CLAUDE.md
+AGENTS.md
+
+# Local Claude Code tooling settings
+.claude/
