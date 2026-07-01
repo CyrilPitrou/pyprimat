@@ -58,16 +58,30 @@ class GuiRun:
 
     def get_quantity(self, quantity):
         """Same contract as ``primat.main.PRIMAT.get_quantity``: a result-dict
-        key (``'YPBBN'``, ``'DoH'``, ...) or a nuclide name for its final Y."""
+        key (``'YPBBN'``, ``'DoH'``, ...) or a nuclide name for its final Y.
+
+        ``results["Y_final"]`` is a bonus the C backend's wrapper adds (see
+        ``primat/_primat_c/_wrapper.c``); the Python backend's own
+        ``PRIMAT.solve()`` result dict never has it (confirmed by
+        ``tests/test_backend_parity.py::test_backend_result_dict_shape_matches``),
+        since Python keeps per-nuclide finals on the live ``nuclear.Y_final``
+        attribute instead. Falling back to ``self.evolution.Y[name][-1]``
+        (the last sampled time step, always present since ``GuiRun`` requires
+        ``output_time_evolution=True``) keeps this working under either
+        backend -- see the two evol_Y/Y_final agreement checks in
+        ``primat-c/tests/unit/test_api.c``.
+        """
         if quantity in self.results:
             return self.results[quantity]
-        Y_final = self.results["Y_final"]
-        if quantity in Y_final:
+        Y_final = self.results.get("Y_final")
+        if Y_final is not None and quantity in Y_final:
             return Y_final[quantity]
+        if quantity in self.evolution.Y:
+            return self.evolution.Y[quantity][-1]
         raise ValueError(
             f"Unknown quantity '{quantity}'. "
             f"Valid result keys: {list(self.results.keys())}. "
-            f"Valid nuclide names: {list(Y_final.keys())}."
+            f"Valid nuclide names: {list(self.evolution.Y.keys())}."
         )
 
     def __getitem__(self, name):
