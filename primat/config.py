@@ -336,9 +336,16 @@ DEFAULT_PARAMS: dict = {
     #   variation = sigma^p + delta
     # which can grow very large for extreme draws of p.  This parameter clamps
     # the variation to [1/cap, cap] before multiplying the median rate.
-    # A value of 1e3 means no more than a factor of 1000 up or down.
+    # A value of 30 means no more than a factor of 30 up or down. Lowered from
+    # the former 1e3 default: reactions carrying a flat "uncertainty factor
+    # f=10-100" placeholder (e.g. CF88 rates such as He3_t__a_d/He3_t__a_n_p)
+    # can otherwise draw a >=3-sigma p and multiply their rate by up to 1000x,
+    # which for non-trace species (He3/t, unlike the many trace heavy-nuclide
+    # branches sharing the same placeholder error) dominates the MC variance
+    # of D/H with an unphysically large single-sample outlier rather than a
+    # smooth uncertainty estimate.
     # Set to None to disable the cap entirely.
-    "mc_rate_rescale_cap":         1e3,
+    "mc_rate_rescale_cap":         30,
 
     # QED correction to select radiative-capture nuclear rates (Pitrou & Pospelov 2020).
     # Applies a T9-dependent multiplicative rescaling to the forward rate tables of

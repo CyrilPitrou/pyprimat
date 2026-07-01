@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-run_basic.py
-============
+primat_run_explanatory.py
+==========================
 Minimal, heavily-commented template for a standalone BBN run. Copy this file
 and uncomment/edit whichever options you need; every option shown below is at
 its default value, so running this file unmodified reproduces the standard
@@ -10,7 +10,7 @@ YPBBN/D-H reference values).
 
 Run from the repo root so that the shipped ``data/`` data resolve correctly:
 
-    python runfiles/run_basic.py
+    python runfiles/primat_run_explanatory.py
 """
 import os
 import sys
@@ -23,7 +23,7 @@ cfg = dict(
     # Every key below is shown at its DEFAULT_PARAMS default (see
     # primat/config.py for the authoritative, more detailed comments this
     # file summarises); uncomment and edit whichever you need to override.
-    # All 72 DEFAULT_PARAMS keys are listed, grouped exactly as in config.py.
+    # All 73 DEFAULT_PARAMS keys are listed, grouped exactly as in config.py.
 
     # ---- general behaviour and numerical settings -------------------------
     # verbose=False,                  # print primat's own progress messages
@@ -106,6 +106,7 @@ cfg = dict(
     # amax=None,                      # filter any network to reactions with A <= amax
     # atol_large_LT=1e-26,            # solve_ivp absolute tolerance for the large-network LT era
     # rescale_nuclear_rates=False,    # vary all nuclear rates by a uniform factor (sensitivity studies)
+    # mc_rate_rescale_cap=30,         # clamp MC rate variation factor to [1/cap, cap]; None disables the cap
     # nuclear_qed_corrections=True,   # QED correction to select radiative-capture rates (Pitrou & Pospelov 2020)
 
     # ---- cosmological inputs ------------------------------------------------

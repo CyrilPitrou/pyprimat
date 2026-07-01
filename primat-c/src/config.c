@@ -438,7 +438,7 @@ int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg
     cfg->amax = -1; /* None */
     cfg->atol_large_LT = 1.e-26;
     cfg->rescale_nuclear_rates = 0;
-    cfg->mc_rate_rescale_cap = 1000.0; /* 0.0 = no cap (mirrors Python None) */
+    cfg->mc_rate_rescale_cap = 30.0; /* 0.0 = no cap (mirrors Python None) */
     cfg->nuclear_qed_corrections = 1;
     cfg->user_nuclear_dir = NULL;
 

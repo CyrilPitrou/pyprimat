@@ -892,11 +892,16 @@ class NetworkDefinition:
         ``cfg.rescale_nuclear_rates`` is checked but no longer gates delta; it
         is kept for backward compatibility only.
 
-        The clamping is controlled by ``cfg.mc_rate_rescale_cap`` (default 1e3):
+        The clamping is controlled by ``cfg.mc_rate_rescale_cap`` (default 30):
         the variation factor is restricted to [1/cap, cap] before the multiply.
         This prevents a handful of extreme p draws for poorly-constrained rates
         (large sigma) from dominating the MC mean and standard deviation of CNO
-        and other heavy nuclides whose rates span many orders of magnitude.
+        and other heavy nuclides whose rates span many orders of magnitude, and
+        -- the dominant case in practice -- reactions carrying a flat CF88-style
+        "uncertainty factor f=10-100" placeholder that also happen to involve
+        non-trace species (e.g. He3_t__a_d/He3_t__a_n_p): a >=3-sigma p draw on
+        such a rate can otherwise inflate D/H's MC variance with a single
+        unphysical outlier sample rather than a smooth uncertainty estimate.
         Set ``cfg.mc_rate_rescale_cap = None`` to disable the cap entirely.
         """
         cap = cfg.mc_rate_rescale_cap  # None = no cap; positive float = clamp to [1/cap, cap]
