@@ -69,5 +69,39 @@ bench: $(BUILD)/primat-c
 	@echo "Python baseline timings (recorded once, see examples/baseline_timings.txt):"
 	@cat examples/baseline_timings.txt
 
+# Memory-leak check: runs tests/unit/test_memory_stress.c (many repeated
+# cprimat_run/cpr_mc_uncertainty/cpr_config_* init-solve-free cycles,
+# including the error path) under whichever leak checker the platform
+# has -- macOS's `leaks --atExit` (ships with Xcode CLT; its exit code is
+# 1 iff any leak is found, 0 otherwise) or, elsewhere, valgrind
+# --leak-check=full --error-exitcode=1 (same convention). A debug build
+# (-O0 -g, see the `debug` target) gives valgrind/leaks better symbols and
+# stack traces than the default -O2 build, so this target forces one via
+# a dedicated $(BUILD)/leakcheck tree rather than reusing $(BUILD)/unit.
+LEAKCHECK_BUILD := $(BUILD)/leakcheck
+LEAKCHECK_CFLAGS := -std=c11 -Wall -Wextra -O0 -g -Iinclude -MMD -MP -pthread -D_GNU_SOURCE
+LEAKCHECK_OBJ := $(patsubst src/%.c,$(LEAKCHECK_BUILD)/%.o,$(SRC))
+
+$(LEAKCHECK_BUILD)/%.o: src/%.c
+	@mkdir -p $(LEAKCHECK_BUILD)
+	$(CC) $(LEAKCHECK_CFLAGS) -c $< -o $@
+
+-include $(LEAKCHECK_OBJ:.o=.d)
+
+$(LEAKCHECK_BUILD)/test_memory_stress: tests/unit/test_memory_stress.c $(filter-out $(LEAKCHECK_BUILD)/main.o,$(LEAKCHECK_OBJ))
+	@mkdir -p $(LEAKCHECK_BUILD)
+	$(CC) $(LEAKCHECK_CFLAGS) $< $(filter-out $(LEAKCHECK_BUILD)/main.o,$(LEAKCHECK_OBJ)) -o $@ -lm -pthread
+
+leak-test: $(LEAKCHECK_BUILD)/test_memory_stress
+	@echo "== Memory leak check (test_memory_stress) =="
+	@if [ "$$(uname)" = "Darwin" ]; then \
+		leaks --atExit -- $(LEAKCHECK_BUILD)/test_memory_stress; \
+	elif command -v valgrind >/dev/null 2>&1; then \
+		valgrind --leak-check=full --error-exitcode=1 --errors-for-leak-kinds=definite,indirect \
+			$(LEAKCHECK_BUILD)/test_memory_stress; \
+	else \
+		echo "no leak checker available (need macOS 'leaks' or 'valgrind')"; exit 1; \
+	fi
+
 clean:
 	rm -rf $(BUILD)

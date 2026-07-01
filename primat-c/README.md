@@ -255,6 +255,21 @@ To compile with debug symbols and no optimizations:
 make debug
 ```
 
+### Checking for memory leaks
+
+```bash
+make leak-test
+```
+
+Builds `tests/unit/test_memory_stress.c` (-O0 -g) and runs it under the
+platform's leak checker: macOS's `leaks --atExit`, or `valgrind
+--leak-check=full` elsewhere. The test cycles `cprimat_run`/
+`cpr_mc_uncertainty`/`cpr_config_init_defaults` (success path, error path,
+and MC) several times over in one process, each time freeing everything
+via the matching `*_free` call, so a leak of even a few hundred bytes per
+call accumulates into something the checker reliably flags. Exits nonzero
+if any leak is found.
+
 ### Checking installation
 
 To verify the C backend is working correctly:
