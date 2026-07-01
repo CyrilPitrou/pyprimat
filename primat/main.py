@@ -625,6 +625,23 @@ class MCResult:
         """
         return np.column_stack([self._data[q].values for q in self.quantity_names()])
 
+    def to_flat_dict(self):
+        """Flatten to a plain ``{name: value, ...}`` dict carrying both each
+        quantity's nominal (``central``) value and its MC uncertainty, so
+        callers get e.g. both ``YPBBN`` and ``sigma_YPBBN`` as ordinary dict
+        entries instead of having to reach into :class:`MCQuantityResult`
+        objects one quantity at a time.
+
+        Returns:
+            dict: for every quantity name ``q`` in :meth:`quantity_names`,
+            ``flat[q] = self[q].central`` and ``flat[f"sigma_{q}"] = self[q].std``.
+        """
+        flat = {}
+        for q in self.quantity_names():
+            flat[q] = self._data[q].central
+            flat[f"sigma_{q}"] = self._data[q].std
+        return flat
+
     def __iter__(self):
         return iter(self._data)
 

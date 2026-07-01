@@ -314,7 +314,9 @@ def main(argv=None):
         # derive results from mc[q].central to avoid a redundant second solve.
         mc = run_mc(args.mc, params=params, force_backend=args.backend,
                     seed=args.mc_seed, n_jobs=args.mc_jobs)
-        results = {q: mc[q].central for q in mc.quantity_names()}
+        # Flat dict: each quantity's central value plus a sigma_<name> entry
+        # holding its MC uncertainty (see MCResult.to_flat_dict).
+        results = mc.to_flat_dict()
     else:
         results = run_bbn(params=params, force_backend=args.backend)
         mc = None

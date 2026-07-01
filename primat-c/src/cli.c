@@ -355,6 +355,21 @@ static void print_json(const CPRResults *results, const CPRMCResult *mc)
         printf("\n  }");
     }
 
+    /* Flat sigma_<name> entries alongside each quantity, mirroring the
+     * Python CLI's MCResult.to_flat_dict() (primat/main.py) -- so a caller
+     * gets both "YPBBN" and "sigma_YPBBN" as ordinary top-level keys. */
+    if (mc && mc->n > 0) {
+        for (size_t i = 0; i < mc->n; i++) {
+            const CPRMCQuantity *q = &mc->items[i];
+            char sigma_name[48];
+            snprintf(sigma_name, sizeof(sigma_name), "sigma_%s", q->name);
+            printf("%s  ", sep);
+            print_json_str(sigma_name);
+            printf(": %.10g", q->std);
+            sep = ",\n";
+        }
+    }
+
     /* MC summary (central/mean/std per quantity; not the full sample array). */
     if (mc && mc->n > 0) {
         printf("%s  \"mc\": {", sep);
