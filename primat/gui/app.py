@@ -176,9 +176,9 @@ def _describe_backend_used(params):
     otherwise -- e.g. a source checkout where the C extension wasn't built.
     """
     if _GUI_BACKEND == "python":
-        return "Python (--backend python)"
+        return "Python"
     if _GUI_BACKEND == "c":
-        return "C (--backend c)"
+        return "C"
     return "C" if backend.HAS_C_BACKEND else "Python (C extension unavailable)"
 
 
