@@ -25,8 +25,10 @@
 #include "config.h"
 #include "mc.h"
 
+#include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 /* Converts one Python value into a CPRParam. CPR_STRING points at a
  * strdup'd copy (returned via *owned, so the caller can free it after the
@@ -503,6 +505,43 @@ fail:
     return 1;
 }
 
+/* Bundles cpr_mc_uncertainty's arguments/outputs so the call can run on a
+ * background pthread (see mc_run_thread_fn below) while the Python thread
+ * polls PyErr_CheckSignals -- otherwise a blocking, GIL-holding call would
+ * make Ctrl-C during a long MC run silently do nothing until it finished
+ * (KeyboardInterrupt is only raised when the interpreter's eval loop next
+ * runs, which never happens while this thread is stuck in C code). */
+typedef struct {
+    int num_mc;
+    const char * const *quantities;
+    size_t n_quantities;
+    const char *data_dir;
+    const CPRParamSet *base_params;
+    size_t n_base_params;
+    int seed, n_jobs;
+    const CPRCustomNetwork *custom;
+    const double *prev_centrals;
+    const double * const *prev_values;
+    size_t n_prev;
+    int show_progress;
+    CPRMCResult out;
+    char *errmsg;
+    int rc;
+    volatile int done; /* set last, after rc/errmsg/out are final */
+} MCRunCtx;
+
+static void *mc_run_thread_fn(void *arg)
+{
+    MCRunCtx *ctx = arg;
+    ctx->rc = cpr_mc_uncertainty(ctx->num_mc, ctx->quantities, ctx->n_quantities,
+                                  ctx->data_dir, ctx->base_params, ctx->n_base_params,
+                                  ctx->seed, ctx->n_jobs, ctx->custom,
+                                  ctx->prev_centrals, ctx->prev_values, ctx->n_prev,
+                                  ctx->show_progress, &ctx->out, &ctx->errmsg);
+    ctx->done = 1;
+    return NULL;
+}
+
 static PyObject *primat_c_run_mc(PyObject *self, PyObject *args, PyObject *kwargs)
 {
     (void)self;
@@ -637,12 +676,42 @@ static PyObject *primat_c_run_mc(PyObject *self, PyObject *args, PyObject *kwarg
         }
     }
 
-    CPRMCResult out;
-    char *errmsg = NULL;
-    int rc = cpr_mc_uncertainty(num_mc, quantities, (size_t)n_q, data_dir,
-                                 paramset, n_params, seed, n_jobs, &custom,
-                                 prev_centrals, (const double * const *)prev_values, n_prev,
-                                 progress, &out, &errmsg);
+    /* Run cpr_mc_uncertainty on a background pthread while this thread polls
+     * PyErr_CheckSignals with the GIL held: a raw blocking call here (even
+     * one wrapped in Py_BEGIN_ALLOW_THREADS) would never let the interpreter
+     * notice a pending SIGINT, since that only happens when the eval loop
+     * runs -- which this thread wouldn't do again until the call returned.
+     * On a KeyboardInterrupt, cpr_mc_request_cancel() asks worker_main's
+     * per-sample loop (mc.c) to stop early; we still join the MC thread
+     * (bounded by one in-flight sample's solve time per worker) before
+     * returning, so ctx's memory is never touched after this function
+     * returns. */
+    MCRunCtx ctx = {
+        .num_mc = num_mc, .quantities = quantities, .n_quantities = (size_t)n_q,
+        .data_dir = data_dir, .base_params = paramset, .n_base_params = n_params,
+        .seed = seed, .n_jobs = n_jobs, .custom = &custom,
+        .prev_centrals = prev_centrals, .prev_values = (const double * const *)prev_values,
+        .n_prev = n_prev, .show_progress = progress,
+    };
+    pthread_t mc_thread;
+    pthread_create(&mc_thread, NULL, mc_run_thread_fn, &ctx);
+
+    int interrupted = 0;
+    for (;;) {
+        Py_BEGIN_ALLOW_THREADS
+        usleep(50000); /* 50 ms: responsive Ctrl-C without busy-polling */
+        Py_END_ALLOW_THREADS
+        if (ctx.done) break;
+        if (PyErr_CheckSignals()) {
+            /* KeyboardInterrupt (or another pending signal's exception) is
+             * now set on this thread; ask the MC threads to wind down. */
+            cpr_mc_request_cancel();
+            interrupted = 1;
+            break;
+        }
+    }
+    pthread_join(mc_thread, NULL);
+
     free_custom_network(&custom);
 
     free(prev_centrals);
@@ -658,6 +727,21 @@ static PyObject *primat_c_run_mc(PyObject *self, PyObject *args, PyObject *kwarg
     free(quantities);
     Py_DECREF(quantities_seq);
 
+    if (interrupted) {
+        /* ctx.out/ctx.errmsg may still be in flux until pthread_join above
+         * returned; now that it has, cpr_mc_uncertainty is guaranteed to
+         * have already freed ctx.out itself for CPR_MC_CANCELLED (mc.c), so
+         * there is nothing left to clean up here beyond errmsg (unused on
+         * that path, but freed defensively in case of a race with a
+         * near-simultaneous genuine error). PyErr is already set by
+         * PyErr_CheckSignals. */
+        free(ctx.errmsg);
+        return NULL;
+    }
+
+    CPRMCResult out = ctx.out;
+    char *errmsg = ctx.errmsg;
+    int rc = ctx.rc;
     if (rc) {
         PyErr_Format(PyExc_RuntimeError, "cpr_mc_uncertainty failed: %s",
                      errmsg ? errmsg : "(no message)");

@@ -1,4 +1,4 @@
-/* mc.c -- see cprimat/mc.h. Threaded port of primat/main.py's
+/* mc.c -- see mc.h. Threaded port of primat/main.py's
  * mc_uncertainty/_mc_run_batch/_mc_collect_samples.
  */
 #include "mc.h"
@@ -11,10 +11,24 @@
 
 #include <math.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+/* Cooperative-cancellation flag for cpr_mc_request_cancel (mc.h): reset to
+ * 0 at the start of every cpr_mc_uncertainty call, set to 1 by an external
+ * thread (e.g. Python's SIGINT poll loop in _wrapper.c) to ask worker_main's
+ * per-sample loop to stop early. sig_atomic_t is not require here (no
+ * signal handler touches it directly) but its single-word, no-torn-write
+ * guarantee is exactly what an unsynchronised cross-thread flag needs. */
+static volatile sig_atomic_t g_cpr_mc_cancel = 0;
+
+void cpr_mc_request_cancel(void)
+{
+    g_cpr_mc_cancel = 1;
+}
 
 /* Progress reporting: a shared counter (mutex-protected for cross-thread
  * visibility) incremented by each worker after each successfully solved sample,
@@ -182,6 +196,7 @@ static void *worker_main(void *arg)
     double norm_times_tau_n = bg.norm_weak_rates * tau_n_central;
 
     for (int seed = w->seed_lo; seed < w->seed_hi; seed++) {
+        if (g_cpr_mc_cancel) break;
         char *serr = NULL;
         if (run_one_sample(seed, w->base_seed, &cfg, &nr, &bg, tau_n_central,
                             norm_times_tau_n, w->quantities, w->n_quantities, w->out, &serr)) {
@@ -214,6 +229,7 @@ int cpr_mc_uncertainty(int num_mc, const char * const *quantities, size_t n_quan
                         CPRMCResult *out, char **errmsg)
 {
     memset(out, 0, sizeof(*out));
+    g_cpr_mc_cancel = 0; /* fresh run: ignore any stale cancel request */
 
     /* Reuse guard: n_prev_eff samples (capped at num_mc, mirroring
      * mc_uncertainty's `min(len(prev), num_mc)`) are taken verbatim from
@@ -351,16 +367,29 @@ int cpr_mc_uncertainty(int num_mc, const char * const *quantities, size_t n_quan
     free(threads);
     free(workers);
 
-    /* Stop and join the progress thread, then print the single final "100%"
-     * line (with a newline) here -- after the thread exits -- so there is
+    /* Stop and join the progress thread. On an ordinary completion, print the
+     * single final "100%" line here -- after the thread exits -- so there is
      * exactly one terminating line regardless of what intermediate updates
-     * the thread printed while workers were running. */
+     * the thread printed while workers were running. A cancelled run instead
+     * reports how far it actually got (workers broke out of their per-sample
+     * loop early, so prog_ctx.n_done < num_mc). */
+    int cancelled = g_cpr_mc_cancel != 0;
     if (prog_active) {
+        int n_done_at_stop = prog_ctx.n_done;
         prog_ctx.running = 0;
         pthread_join(prog_thr, NULL);
         pthread_mutex_destroy(&prog_ctx.mu);
-        fprintf(stderr, "\r[MC] %d/%d samples (100%%)\n", num_mc, num_mc);
+        if (cancelled)
+            fprintf(stderr, "\r[MC] cancelled after %d/%d samples\n", n_done_at_stop, num_mc);
+        else
+            fprintf(stderr, "\r[MC] %d/%d samples (100%%)\n", num_mc, num_mc);
         fflush(stderr);
+    }
+
+    if (cancelled) {
+        free(first_err);
+        cpr_mc_result_free(out);
+        return CPR_MC_CANCELLED;
     }
 
     if (first_err) {

@@ -1,6 +1,5 @@
 /* mc.h -- threaded Monte-Carlo nuclear-rate/tau_n uncertainty propagation
- * (port of primat/main.py's `mc_uncertainty`/`_mc_run_batch`,
- * CPLAN.md S9).
+ * (port of primat/main.py's `mc_uncertainty`/`_mc_run_batch`).
  *
  * Each of `num_mc` samples draws every active nuclear-rate offset
  * `p_<rxn>` (one per reaction in the chosen LT-era network) independently
@@ -20,8 +19,7 @@
  * `default_rng` -- see rng.h's top comment), so results are deterministic
  * per (seed, sample index) and independent of how many threads are used,
  * but are not expected to reproduce Python's MC sample values term for
- * term (only matched statistically, mean/std convergence -- CPLAN.md
- * S11's "Additional smoke/regression tests").
+ * term (only matched statistically, via mean/std convergence).
  */
 #ifndef CPRIMAT_MC_H
 #define CPRIMAT_MC_H
@@ -91,6 +89,24 @@ int cpr_mc_uncertainty(int num_mc, const char * const *quantities, size_t n_quan
                         size_t n_prev,
                         int show_progress,
                         CPRMCResult *out, char **errmsg);
+
+/* Returned by cpr_mc_uncertainty (instead of 0/1) when cpr_mc_request_cancel
+ * was called while worker threads were still solving samples: `out` is
+ * freed internally and *errmsg is left NULL (there is nothing to report --
+ * the caller asked for this). */
+#define CPR_MC_CANCELLED 2
+
+/* Cooperative cancellation for a cpr_mc_uncertainty call in progress on
+ * another thread: sets a global flag that every worker thread checks
+ * between samples (not mid-solve) and breaks out of early, causing
+ * cpr_mc_uncertainty to return CPR_MC_CANCELLED once all workers have
+ * unwound. Intended for callers that run cpr_mc_uncertainty on a background
+ * thread while polling for an external interrupt (e.g. Python's
+ * primat/_primat_c/_wrapper.c, so Ctrl-C can abort a long MC run without
+ * waiting for it to finish -- see PyErr_CheckSignals there). Not
+ * reentrant across overlapping cpr_mc_uncertainty calls in the same
+ * process (the flag is reset at the start of each call). */
+void cpr_mc_request_cancel(void);
 
 void cpr_mc_result_free(CPRMCResult *out);
 
