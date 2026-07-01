@@ -207,6 +207,16 @@ typedef struct {
     double cache_T_t;
     int cache_clamp;
     int cache_valid;
+
+    /* Persistent cpr_find_segment_monotone() hint for the shared master
+     * T9 grid (`grid` above) used by cpr_network_fill_buffer -- T9 decreases
+     * monotonically and slowly across the millions of BDF evaluations in a
+     * solve, so this turns the fill_buffer grid lookup from an O(log n_grid)
+     * (or worse, previously a full O(n_grid) linear scan) search into an
+     * O(1) one in the common case. Any initial value is a safe starting
+     * guess (0 works). Owned per-CPRNetworkDef, so each MC worker thread's
+     * own copy (see mc.c's worker_setup) has independent, race-free state. */
+    size_t grid_hint;
 } CPRNetworkDef;
 
 /* Builds the selected network from its text reaction list -- the master

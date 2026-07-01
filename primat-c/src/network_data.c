@@ -1275,17 +1275,22 @@ const double *cpr_network_fill_buffer(CPRNetworkDef *net, double T_t_K,
     const double *g = net->grid;
     size_t n_grid = net->n_grid;
     /* searchsorted(g, T9) - 1, clamped to [0, n_grid-2] (mirrors fill_buffer's
-     * own clamp exactly). */
-    size_t i = 0;
-    while (i < n_grid && g[i] <= T9) i++;
-    long ii = (long)i - 1;
-    if (ii < 0) ii = 0;
-    else if (ii > (long)n_grid - 2) ii = (long)n_grid - 2;
+     * own clamp exactly) -- equivalently "the segment i such that
+     * g[i] <= T9 <= g[i+1]", clamped the same way at the table edges, which
+     * is exactly cpr_find_segment's contract (see spline.h). BDF integration
+     * calls this millions of times per solve at a T9 that decreases
+     * smoothly, so the hinted cpr_find_segment_monotone (net->grid_hint,
+     * persistent per-CPRNetworkDef state, see its declaration) turns the
+     * large network's ~429-row repeated full-table linear search into an
+     * O(1) lookup in the common case, with the exact same result as a cold
+     * cpr_find_segment in every case (verified by the find_segment fuzz
+     * test in test_spline.c). */
+    size_t ii = cpr_find_segment_monotone(g, n_grid, T9, &net->grid_hint);
     double w = (T9 - g[ii]) / (g[ii + 1] - g[ii]);
 
     size_t n_thermo = net->n_reac - 1;
     for (size_t k = 0; k < n_thermo; k++) {
-        double fwd = net->fwd[k * n_grid + (size_t)ii] * (1.0 - w) + net->fwd[k * n_grid + (size_t)ii + 1] * w;
+        double fwd = net->fwd[k * n_grid + ii] * (1.0 - w) + net->fwd[k * n_grid + ii + 1] * w;
         double alpha = net->abg[k * 3], beta = net->abg[k * 3 + 1], gamma = net->abg[k * 3 + 2];
         double bwd = alpha * pow(T9, beta) * exp(fmin(gamma / T9, CPR_EXP_CAP)) * fwd;
         if (fwd <= CPR_REVERSE_FLOOR) bwd = 0.0;

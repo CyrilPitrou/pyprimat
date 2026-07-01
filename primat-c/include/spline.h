@@ -13,6 +13,25 @@
 
 typedef enum { CPR_EXTRAP_CONSTANT, CPR_EXTRAP_LINEAR } CPRExtrapMode;
 
+/* Binary search for the segment i such that x[i] <= xq <= x[i+1] (clamped
+ * to [0, n-2] outside the table). Exposed as the ground-truth reference
+ * cpr_find_segment_monotone below must always agree with. */
+size_t cpr_find_segment(const double *x, size_t n, double xq);
+
+/* Hinted variant of cpr_find_segment for repeated lookups in the same
+ * table at a slowly, monotonically varying xq (e.g. rate-table lookups
+ * during BDF integration, where T9 decreases smoothly across millions of
+ * evaluations): normally O(1) instead of O(log n), but ALWAYS returns
+ * exactly what a cold cpr_find_segment for every (x, n, xq) -- correctness
+ * never depends on the hint being right, only on its absence costing more.
+ * `*hint` is read as a starting guess and overwritten with the segment
+ * actually returned; the caller owns one size_t of persistent state (any
+ * initial value is safe, including 0 or garbage) and must not share it
+ * across independent, unrelated query sequences (e.g. two rate tables, or
+ * two threads) -- each needs its own hint. `hint == NULL` always falls
+ * back to plain cpr_find_segment. */
+size_t cpr_find_segment_monotone(const double *x, size_t n, double xq, size_t *hint);
+
 /* Evaluates the piecewise-linear interpolant through (x[i], y[i]) at xq;
  * `x` must be strictly increasing, length n >= 2. Outside [x[0], x[n-1]],
  * either holds the boundary value constant (CPR_EXTRAP_CONSTANT) or

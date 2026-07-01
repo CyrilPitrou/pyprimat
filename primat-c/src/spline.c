@@ -8,8 +8,12 @@
 
 /* Binary search for the segment i such that x[i] <= xq <= x[i+1] (clamped
  * to [0, n-2] outside the table -- the caller then evaluates with an
- * unclamped dx to extrapolate using that boundary segment). */
-static size_t find_segment(const double *x, size_t n, double xq)
+ * unclamped dx to extrapolate using that boundary segment). Exposed
+ * (non-static, declared in spline.h) so callers with a "cold" query (no
+ * prior nearby lookup, e.g. the very first call of a solve) and the fuzz
+ * test in test_spline.c can use it as the ground truth that
+ * cpr_find_segment_monotone below must always reproduce exactly. */
+size_t cpr_find_segment(const double *x, size_t n, double xq)
 {
     if (xq <= x[0]) return 0;
     if (xq >= x[n - 1]) return n - 2;
@@ -21,6 +25,74 @@ static size_t find_segment(const double *x, size_t n, double xq)
     return lo;
 }
 
+/* Maximum number of grid cells the forward/backward scan below will walk
+ * away from *hint before giving up and falling back to a full binary
+ * search. Small on purpose: the whole point of the hinted lookup is that
+ * consecutive queries (e.g. successive BDF evaluations as T9 decreases
+ * monotonically through a rate table during nuclear-network integration)
+ * land within a cell or two of the previous one, so a handful of steps
+ * covers the overwhelmingly common case while keeping the worst-case cost
+ * of a wrong/stale hint bounded (a few wasted comparisons, then the same
+ * O(log n) binary search find_segment would have done anyway). */
+#define CPR_HINT_MAX_STEPS 8
+
+/* Hinted variant of cpr_find_segment: identical return value for every
+ * input (x, n, xq), including all extrapolation/boundary edge cases, but
+ * normally O(1) instead of O(log n) when xq is close to the segment found
+ * by the previous call, since BDF integration queries rate tables at a
+ * slowly-and-monotonically-varying T9 millions of times per solve.
+ *
+ * `*hint` is read as the starting guess and overwritten with the segment
+ * actually returned, so the caller just needs one size_t of persistent
+ * per-table state (initialised to anything -- 0 works fine, see below) and
+ * to keep reusing the same hint across consecutive queries of the same
+ * table. `hint == NULL` always falls back to the plain binary search
+ * (e.g. for one-off, non-repeated lookups with no state to cache into).
+ *
+ * Correctness invariant (relied on by the fuzz test in test_spline.c):
+ * the two extrapolation cases (xq <= x[0], xq >= x[n-1]) are handled
+ * exactly as in cpr_find_segment regardless of the hint. For interior xq,
+ * the forward-then-backward walk from the hint can only return early once
+ * it has re-established find_segment's own bracketing invariant
+ * (x[i] <= xq < x[i+1]); if it can't do that within CPR_HINT_MAX_STEPS
+ * cells (a wildly wrong or uninitialised hint), it gives up and calls the
+ * full binary search instead -- so a bad hint costs a little speed, never
+ * correctness. */
+size_t cpr_find_segment_monotone(const double *x, size_t n, double xq, size_t *hint)
+{
+    /* Boundary/extrapolation cases: identical to cpr_find_segment, checked
+     * up front so the scan below only ever has to deal with the interior,
+     * strictly-bracketing case. */
+    if (xq <= x[0]) { if (hint) *hint = 0; return 0; }
+    if (xq >= x[n - 1]) { if (hint) *hint = n - 2; return n - 2; }
+
+    if (!hint) return cpr_find_segment(x, n, xq);
+
+    size_t i = *hint;
+    /* Stale/uninitialised/out-of-range hint (e.g. the grid was reloaded
+     * with a different n since the hint was last set) -- the clamp below
+     * would silently misbehave, so just fall back instead of guessing. */
+    if (i > n - 2) {
+        i = cpr_find_segment(x, n, xq);
+        *hint = i;
+        return i;
+    }
+
+    size_t steps = 0;
+    while (i < n - 2 && x[i + 1] <= xq) {
+        if (steps++ >= CPR_HINT_MAX_STEPS) { i = cpr_find_segment(x, n, xq); *hint = i; return i; }
+        i++;
+    }
+    steps = 0;
+    while (i > 0 && x[i] > xq) {
+        if (steps++ >= CPR_HINT_MAX_STEPS) { i = cpr_find_segment(x, n, xq); *hint = i; return i; }
+        i--;
+    }
+
+    *hint = i;
+    return i;
+}
+
 double cpr_interp_linear(const double *x, const double *y, size_t n, double xq,
                           CPRExtrapMode mode)
 {
@@ -28,14 +100,14 @@ double cpr_interp_linear(const double *x, const double *y, size_t n, double xq,
         if (xq <= x[0]) return y[0];
         if (xq >= x[n - 1]) return y[n - 1];
     }
-    size_t i = find_segment(x, n, xq);
+    size_t i = cpr_find_segment(x, n, xq);
     double t = (xq - x[i]) / (x[i + 1] - x[i]);
     return y[i] + t * (y[i + 1] - y[i]);
 }
 
 double cpr_interp_quadratic_local(const double *x, const double *y, size_t n, double xq)
 {
-    size_t i = find_segment(x, n, xq);          /* bracketing segment [i, i+1] */
+    size_t i = cpr_find_segment(x, n, xq);          /* bracketing segment [i, i+1] */
     /* 3-point window {k, k+1, k+2} centred on the segment, clamped so it
      * stays inside [0, n-1]. */
     size_t k = (i == 0) ? 0 : i - 1;
@@ -174,7 +246,7 @@ int cpr_cubic_spline_fit_notaknot(const double *x, const double *y, size_t n,
 
 double cpr_cubic_spline_eval(const CPRCubicSpline *s, double xq)
 {
-    size_t i = find_segment(s->x, s->n, xq);
+    size_t i = cpr_find_segment(s->x, s->n, xq);
     double dx = xq - s->x[i];
     return s->a[i] + dx * (s->b[i] + dx * (s->c[i] + dx * s->d[i]));
 }

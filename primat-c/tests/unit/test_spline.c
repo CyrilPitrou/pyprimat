@@ -113,6 +113,95 @@ int main(void)
               "resampled all-zero table stays zero");
     }
 
+    /* Fuzz cpr_find_segment_monotone (the hinted lookup used by
+     * nuclear_network.c's rate-table evaluation during BDF integration)
+     * against cpr_find_segment (the plain binary search) across random
+     * monotone query sequences, both increasing and decreasing -- mirrors
+     * how the nuclear network actually queries T9 (decreasing) while also
+     * covering the increasing direction for generality. Every single query
+     * must return bit-identical segments, including edge cases: below
+     * x[0], above x[n-1], exactly on a grid point, and a stale/garbage
+     * hint on the very first call. */
+    {
+        srand(12345);
+        size_t n = 37;
+        double x[37];
+        for (size_t i = 0; i < n; i++) x[i] = -3.0 + 0.2 * (double)i + 0.001 * (double)i * (double)i;
+        /* x must be strictly increasing for find_segment's contract. */
+        for (size_t i = 1; i < n; i++) CHECK(x[i] > x[i - 1], "fuzz grid strictly increasing");
+
+        int all_ok = 1;
+
+        /* Edge cases first, with a deliberately garbage/stale starting hint
+         * (far out of range) on the very first call. */
+        {
+            size_t hint = (size_t)-1; /* maximally "stale" -- must trigger fallback, not misbehave */
+            double edge_qs[] = { x[0] - 5.0, x[0], x[5], x[n - 1], x[n - 1] + 5.0, (x[10] + x[11]) / 2.0 };
+            for (size_t e = 0; e < sizeof(edge_qs) / sizeof(edge_qs[0]); e++) {
+                size_t want = cpr_find_segment(x, n, edge_qs[e]);
+                size_t got = cpr_find_segment_monotone(x, n, edge_qs[e], &hint);
+                if (got != want) all_ok = 0;
+            }
+        }
+        CHECK(all_ok, "monotone lookup matches binary search on edge cases with a stale initial hint");
+
+        /* Decreasing T9-like sequences (the actual nuclear-network access
+         * pattern): start high, mostly decrease in small steps, with
+         * occasional larger jumps and a few backtracks (Newton/step-size
+         * retries are not perfectly monotone in practice). */
+        all_ok = 1;
+        for (int trial = 0; trial < 200; trial++) {
+            size_t hint = 0;
+            double xq = x[n - 1] + 2.0;
+            for (int step = 0; step < 500; step++) {
+                /* Mostly small decreasing steps; occasionally a big jump or
+                 * a small backtrack, to exercise both the fast hinted path
+                 * and the cold binary-search fallback. */
+                int r = rand() % 100;
+                if (r < 70) xq -= 0.01 * (double)(rand() % 10);
+                else if (r < 90) xq -= 1.0 + 0.1 * (double)(rand() % 20);   /* big jump */
+                else xq += 0.05 * (double)(rand() % 5);                      /* small backtrack */
+                size_t want = cpr_find_segment(x, n, xq);
+                size_t got = cpr_find_segment_monotone(x, n, xq, &hint);
+                if (got != want) { all_ok = 0; break; }
+            }
+            if (!all_ok) break;
+        }
+        CHECK(all_ok, "monotone lookup matches binary search on decreasing fuzz sequences");
+
+        /* Increasing sequences, for generality (the implementation makes
+         * no monotone-direction assumption -- only the step-count fallback
+         * bound matters). */
+        all_ok = 1;
+        for (int trial = 0; trial < 200; trial++) {
+            size_t hint = 0;
+            double xq = x[0] - 2.0;
+            for (int step = 0; step < 500; step++) {
+                int r = rand() % 100;
+                if (r < 70) xq += 0.01 * (double)(rand() % 10);
+                else if (r < 90) xq += 1.0 + 0.1 * (double)(rand() % 20);
+                else xq -= 0.05 * (double)(rand() % 5);
+                size_t want = cpr_find_segment(x, n, xq);
+                size_t got = cpr_find_segment_monotone(x, n, xq, &hint);
+                if (got != want) { all_ok = 0; break; }
+            }
+            if (!all_ok) break;
+        }
+        CHECK(all_ok, "monotone lookup matches binary search on increasing fuzz sequences");
+
+        /* Purely random (non-monotone) queries: stresses the
+         * far-from-hint fallback path the hardest. */
+        all_ok = 1;
+        size_t hint = 0;
+        for (int step = 0; step < 5000; step++) {
+            double xq = x[0] - 5.0 + (x[n - 1] - x[0] + 10.0) * ((double)rand() / (double)RAND_MAX);
+            size_t want = cpr_find_segment(x, n, xq);
+            size_t got = cpr_find_segment_monotone(x, n, xq, &hint);
+            if (got != want) { all_ok = 0; break; }
+        }
+        CHECK(all_ok, "monotone lookup matches binary search on fully random queries");
+    }
+
     if (failures) {
         printf("%d failure(s)\n", failures);
         return 1;
