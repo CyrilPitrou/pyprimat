@@ -1,4 +1,4 @@
-/* spline.h -- interpolation (CPLAN.md S3.2).
+/* spline.h -- interpolation.
  *
  * Covers `np.interp`/`interp1d(kind="linear")` (cpr_interp_linear) and
  * natural/not-a-knot cubic splines (CPRCubicSpline, used by the QED-

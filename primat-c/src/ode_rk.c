@@ -1,4 +1,4 @@
-/* ode_rk.c -- see cprimat/ode_rk.h. Dormand-Prince RK5(4)7M (Dormand & Prince
+/* ode_rk.c -- see ode_rk.h. Dormand-Prince RK5(4)7M (Dormand & Prince
  * 1980, "A family of embedded Runge-Kutta formulae", J. Comput. Appl. Math.
  * 6) with standard PI-ish step-size control (the classic "err^(-1/5) with
  * safety factor and min/max clamps" rule, e.g. Hairer/Norsett/Wanner II.4).

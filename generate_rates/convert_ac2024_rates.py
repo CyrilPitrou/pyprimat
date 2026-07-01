@@ -30,7 +30,7 @@ Source format (one block per reaction)::
          ...                                   (60 rows, grid 0.001..10)
 
 Output:
-  * ``primat/rates/nuclear/tables/<name>/<name><suffix>.txt`` for every
+  * ``primat/data/nuclear/tables/<name>/<name><suffix>.txt`` for every
     *non-decay* reaction (one folder per reaction, ``<name>`` being the
     ``<reactants>TO<products>``-derived bare name; ``<suffix>`` defaults to
     ``"_primat"``, so the shipped PRIMAT-default table is e.g.
@@ -40,7 +40,7 @@ Output:
     the 500-point grid.  Alternate-source variants (a different ``--suffix``,
     e.g. a Parthenope-extracted table) land as a sibling file in the same
     per-reaction folder, e.g. ``tables/n_p__d_g/n_p__d_g_parthenope3.0.txt``.
-  * ``primat/rates/nuclear/tables/decays.txt`` for every radioactive-decay
+  * ``primat/data/nuclear/tables/decays.txt`` for every radioactive-decay
     reaction (Bm/Bp on the products side): one row each with
     ``name  halflife_s  rate_s^-1  uncertainty  ref`` -- decay rates don't
     depend on T9, so a 500-row table per reaction would be redundant (see
@@ -49,7 +49,7 @@ Output:
   * ``<datadir>/detailed_balance.csv``: reaction, Q, alpha, beta, gamma for all
     reactions (the backward rate is ``alpha * T9**beta * exp(gamma/T9)`` times
     the forward rate).
-  * ``primat/rates/nuclear/networks/large.txt``: the reaction names from
+  * ``primat/data/nuclear/networks/large.txt``: the reaction names from
     ``<datadir>/reactions_large.csv``, one per line, each paired with its
     explicit filename (``name, name<suffix>.txt``) per ``load_network``'s
     "never imply the filename" convention -- except decay reactions, written
@@ -97,12 +97,12 @@ GRID_T9_MAX = DEFAULT_PARAMS["rate_grid_T9_max"]
 # Output directory for per-reaction rate tables (.txt). Hardcoded -- this is
 # the only location PyPRIMAT's load_network reads rate tables from, so there
 # is no use case for writing them elsewhere.
-TABDIR = "primat/rates/nuclear/tables"
+TABDIR = "primat/data/nuclear/tables"
 
 # Output file listing the large-network reactions, one name per line: the
 # first column of reactions_large.csv, kept in sync with it by
 # write_network_files.
-LARGE_NETWORK_FILE = "primat/rates/nuclear/networks/large.txt"
+LARGE_NETWORK_FILE = "primat/data/nuclear/networks/large.txt"
 
 # Numbers may use Fortran 'D'/'d' double-precision exponents (e.g. 1.1133D+10).
 _NUM = r"[-+]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eEdD][-+]?[0-9]+)?"
@@ -1282,7 +1282,7 @@ def _parse_args(argv):
                    help="the tabulated AC2024 reaction-rate compilation")
     p.add_argument("--nubase", default="generate_rates/nubase_4.mas20.txt",
                    help="the NUBASE2020 evaluation (nuclide masses and spins)")
-    p.add_argument("--datadir", default="primat/rates/csv",
+    p.add_argument("--datadir", default="primat/data/csv",
                    help="the directory for network structure files (.csv)")
     p.add_argument("--suffix", default="_primat",
                    help="suffix for generated per-reaction rate files (default "

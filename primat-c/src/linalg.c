@@ -1,4 +1,4 @@
-/* linalg.c -- see cprimat/linalg.h. Doolittle LU with partial pivoting. */
+/* linalg.c -- see linalg.h. Doolittle LU with partial pivoting. */
 #include "linalg.h"
 
 #include <math.h>

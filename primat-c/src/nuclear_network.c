@@ -1,4 +1,4 @@
-/* nuclear_network.c -- see cprimat/nuclear_network.h.
+/* nuclear_network.c -- see nuclear_network.h.
  *
  * Reference: Pitrou, Coc, Uzan & Vangioni, Phys. Rep. 2018 (arXiv:1806.11095),
  * cited below as "Phys. Rep.".
@@ -546,7 +546,7 @@ int cpr_nuclear_network_write_time_evolution(const CPRNuclearNetwork *nn, int n_
         return 1;
     }
 
-    /* Unified schema (PRIMAT.md S7.2), header-compatible with
+    /* Unified schema, header-compatible with
      * primat.evolution.dump_evolution/load_evolution: no leading "#",
      * tab-separated, t_s/a/T_*_MeV core block then one Y_<nuclide> column
      * per tracked species. Per-reaction flux columns (cfg->output_rates_time_evolution,

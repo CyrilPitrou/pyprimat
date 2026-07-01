@@ -1,7 +1,7 @@
-/* api.h -- the thin top-level wrapper (port of primat/main.py's PyPR
- * class), CPLAN.md S9/Phase 8.
+/* api.h -- the thin top-level wrapper (port of primat/main.py's PRIMAT
+ * class).
  *
- * `cprimat_run` is the single entry point mirroring `PyPR(params).solve()`:
+ * `cprimat_run` is the single entry point mirroring `PRIMAT(params).solve()`:
  * it owns the full init sequence (plasma -> nuclear rates -> background ->
  * nuclear network) and assembles the same "BBN observables" dict that
  * `PRIMAT.solve()` returns, plus the per-nuclide final abundances (`Y_final`
@@ -17,7 +17,7 @@
  * `cfg.output_time_evolution`/`output_final_file` *are* honoured (delegated
  * to nuclear_network.h's existing writers for the disk side; `cfg.output_time_evolution`
  * also populates `CPRResults`'s `evol_*` in-memory arrays directly --
- * PRIMAT.md S7.3/S7.6 -- so `primat/_primat_c/_wrapper.c` can hand the same
+ * so `primat/_primat_c/_wrapper.c` can hand the same
  * `EvolutionResult` shape back to Python with no disk I/O).
  *
  * Reference: Pitrou, Coc, Uzan & Vangioni, Phys. Rep. 2018 (arXiv:1806.11095).
@@ -57,13 +57,13 @@ typedef struct {
     double OneOverOmeganunr;
 
     /* ---- Per-nuclide final mass-fraction abundances Y (mirrors
-     * PyPR.nuclear.Y_final / get_quantity's nuclide-name fallback).
+     * PRIMAT.nuclear.Y_final / get_quantity's nuclide-name fallback).
      * Owned; freed by cprimat_results_free. ---- */
     char (*nuclide_names)[16];
     double *Y_final;
     size_t n_nuclides;
 
-    /* ---- Unified time-evolution arrays (PRIMAT.md S7.2/S7.3), populated
+    /* ---- Unified time-evolution arrays, populated
      * iff cfg->output_time_evolution. Mirrors Python's in-memory
      * EvolutionResult so primat/_primat_c/_wrapper.c can hand the same
      * shape back to primat/backend.py with no disk I/O. evol_Y is

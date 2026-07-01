@@ -1,7 +1,6 @@
 /* ode_bdf.h -- variable-order (1-5), variable-step BDF integrator for
- * stiff ODEs (CPLAN.md S3.5/S8): the MT/LT-era nuclear network once
- * network_builder.c lands (Phase 4), validated for now against the
- * textbook stiff benchmarks in S8 (Robertson, Van der Pol).
+ * stiff ODEs: the MT/LT-era nuclear network, validated against the
+ * textbook stiff benchmarks Robertson and Van der Pol.
  *
  * Implementation note (a deliberate simplification vs. scipy's BDF/
  * MATLAB's ode15s): those use a Nordsieck-vector representation that
@@ -13,9 +12,9 @@
  * then allowed to climb back up to `max_order` only after enough
  * consecutive accepted steps at the new (now-fixed) h have accumulated
  * enough history. This costs some efficiency (more steps than a true
- * variable-step/order method) but is far simpler to get right, and
- * CPLAN.md S8 explicitly accepts a different step sequence as long as
- * solution accuracy matches scipy's BDF at the same tolerance.
+ * variable-step/order method) but is far simpler to get right; a different
+ * step sequence than scipy's BDF is acceptable as long as solution
+ * accuracy matches it at the same tolerance.
  */
 #ifndef CPRIMAT_ODE_BDF_H
 #define CPRIMAT_ODE_BDF_H

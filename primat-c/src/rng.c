@@ -1,4 +1,4 @@
-/* rng.c -- see cprimat/rng.h. xoshiro256** (public domain, D. Blackman &
+/* rng.c -- see rng.h. xoshiro256** (public domain, D. Blackman &
  * S. Vigna, https://prng.di.unimi.it/) seeded via SplitMix64. */
 #include "rng.h"
 

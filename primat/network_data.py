@@ -1263,8 +1263,8 @@ def _load_decay_table(tables_dir):
 def available_rate_tables(name: str, cfg) -> list[str]:
     """Basenames of every rate-table file inside ``tables/<name>/``.
 
-    Backs the GUI popup's per-reaction "rate table" dropdown
-    (CUSTOMPOPUP.md §2.4/§6.4): a reaction with more than one candidate table
+    Backs the GUI popup's per-reaction "rate table" dropdown:
+    a reaction with more than one candidate table
     (e.g. the PRIMAT-default ``n_p__d_g_primat.txt`` plus a
     ``n_p__d_g_parthenope3.0.txt`` alternate) lets the user pick which one to
     use. The PRIMAT-default file (``f"{name}_primat.txt"``) is always sorted
@@ -1890,8 +1890,8 @@ def load_network(cfg, subset_file=None, era: str = "LT", reaction_names=None,
 def reaction_category(name: str) -> int:
     """Heaviest nuclide's mass number A (=N+Z) among name's reactants/products.
 
-    Drives the GUI popup's mass-number-banded category view
-    (CUSTOMPOPUP.md §5/§6): category k contains exactly the reactions that a
+    Drives the GUI popup's mass-number-banded category view:
+    category k contains exactly the reactions that a
     filter of amax=k keeps but amax=k-1 would drop, so categories and the
     amax filter stay consistent by construction. Photon ("g") and lepton
     ("Bm"/"Bp") tokens are excluded from the max (they don't carry a mass
@@ -1922,8 +1922,8 @@ def group_reactions_by_category(names) -> dict:
 
 # True maximum nuclide mass number reachable in the large network's catalog
 # (measured: the heaviest nuclide referenced by any data/nuclear/networks/
-# large.txt reaction is Na23, A=23). Used by the GUI popup (CUSTOMPOPUP.md
-# §6.2/§7.1) to detect "this kept-reaction list used every reaction up to the
+# large.txt reaction is Na23, A=23). Used by the GUI popup to detect
+# "this kept-reaction list used every reaction up to the
 # top of the catalog", i.e. equivalent to "no amax filter" (amax=None).
 AMAX_LARGE = 23
 
@@ -1983,7 +1983,7 @@ class UpdateNuclearRates:
             added = custom_network.get("added", {})
             added_names = list(added)
             # Optional, display-only: the GUI's per-reaction filename/upload
-            # basename (CUSTOMPOPUP.md), threaded through purely so
+            # basename, threaded through purely so
             # describe_reactions() can show it in the Reactions summary tab's
             # "File" column instead of leaving it blank for a customised
             # reaction.  Absent for direct (non-GUI) custom_network dicts.

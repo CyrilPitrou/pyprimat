@@ -1,4 +1,4 @@
-/* plasma.c -- see cprimat/plasma.h. */
+/* plasma.c -- see plasma.h. */
 #include "plasma.h"
 #include "constants.h"
 #include "qed_pressure.h"

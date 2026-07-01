@@ -7,7 +7,7 @@
  *     and reports *errmsg (see also test_memory_stress.c's leak-oriented
  *     version of the same check);
  *   - cfg->output_time_evolution populates CPRResults's evol_* in-memory
- *     arrays (PRIMAT.md S7.3/S7.6) with a sane shape, matching what
+ *     arrays with a sane shape, matching what
  *     primat/_primat_c/_wrapper.c relies on to avoid any disk I/O;
  *   - a custom_network override (GUI "Customise Reactions", CPRCustomNetwork)
  *     actually changes cprimat_run's result relative to the unmodified

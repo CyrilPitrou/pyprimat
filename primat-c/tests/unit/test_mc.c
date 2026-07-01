@@ -1,5 +1,5 @@
-/* test_mc.c -- statistical smoke test for mc.c's cpr_mc_uncertainty
- * (CPLAN.md S11's "mc_uncertainty" smoke/regression test): since the
+/* test_mc.c -- statistical smoke/regression test for mc.c's
+ * cpr_mc_uncertainty: since the
  * per-sample RNG stream is deliberately not bit-matched to NumPy's
  * default_rng (see mc.h's top comment), there is no fixed reference value
  * to reproduce -- instead this checks the statistical properties any

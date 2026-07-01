@@ -1,4 +1,4 @@
-/* vegas.c -- see cprimat/vegas.h.
+/* vegas.c -- see vegas.h.
  *
  * Implements the core of Lepage's VEGAS algorithm (G.P. Lepage, J. Comput.
  * Phys. 27 (1978) 192): per-dimension adaptive importance sampling, with

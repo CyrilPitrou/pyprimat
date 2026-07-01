@@ -2,7 +2,7 @@
 """
 evolution.py
 ============
-Unified time-evolution schema (``PRIMAT.md`` S7): the shared columns both
+Unified time-evolution schema: the shared columns both
 the Python and C backends populate, so a notebook can plot nuclide evolution
 from *either* backend's output without caring which one ran.
 
@@ -23,7 +23,7 @@ reads it dynamically rather than assuming a fixed column count.
 Per-reaction flux columns (today small/small_parthenope-only in the legacy
 Python writer) and the ``a``/``T_nu`` columns when the active background has
 no scale-factor/neutrino-sector tracking (e.g. a minimal custom background)
-are deferred/omitted from this unified schema -- see ``PRIMAT.md`` S7.2.
+are deferred/omitted from this unified schema.
 """
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ _Y_PREFIX = "Y_"
 
 @dataclass
 class EvolutionResult:
-    """In-memory unified time-evolution result (``PRIMAT.md`` S7.3).
+    """In-memory unified time-evolution result.
 
     Attributes
     ----------
@@ -76,8 +76,7 @@ def dump_evolution(result, path=None):
     ``NuclearNetwork._write_time_evolution`` (the ``cfg.output_file``
     convenience path); and ``primat-gui``'s download buttons, which call
     this lazily on ``run.evolution`` to produce the file text for
-    ``st.download_button(data=...)`` -- never via a tempfile (see
-    ``PRIMAT.md`` S7.5).
+    ``st.download_button(data=...)`` -- never via a tempfile.
 
     Parameters
     ----------

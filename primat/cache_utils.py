@@ -135,7 +135,7 @@ def write_cache_with_fingerprint(path: str, fingerprint: dict, columns, col_head
 
 # ---------------------------------------------------------------------------
 # Writable weak-rate cache directory: inspection / cleanup (`primat
-# --cache-info` / `--cache-clear`). See FUTURE.md P0.2: every new
+# --cache-info` / `--cache-clear`). Every new
 # PRIMATConfig fingerprint run with spectral_distortions/incomplete_decoupling
 # etc. drops another nTOp_<hash>.txt / nTOp_thermal_<hash>.txt file under
 # primat/data/weak/; these are regenerable on demand (a fresh run just

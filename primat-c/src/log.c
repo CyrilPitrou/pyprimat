@@ -1,4 +1,4 @@
-/* log.c -- see cprimat/log.h. */
+/* log.c -- see log.h. */
 #include "log.h"
 
 #include <stdarg.h>

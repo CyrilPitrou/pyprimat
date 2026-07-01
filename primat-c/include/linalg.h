@@ -1,4 +1,4 @@
-/* linalg.h -- dense LU with partial pivoting (CPLAN.md S3.1).
+/* linalg.h -- dense LU with partial pivoting.
  *
  * Matrices are n x n, row-major (A[i*n+j]). Sized for the BDF Newton
  * corrector's Jacobian, up to ~60x60 for the `large` network -- dense is

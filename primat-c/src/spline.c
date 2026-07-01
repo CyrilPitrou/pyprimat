@@ -1,4 +1,4 @@
-/* spline.c -- see cprimat/spline.h. */
+/* spline.c -- see spline.h. */
 #include "spline.h"
 
 #include <math.h>

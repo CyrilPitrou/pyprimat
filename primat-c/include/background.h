@@ -4,7 +4,7 @@
  * needs about the expanding Universe: T_gamma(t)/t(T_gamma), the baryon
  * mass density rhoB_BBN(t) [g/cm^3] (the prefactor for nuclear reaction
  * rates), and the normalised n<->p weak rates weak_nTOp_frwrd/bkwrd(T)
- * [s^-1]. Two concrete kinds are ported (CPLAN.md S0/S13 Phase 5):
+ * [s^-1]. Two concrete kinds are ported:
  *
  *   CPR_BG_STANDARD: builds the full a<->t<->T relations and Friedmann
  *     Hubble rate from cfg's neutrino-decoupling mode (NEVO table or
@@ -22,7 +22,7 @@
  * cpr_bg_omeganuh2_relnu/nrnu and cpr_bg_write_time_evolution (richer
  * output for CPR_BG_STANDARD).
  *
- * Out of scope (CPLAN.md S0), not ported: analytic mu/y-type spectral
+ * Out of scope, not ported: analytic mu/y-type spectral
  * distortions (rho_nu_SD is always NULL/inactive here, since
  * neutrino_history.c never sets has_distortion's analytic-mode sibling --
  * see neutrino_history.h's top comment); decay_era.
@@ -47,8 +47,8 @@ typedef struct {
 
     /* ---- Friedmann extra-energy-density plug-ins (StandardBackground only).
      * Python keeps a generic list of rho(Tg) callables (extra_rho); since
-     * the only in-scope members are CDM, Lambda, and EDE (CPLAN.md S0 --
-     * no runtime plug-in mechanism is otherwise exposed), a fixed flag-
+     * the only in-scope members are CDM, Lambda, and EDE (no runtime
+     * plug-in mechanism is otherwise exposed here), a fixed flag-
      * gated trio replaces the generic list -- behaviourally identical,
      * simpler in C. */
     int has_lcdm;          /* Omegach2/h both finite (always true for CPRConfig's

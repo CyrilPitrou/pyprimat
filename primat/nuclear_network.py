@@ -510,8 +510,8 @@ class NuclearNetwork:
         print(f"[output] Final abundances ({len(names)} nuclides) written to {path}")
 
     def _write_time_evolution(self, sol_HT, sol_LT, nucl):
-        """Build the unified ``EvolutionResult`` (see :mod:`primat.evolution`,
-        ``PRIMAT.md`` S7.2/S7.3) and write it to ``cfg.output_file``.
+        """Build the unified ``EvolutionResult`` (see :mod:`primat.evolution`)
+        and write it to ``cfg.output_file``.
 
         Enabled by ``output_time_evolution=True``.  Always sets
         ``self.evolution`` to the in-memory result (no disk I/O required to
@@ -547,7 +547,7 @@ class NuclearNetwork:
 
         Per-reaction flux columns (``<reaction>_frwrd``,
         ``cfg.output_rates_time_evolution=True``) and the n<->p weak rates
-        are deferred from this unified schema (``PRIMAT.md`` S7.2: the
+        are deferred from this unified schema (the
         former is explicitly a v0.3.0-deferred "bonus column block" pending a
         C-side port; the latter is recoverable directly from
         ``run.background.weak_nTOp_frwrd``/``weak_nTOp_bkwrd``, evaluated at
@@ -590,13 +590,13 @@ class NuclearNetwork:
         if cfg.output_rates_time_evolution:
             print("[output] output_rates_time_evolution ignored: per-reaction "
                   "flux columns are deferred from the unified time-evolution "
-                  "schema (PRIMAT.md S7.2). Use nucl.<reaction>_frwrd(T_K) "
+                  "schema. Use nucl.<reaction>_frwrd(T_K) "
                   "directly if reaction-level fluxes are needed.")
 
         self.evolution = EvolutionResult(t=t_out, a=a_out, T_gamma=T_out, T_nu=Tnu, Y=Y)
 
         # cfg.output_file=None is the in-memory-only escape hatch (e.g.
-        # primat-gui's _solve, PRIMAT.md S7.5): self.evolution above is what
+        # primat-gui's _solve): self.evolution above is what
         # that caller actually wants, with no disk I/O at all -- this is the
         # only output_*=True flag in the package with that escape hatch,
         # since it is also the only one a hosted GUI needs to suppress.

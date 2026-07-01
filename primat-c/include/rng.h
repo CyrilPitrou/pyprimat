@@ -1,4 +1,4 @@
-/* rng.h -- xoshiro256** PRNG + Box-Muller normal sampling (CPLAN.md S3.4).
+/* rng.h -- xoshiro256** PRNG + Box-Muller normal sampling.
  *
  * Used by mc_uncertainty's per-reaction rate draws and the tau_n draw.
  * Deliberately NOT required to reproduce NumPy's default_rng bit-for-bit:

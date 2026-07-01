@@ -13,7 +13,7 @@ Figures are saved to `plots/`.
 | Notebook | Description |
 |----------|-------------|
 | `StandardPlots.ipynb` | **Schramm diagram**: primordial abundances vs η_b with 1σ nuclear-rate uncertainty bands and observational constraints (YP, D/H, ³He/⁴He, ⁷Li/H). |
-| `AbundanceEvolution.ipynb` | **Time evolution** of A_i Y_i(t) for all nuclides from 1 s to 10⁵ s, for both the 12-reaction (small) and 63-reaction (full) networks. |
+| `AbundanceEvolution.ipynb` | **Time evolution** of A_i Y_i(t) for all nuclides from 1 s to 10⁵ s, for both the 12-reaction (small) and ~429-reaction (large) networks. |
 
 ### Parameter scans
 

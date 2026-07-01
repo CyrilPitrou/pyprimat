@@ -1,4 +1,4 @@
-/* neutrino_history.c -- see cprimat/neutrino_history.h. */
+/* neutrino_history.c -- see neutrino_history.h. */
 #include "neutrino_history.h"
 #include "constants.h"
 #include "table_io.h"

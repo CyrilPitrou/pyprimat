@@ -1,11 +1,11 @@
 /* nuclear_network.h -- the nuclear-reaction-network ODE integration across
  * the HT/MT/LT temperature eras (port of primat/nuclear_network.py's
- * NuclearNetwork class; CPLAN.md S13 Phases 6+7).
+ * NuclearNetwork class).
  *
  * CPRNuclearNetwork is driven purely through the *compulsory* interface of
  * a CPRBackground (cpr_bg_T_of_t/t_of_T/rhoB_BBN/weak_nTOp_frwrd/bkwrd,
  * background.h) and a CPRNuclearRates (the compiled MT/LT RHS/Jacobian
- * kernels, network_data.h, Phase 4) -- it knows nothing about *how* the
+ * kernels, network_data.h) -- it knows nothing about *how* the
  * background or the rate tables were built.
  *
  * cpr_nuclear_network_solve integrates:
@@ -17,7 +17,7 @@
  *   LT  (T_nucl -> T_end ~ 0.001 MeV): the chosen network
  *                                       (nr->lt_net/lt_compiled), stiff BDF.
  *
- * Out of scope (CPLAN.md S0/S4), not ported: the Decay-Time (DT) era
+ * Out of scope, not ported: the Decay-Time (DT) era
  * (_build_decay_matrix/_integrate_decay_era/_write_decay_evolution) --
  * long-lived-isotope decay propagation past T_end via matrix
  * exponentiation, gated by cfg->decay_era. The per-reaction flux columns
@@ -99,7 +99,7 @@ double cpr_nuclear_network_Y_of_t(const CPRNuclearNetwork *nn, const char *name,
  * failure. */
 int cpr_nuclear_network_write_final_result(const CPRNuclearNetwork *nn, char **errmsg);
 
-/* Samples the unified time-evolution schema (PRIMAT.md S7.2/S7.3:
+/* Samples the unified time-evolution schema (columns
  * t_s/a/T_gamma_MeV/T_nue_MeV/T_numu_MeV/T_nutau_MeV/Y_<nuclide>) at
  * `n_points` log-spaced rows in cosmic time between T_start_cosmo and
  * nn->t_end (mirrors Python's _write_time_evolution's t_out grid). Writes
@@ -111,14 +111,14 @@ int cpr_nuclear_network_write_final_result(const CPRNuclearNetwork *nn, char **e
  * a minimal/custom background. Shared by
  * cpr_nuclear_network_write_time_evolution (TSV) and the Python-extension
  * bridge (_wrapper.c, in-memory output_time_evolution=True) so the two
- * never drift -- see PRIMAT.md S7.6. */
+ * never drift. */
 void cpr_nuclear_network_sample_time_evolution(const CPRNuclearNetwork *nn, int n_points,
                                                   double *t_out, double *T_out, double *a_out,
                                                   double *Tnue_out, double *Tnumu_out,
                                                   double *Tnutau_out, double *Y_out);
 
-/* Writes the unified time-evolution TSV (PRIMAT.md S7.2, header-compatible
- * with primat.evolution.dump_evolution's output -- see PRIMAT.md S7.6) to
+/* Writes the unified time-evolution TSV (header-compatible
+ * with primat.evolution.dump_evolution's output) to
  * cfg->output_file, via cpr_nuclear_network_sample_time_evolution.
  * `n_points` is the number of log-spaced output rows (mirrors
  * cfg->output_n_points). Per-reaction flux columns are not ported, see

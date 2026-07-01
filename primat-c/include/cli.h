@@ -1,11 +1,9 @@
 /* cli.h -- `cprimat` executable entry point (port of primat/cli.py).
  *
- * Phase 0 scope: parse argv into a fully validated CPRConfig and print it
- * back (or run --cache-info/--cache-clear). The actual BBN solve
- * (cprimat_run, mirroring PyPR(params).PyPRresults()) lands in a later
- * phase once background.c/nuclear_network.c exist; cpr_cli_main() already
- * has the hook point (see the TODO in cli.c) so wiring it in later needs no
- * argv-parsing changes.
+ * cpr_cli_main() parses argv into a fully validated CPRConfig, then either
+ * services a standalone subcommand (--cache-info/--cache-clear) or runs the
+ * full BBN solve via cprimat_run (api.h), mirroring Python's
+ * `PRIMAT(params).primat_results()`, and prints/writes the results.
  */
 #ifndef CPRIMAT_CLI_H
 #define CPRIMAT_CLI_H

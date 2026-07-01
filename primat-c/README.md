@@ -31,10 +31,12 @@ make
 This produces the `primat-c` executable in the `build/` directory.
 
 **Available targets:**
-- `make` or `make all` - Build the standalone executable
+- `make` or `make all` - Build the standalone executable (optimized, `-O2` by default)
 - `make clean` - Remove build artifacts
-- `make debug` - Build with debug symbols
-- `make release` - Build with optimizations
+- `make debug` - Build with debug symbols and sanitizers instead
+- `make test` - Build and run the unit test suite
+- `make bench` - Build and run the timing benchmark
+- `make leak-test` - Build and run the memory-leak check under a sanitizer
 
 ### Platform-specific notes
 
@@ -58,16 +60,10 @@ xcode-select --install
 make
 ```
 
-#### Windows (MSVC)
+#### Windows (MinGW/MSYS2)
 
-Use Visual Studio Developer Command Prompt:
-
-```cmd
-cd primat-c
-nmake /f Makefile.win
-```
-
-Or use MinGW/MSYS2:
+The standalone executable's Makefile is POSIX-only (no MSVC/`nmake` project is
+provided); build it under MSYS2's MinGW toolchain instead:
 
 ```bash
 pacman -S mingw-w64-x86_64-gcc

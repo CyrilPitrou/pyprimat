@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """One-off migration: flatten ``tables/<name>.txt`` into ``tables/<name>/<name>.txt``.
 
-Already applied (CUSTOMPOPUP.md §2.2) -- kept for reference / reproducibility,
-e.g. if a fresh export from ``convert_ac2024_rates.py --keep-source-grid``
-ever needs to be folded into the new per-reaction-folder layout again.
+Already applied -- kept for reference / reproducibility, e.g. if a fresh
+export from ``convert_ac2024_rates.py --keep-source-grid`` ever needs to be
+folded into the new per-reaction-folder layout again. The per-reaction-folder
+layout itself exists so that alternate-source rate tables for the same
+reaction (e.g. a Parthenope-extracted variant) can live as sibling files next
+to the PRIMAT-default table, instead of colliding on a single flat filename.
 
-For every ``rates/nuclear/tables/<name>.txt`` (excluding ``decays.txt``, which
-stays flat -- it is a single multi-row table backing every Bm/Bp decay
+For every ``primat/data/nuclear/tables/<name>.txt`` (excluding ``decays.txt``,
+which stays flat -- it is a single multi-row table backing every Bm/Bp decay
 reaction, not a per-reaction rate table), this moves the file into its own
-folder ``rates/nuclear/tables/<name>/<name>.txt``.  Alternate-source sibling
+folder ``primat/data/nuclear/tables/<name>/<name>.txt``.  Alternate-source sibling
 tables (e.g. the ``small_parthenope`` network's ``*_parthenope3.0.txt``
 variants) are recognised by their ``_parthenope3.0`` suffix and routed into
 the *bare* reaction's folder alongside its PRIMAT-default table, since they

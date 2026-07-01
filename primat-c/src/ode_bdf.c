@@ -1,4 +1,4 @@
-/* ode_bdf.c -- see cprimat/ode_bdf.h.
+/* ode_bdf.c -- see ode_bdf.h.
  *
  * Variable-order (1-5), variable-step BDF/NDF integrator using the
  * Nordsieck-vector (scaled-derivative array) representation, following
@@ -10,7 +10,7 @@
  * port of that scipy module (read alongside this file if anything below
  * is unclear): same Nordsieck update formula, same NDF kappa coefficients,
  * same Newton convergence-rate test, same order/step selection logic --
- * deliberately, since CPLAN.md S8's acceptance bar is *solution accuracy*
+ * deliberately, since the acceptance bar here is *solution accuracy*
  * matching scipy's BDF at the same tolerance, and the most reliable way to
  * hit that bar is to reproduce the same well-tested heuristics rather than
  * invent new ones.

@@ -1,5 +1,5 @@
 /* ode_rk.h -- embedded Dormand-Prince RK45 with adaptive step size, for
- * non-stiff ODEs (CPLAN.md S3.5): the HT-era n<->p ODE and the two
+ * non-stiff ODEs: the HT-era n<->p ODE and the two
  * background ODEs (a(T_gamma) entropy-conservation, t(a) Hubble
  * integration). Python uses scipy's LSODA for these, which auto-switches
  * to BDF only if stiffness is detected; these problems are smooth enough

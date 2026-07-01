@@ -1,4 +1,4 @@
-/* background.c -- see cprimat/background.h.
+/* background.c -- see background.h.
  *
  * Reference: Pitrou, Coc, Uzan & Vangioni, Phys. Rep. 2018 (arXiv:1806.11095),
  * cited below as "Phys. Rep.".
@@ -293,7 +293,7 @@ double cpr_bg_Hubble(const CPRBackground *bg, double Tg, double Tnue, double Tnu
         rho_tot += 2.0 * bg->rhocEDEac / (1.0 + pow(bg->TcEDE / Tg, bg->EDE_exponent));
     }
     /* Analytic mu/y-type spectral-distortion extra energy density
-     * (Python's self.rho_nu_SD term) is out of scope (CPLAN.md S0) and
+     * (Python's self.rho_nu_SD term) is out of scope and
      * always inactive here -- see neutrino_history.h's top comment. */
 
     return cpr_MeV_to_secm1() * sqrt(rho_tot * 8.0 * M_PI / (3.0 * cpr_config_Mpl(cfg) * cpr_config_Mpl(cfg)));

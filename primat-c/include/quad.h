@@ -1,6 +1,6 @@
-/* quad.h -- 1D adaptive quadrature (CPLAN.md S3.3: "Gauss-Kronrod 21/43-point
- * or adaptive Simpson with error estimate + bisection" -- adaptive Simpson
- * chosen here for simplicity). Used for the e+- thermodynamic integrals
+/* quad.h -- 1D adaptive quadrature (adaptive Simpson with error estimate +
+ * bisection, chosen here for simplicity over Gauss-Kronrod). Used for the
+ * e+- thermodynamic integrals
  * and the Born weak-rate phase-space integral once those land (Phase 3a).
  */
 #ifndef CPRIMAT_QUAD_H

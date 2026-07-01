@@ -6,7 +6,7 @@
  * to access than threading every physics formula through a generic
  * key/value lookup. The *external* interface (ini file, CLI flags, --set)
  * still goes through a generic tagged-union CPRParam (see cpr_parse_literal
- * / cpr_config_set_by_name below) exactly as CPLAN.md S6 describes -- that
+ * / cpr_config_set_by_name below) -- that
  * union is the parsing/dispatch boundary, not the storage representation.
  *
  * Optional ("None"-able) Python values are represented as:
@@ -203,8 +203,8 @@ typedef struct {
     double DeltaNeff;
     double munuOverTnu;
 
-    /* ---- decay-era options (decay_era execution itself is out of scope,
-     * CPLAN.md S0; the flags are kept so cpr_config_set_by_name() round-
+    /* ---- decay-era options (decay_era execution itself is out of scope
+     * here; the flags are kept so cpr_config_set_by_name() round-
      * trips every DEFAULT_PARAMS key, same rationale as analytic_distortions
      * above) ---- */
     int decay_reverse_rates;

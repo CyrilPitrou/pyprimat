@@ -591,7 +591,7 @@ def kept_to_custom_network(cfg, kept, replaced, decay_overrides=None, filenames=
         Reaction names kept in the imported network.
     replaced : dict[str, str]
         ``{name: raw_table_text}`` for every reaction the zip carried a table
-        for (CUSTOMPOPUP.md's zip format now includes one for *every* kept
+        for (the exported zip's format includes one for *every* kept
         reaction, not just genuinely customised ones -- see ``export_zip``).
     decay_overrides : dict[str, float], optional
         ``{name: rate_s}`` parsed from the zip's ``tables/decays.txt`` (see

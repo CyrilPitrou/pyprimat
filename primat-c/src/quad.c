@@ -1,4 +1,4 @@
-/* quad.c -- see cprimat/quad.h. Classic adaptive Simpson (Richardson-
+/* quad.c -- see quad.h. Classic adaptive Simpson (Richardson-
  * extrapolated error estimate), e.g. as in Burden & Faires S4.6. */
 #include "quad.h"
 #include <math.h>

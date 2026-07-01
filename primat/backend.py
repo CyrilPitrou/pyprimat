@@ -5,23 +5,23 @@ primat.backend
 
 Dispatch layer choosing between the compiled C extension
 (``primat._primat_c``, wrapping ``primat-c``'s ``cprimat_run``) and the
-pure-Python solver (``primat.main.PRIMAT``), per ``PRIMAT.md`` S5.4.
+pure-Python solver (``primat.main.PRIMAT``).
 
 ``HAS_C_BACKEND`` is probed once at import time (``True`` iff the extension
 built successfully -- see ``setup.py``'s ``optional_build_ext``, which lets
 ``pip install`` succeed even without a C compiler). :func:`run_bbn` is the
 single dispatch entry point; everything else in this module supports it.
 
-Feature gaps (C side does not implement these -- mirrors ``cprimat/api.h``'s
-own "out of scope" notes):
+Feature gaps (C side does not implement these -- mirrors
+``primat-c/include/api.h``'s own "out of scope" notes):
 
 * ``extra_rho``, ``background=`` (the Python-only ``PRIMAT.__init__``
   constructor extensions) -- always force the Python backend.
 
 * ``decay_era`` (the long-lived-isotope Decay-Time era past ``T_end``,
   see ``primat/nuclear_network.py``'s ``_integrate_decay_era`` and
-  ``primat-c/include/cprimat/nuclear_network.h``'s "Out of scope" note,
-  CPLAN.md S0/S4) -- ``params={"decay_era": True}`` always forces the
+  ``primat-c/include/nuclear_network.h``'s "Out of scope" note) --
+  ``params={"decay_era": True}`` always forces the
   Python backend under ``force_backend in (None, "auto")``, and raises
   ``ValueError`` under ``force_backend="c"``, exactly like
   ``extra_rho``/``background=`` above. The C backend's ``CPRConfig`` still
@@ -37,15 +37,15 @@ feature was requested, or the extension failed to build) during development.
 ``custom_network`` (the GUI "Customise Reactions" override: removed/replaced/
 added reactions plus rate-table overrides) *is* supported on both backends:
 ``primat-c``'s ``cprimat_run``/``cpr_mc_uncertainty`` take an optional
-``CPRCustomNetwork*`` (``primat-c/include/cprimat/network_data.h``), and
+``CPRCustomNetwork*`` (``primat-c/include/network_data.h``), and
 ``primat/_primat_c/_wrapper.c`` parses the same dict shape
 (``UpdateNuclearRates``/``kept_to_custom_network``, see
 ``primat/network_data.py``/``primat/gui/custom_rates.py``) into one. It is no
 longer part of ``python_only_feature`` below.
 
-``output_time_evolution=True`` *is* supported on both backends (PRIMAT.md
-S7.3/S7.6): the C extension's ``cprimat_run`` populates ``CPRResults``'s
-``evol_*`` in-memory arrays (``primat-c/include/cprimat/api.h``) and
+``output_time_evolution=True`` *is* supported on both backends: the C
+extension's ``cprimat_run`` populates ``CPRResults``'s
+``evol_*`` in-memory arrays (``primat-c/include/api.h``) and
 ``primat/_primat_c/_wrapper.c`` hands them back as an ``"evolution"`` dict
 key (plain Python lists, no numpy C-API dependency in the extension); this
 module assembles the same :class:`primat.evolution.EvolutionResult` shape
@@ -114,8 +114,7 @@ _DEFAULT_MC_OBSERVABLES = ("Neff", "YPBBN", "YPCMB", "DoH", "He3oH", "He3oHe4",
 
 _PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 # The C extension's cpr_config_init_defaults() takes the data folder itself
-# (containing NEVO/, weak/, plasma/, nuclear/, csv/), not its parent -- see
-# FOLDER.md.
+# (containing NEVO/, weak/, plasma/, nuclear/, csv/), not its parent.
 _C_DATA_DIR = os.path.join(_PACKAGE_DIR, "data")
 
 try:
@@ -231,7 +230,7 @@ def _assemble_c_result(result):
     ``primat/_primat_c/_wrapper.c``'s ``evolution_to_dict``) with the same
     :class:`primat.evolution.EvolutionResult` the Python backend attaches
     under ``result["evolution"]`` -- so callers can switch backends
-    transparently (``PRIMAT.md`` S7.3). No-op if ``output_time_evolution``
+    transparently. No-op if ``output_time_evolution``
     wasn't requested (no ``"evolution"`` key at all)."""
     evo = result.get("evolution")
     if evo is None:

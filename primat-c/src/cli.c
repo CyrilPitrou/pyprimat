@@ -1,4 +1,4 @@
-/* cli.c -- see cprimat/cli.h. */
+/* cli.c -- see cli.h. */
 #include "cli.h"
 #include "api.h"
 #include "cache.h"
@@ -220,7 +220,7 @@ static int path_is_dir(const char *path)
  * the default data dir can be anchored to where `cprimat` itself lives
  * rather than to the caller's CWD (the old ".." default silently broke
  * whenever invoked from anywhere other than primat-c/, e.g. from
- * primat-c/build/ or the repo root -- see FOLDER.md). Returns 0 and fills
+ * primat-c/build/ or the repo root). Returns 0 and fills
  * `out` on success, nonzero if the platform call fails (caller falls back
  * to a CWD-relative guess). */
 static int executable_dir(char *out, size_t outsize)

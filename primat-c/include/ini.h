@@ -1,5 +1,5 @@
-/* ini.h -- minimal ".ini"-ish config file loader (port of the .ini
- * handling described in CPLAN.md S6/cli.py's --set semantics).
+/* ini.h -- minimal ".ini"-ish config file loader (port of cli.py's --set
+ * semantics' .ini handling).
  *
  * Format: one "KEY=VALUE" or "KEY VALUE" per (trimmed) line; lines starting
  * with '#' or ';', and blank lines, are ignored. No sections. VALUE is

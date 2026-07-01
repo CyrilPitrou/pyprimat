@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Turn the raw Parthenope generator output into PyPRIMAT rate tables.
+"""Turn the raw Parthenope generator output into primat rate tables.
 
 For each reaction we read the raw ``out_<name>.dat`` (columns: T9, f, error)
 produced by the compiled Parthenope-3.0 kernel, repair the unphysical low-T9
@@ -12,12 +12,15 @@ the rate is filled by *log-log linear extrapolation* of the two lowest valid
 points (continuing the steep Gamow fall-off as T9 -> 0), and the multiplicative
 error is held constant at its value on the validity floor.  This region is
 dynamically irrelevant (the reactions are frozen out there) but the values must
-stay positive and monotone so PyPRIMAT's log-log resampler can ingest them.
+stay positive and monotone so primat's log-log resampler can ingest them.
 """
 import os
 import numpy as np
 
-OUT_DIR = "/Users/pitrou/Cosmologie/SDrive/iap/PRIMAT_suite/PyPRIMAT/primat/rates/nuclear/tables"
+# Repo root is three levels up from generate_rates/parthenope3.0_extract/.
+OUT_DIR = os.path.join(
+    os.path.dirname(__file__), "..", "..", "primat", "data", "nuclear", "tables"
+)
 
 # primat name -> (header arrow string, Parthenope source/branch)
 META = {

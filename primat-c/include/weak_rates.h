@@ -1,6 +1,6 @@
 /* weak_rates.h -- n<->p weak-rate tables (port of primat/weak_rates/).
  *
- * CPLAN.md S7 scope (S7a, "always-needed pieces"): the non-thermal n<->p
+ * Always-needed pieces: the non-thermal n<->p
  * rate (Born/CCR + finite-nucleon-mass + spectral-distortion corrections),
  * computed from scratch via fixed Gauss-Legendre quadrature when no cache
  * file matches the current configuration's fingerprint, or loaded directly

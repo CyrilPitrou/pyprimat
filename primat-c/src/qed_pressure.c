@@ -1,4 +1,4 @@
-/* qed_pressure.c -- see cprimat/qed_pressure.h. */
+/* qed_pressure.c -- see qed_pressure.h. */
 #include "qed_pressure.h"
 #include "quad.h"
 #include "spline.h"

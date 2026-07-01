@@ -89,7 +89,9 @@ def render_results_panel(run, mc=None):
     ------
     1. A vertical table (Markdown, with LaTeX-rendered labels) of the 7
        headline observables from ``run.primat_results()`` (the 9-key results
-       dict, ``main.py:751-761``; ``Omeganurel``/``OneOverOmeganunr`` are
+       dict built up in ``main.py``'s ``solve()`` starting at ``results["Neff"]
+       = ...`` and exposed via ``primat_results()``; ``Omeganurel``/
+       ``OneOverOmeganunr`` are
        omitted here as niche neutrino-energy-density quantities), formatted to
        the precision required by ``CLAUDE.md``, plus an optional MC-uncertainty
        column (see ``mc`` above).
@@ -362,10 +364,10 @@ def render_downloads_panel(run, mc=None, background=None):
     * **output_final.txt** -- the final abundances in the ``output_final.dat``
       text format (:func:`final_abundances_text`).
     * **output_time_evolution.tsv** -- the full ``A_i Y_i(t)`` time series, in
-      the unified schema (``primat.evolution``, ``PRIMAT.md`` S7.2), built
+      the unified schema (``primat.evolution``), built
       lazily here via :func:`primat.evolution.dump_evolution` on
       ``run.evolution`` -- no disk I/O happens until this download button is
-      actually clicked (``PRIMAT.md`` S7.5). Populated on either backend.
+      actually clicked. Populated on either backend.
     * **output_background.tsv**, **nTOp_total.tsv** (weak rates) -- built from
       ``background``, a separately-constructed Python
       ``StandardBackground``/``CustomBackground`` (``primat.gui.app``'s

@@ -268,7 +268,7 @@ def _available_networks():
     these files for any value other than 'small'). Every custom network built
     or imported *this session* (``_known_custom_networks``, not just the
     currently-active one) is appended too, as a synthetic, display-only
-    entry (CUSTOMPOPUP.md §7.2): picking one directly from this dropdown
+    entry: picking one directly from this dropdown
     re-activates it, so switching to a real network and back to a previously
     used custom one (e.g. to compare results) works without re-opening the
     popup.
@@ -376,7 +376,6 @@ def _widget_for(key, label, help_text):
 
 # ---------------------------------------------------------------------------
 # "Create custom network" / "Import custom network" buttons + dialogs
-# (CUSTOMPOPUP.md §5-§8)
 # ---------------------------------------------------------------------------
 
 _RESERVED_NETWORK_NAMES = {"small", "small_parthenope", "large"}
@@ -678,8 +677,7 @@ class _DialogState:
 def _decay_rates():
     """``{name: (rate_s, f, halflife_s, ref)}`` from ``tables/decays.txt``.
 
-    Backs the popup's dedicated "Decays" category (CUSTOMPOPUP.md follow-up):
-    a decay reaction has no per-reaction rate-table folder (its rate is a
+    Backs the popup's dedicated "Decays" category: a decay reaction has no per-reaction rate-table folder (its rate is a
     single T9-independent row in the shared ``decays.txt``, see
     :func:`primat.network_data._load_decay_table`), so it must be told apart
     from a genuinely tableless reaction.
@@ -720,8 +718,8 @@ def _dialog_superset_entries(dialog_amax):
     """The large network's reaction entries, filtered by ``dialog_amax``.
 
     This is the full row set the popup renders, regardless of which named
-    network is the "Select Network to modify" base (CUSTOMPOPUP.md §6.3):
-    reactions in the base network's own list start checked, every other entry
+    network is the "Select Network to modify" base: reactions in the base
+    network's own list start checked, every other entry
     within the amax band starts unchecked.
     """
     entries = load_reaction_names(_cfg(), "large")
@@ -737,8 +735,7 @@ def _dialog_base_selection_and_tables(base_network, dialog_amax):
     reaction-list file (filtered by ``dialog_amax``) and the "name,
     filename.txt" syntax it may use (e.g. small_parthenope's
     ``*_parthenope3.0.txt`` tables) for the pre-selected rate table.  For a
-    previously built/imported *custom* network (CUSTOMPOPUP.md §7.4), reads
-    straight from ``st.session_state[SessionKeys.known_custom_networks]`` instead --
+    previously built/imported *custom* network, reads straight from ``st.session_state[SessionKeys.known_custom_networks]`` instead --
     it is already a concrete, fully-resolved list, no amax filtering needed.
     """
     known = st.session_state.get(SessionKeys.known_custom_networks, {})

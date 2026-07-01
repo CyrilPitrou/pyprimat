@@ -1,13 +1,12 @@
 # PyPiGuide.md — Publishing `primat` to PyPI
 
-Companion to `PRIMAT.md` §6 (the plan) — this is the step-by-step
-checklist for actually doing it, with every irreversible action flagged
-and a way to test up to (but not past) each one.
+This is the step-by-step checklist for actually doing it, with every
+irreversible action flagged and a way to test up to (but not past) each one.
 
-Current repo state: `.github/workflows/wheels.yml` exists (built per
-`PRIMAT.md` §6.1) and builds cleanly locally (`make` in `primat-c/`,
-`pip install -e .` for the Python extension). Nothing has been uploaded
-anywhere yet — steps 1–6 below are all still ahead of you.
+Current repo state: `.github/workflows/wheels.yml` exists and builds cleanly
+locally (`make` in `primat-c/`, `pip install -e .` for the Python extension).
+Nothing has been uploaded anywhere yet — steps 1–6 below are all still ahead
+of you.
 
 ## Legend
 
@@ -76,8 +75,9 @@ all, by triggering it from the Actions tab and just inspecting the
 uploaded build artifacts (the `actions/upload-artifact` step) rather
 than wiring up trusted publishing yet.
 
-This is how you get the empirical Windows/MSVC check that `PRIMAT.md`
-§6.1 flags as a real risk: trigger the workflow, look at whether the
+This is how you get the empirical Windows/MSVC check flagged as a real
+risk elsewhere in this repo (see `primat-c/src/weak_rates.c`'s note on
+MSVC risk): trigger the workflow, look at whether the
 `windows-latest` job's `primat._primat_c` extension actually compiles,
 or silently fails over to the pure-Python fallback (check the build log
 for the `optional_build_ext` warning). The complex-arithmetic rewrite
@@ -117,7 +117,7 @@ real index. Treat everything in this step as repeatable.
 4. Trigger via `workflow_dispatch` → wheels + sdist get built and
    uploaded to **test**.pypi.org.
 5. Verify end-to-end: `pip install -i https://test.pypi.org/simple/ primat`
-   into a clean venv, run the validation script (`PyPRIMAT_run.py`
+   into a clean venv, run the validation script (`runfiles/primat_run.py`
    equivalent), and confirm the result matches the documented tolerances
    in `CLAUDE.md`.
 
@@ -133,9 +133,8 @@ don't care, because nobody depends on it and you can bump to `0.3.0rc1`,
 
 ## Step 4 — 🔴 Claim the name on real PyPI
 
-`PRIMAT.md` §6.2 step 2 calls this out explicitly: a manual
-`twine upload` of an sdist-only `0.3.0rc0` build, run from your laptop,
-claims the `primat` name on PyPI. **This is the first genuinely
+A manual `twine upload` of an sdist-only `0.3.0rc0` build, run from your
+laptop, claims the `primat` name on PyPI. **This is the first genuinely
 irreversible action in the whole process.**
 
 Why it's irreversible:
@@ -187,8 +186,8 @@ irreversible the moment a `release: published` event actually fires the
 
 ## Step 6 — 🔴 Tag `v0.3.0`, publish the GitHub release, let `wheels.yml` upload to real PyPI
 
-This is `PRIMAT.md` §9 Phase I. The GitHub release's `published` event
-triggers `wheels.yml`'s full pipeline against the real `pypi` index.
+The GitHub release's `published` event triggers `wheels.yml`'s full
+pipeline against the real `pypi` index.
 
 Irreversible because:
 - Once `primat-0.3.0` (wheels + sdist) lands on real PyPI, that exact

@@ -12,7 +12,7 @@
  *   - x_of_Tg(Tg), the NEVO table's scale-factor proxy (used only by
  *     external_scale_factor mode in background.c).
  *
- * Two regimes are ported (CPLAN.md S0/S6 table): CPR_NU_NEVO_TABLE
+ * Two regimes are ported: CPR_NU_NEVO_TABLE
  * (incomplete/non-instantaneous decoupling, reading the pre-computed NEVO
  * tables, cfg->incomplete_decoupling) and CPR_NU_INSTANTANEOUS (complete
  * decoupling, Tnu fixed by EM entropy conservation, N=0). The full

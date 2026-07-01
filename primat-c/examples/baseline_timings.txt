@@ -1,5 +1,5 @@
-# Python (pyprimat) baseline timings for `make bench`'s comparison
-# (CPLAN.md S12), captured once on this machine via:
+# Python (primat) baseline timings for `make bench`'s comparison,
+# captured once on this machine via:
 #
 #   python3 -c "
 #   import time, sys; sys.path.insert(0, '.')

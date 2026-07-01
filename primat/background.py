@@ -204,7 +204,7 @@ class Background(object):
         ``{"e": Tnue, "mu": Tnumu, "tau": Tnutau}`` -- used by
         :meth:`_background_columns`/:meth:`time_evolution_text` and by
         :class:`primat.nuclear_network.NuclearNetwork`'s unified
-        ``EvolutionResult`` (``PRIMAT.md`` S7.2/S7.3).
+        ``EvolutionResult``.
         """
         return None
 
@@ -279,8 +279,8 @@ class Background(object):
         Same output grid and columns as :meth:`write_time_evolution`
         (``n_points`` log-spaced cosmic times from ``t_of_T(T_start_cosmo)``
         to ``t_of_T(T_end)``) -- factored out so a caller that wants the
-        data in memory (e.g. ``primat-gui``'s download buttons, see
-        ``PRIMAT.md`` S7.5) never needs a temporary file.
+        data in memory (e.g. ``primat-gui``'s download buttons) never
+        needs a temporary file.
         """
         cfg = self.cfg
         T_start_cosmo = cfg.T_start_cosmo / cfg.MeV_to_Kelvin   # [MeV]

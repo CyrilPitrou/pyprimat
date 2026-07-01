@@ -1,4 +1,4 @@
-/* network_data.c -- see cprimat/network_data.h. */
+/* network_data.c -- see network_data.h. */
 #include "network_data.h"
 
 #include "constants.h"

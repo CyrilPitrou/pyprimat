@@ -1,4 +1,4 @@
-/* test_ode_bdf.c -- CPLAN.md S8's dedicated BDF validation: Robertson's
+/* test_ode_bdf.c -- dedicated BDF validation: Robertson's
  * stiff chemical-kinetics benchmark and a stiff linear system with a known
  * analytic solution, checked against reference values (Robertson's
  * reference values at t=1e5 are the widely-quoted ones used to validate

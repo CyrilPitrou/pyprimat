@@ -1,4 +1,4 @@
-/* api.c -- see cprimat/api.h. Port of primat/main.py's PyPR.__init__ +
+/* api.c -- see api.h. Port of primat/main.py's PyPR.__init__ +
  * PyPR.solve().
  */
 #include "api.h"
@@ -163,7 +163,7 @@ void cpr_assemble_results(CPRResults *results, const CPRConfig *cfg,
         results->Y_final[i] = nn->Y_final[i];
     }
 
-    /* ---- Unified time-evolution arrays (PRIMAT.md S7.3/S7.6), populated
+    /* ---- Unified time-evolution arrays, populated
      * in-memory regardless of cfg->output_file -- the disk TSV written by
      * cpr_nuclear_network_solve (gated the same way) is a separate, derived
      * convenience built from the same sampler. ---- */

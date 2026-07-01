@@ -1,5 +1,5 @@
-/* network_data.h -- loaders for the network/reaction list files (Phase 0),
- * plus (Phase 4, CPLAN.md S13) the physics layer that turns them into a
+/* network_data.h -- loaders for the network/reaction list files, plus the
+ * physics layer that turns them into a
  * solver-ready CPRNetworkDef: load_network, NetworkDefinition::fill_buffer/
  * apply_variations, and UpdateNuclearRates, on top of network_builder.h's
  * generic stoichiometry-driven RHS/Jacobian.
@@ -13,7 +13,7 @@
  * _RATE_SYNTAX_ and every GUI-generated name use), not the legacy
  * "compact" ("abTOcd") syntax.
  *
- * Still deliberately not ported (CPLAN.md S0/S4: gui/ and plotting.py are
+ * Still deliberately not ported (gui/ and plotting.py are
  * out of scope, and these are GUI-only call paths): to_filename/
  * reaction_category/group_reactions_by_category (display/lookup helpers
  * with no effect on a run's numerics), and the files provenance list on

@@ -1,9 +1,10 @@
-# PyPRIMAT — documentation
+# PRIMAT — documentation
 
-This folder holds the extensive PyPRIMAT user + physics documentation.
-The current document describes **PyPRIMAT version 0.1.0**; when the code moves to
-v0.2.0 (architectural changes), a new `PyPRIMAT_documentation_v0.2.0.{tex,pdf}`
-should be added alongside.
+This folder holds the extensive PRIMAT user + physics documentation.
+The current document describes **PyPRIMAT version 0.1.0** and predates the
+package's rename to `primat` and its v0.2/v0.3 architectural changes (C
+backend, GUI, custom networks) — it needs an update pass to reflect the
+current codebase; see the repository CLAUDE.md for what has changed since.
 
 | File | Purpose |
 |------|---------|
@@ -15,8 +16,8 @@ should be added alongside.
 
 ## Rebuilding
 
-Run from the **repository root** (so `import pyprimat` and the `rates/` data
-files resolve), then compile from this folder:
+Run from the **repository root** (so `import primat` and the `primat/data/`
+data files resolve), then compile from this folder:
 
 ```bash
 # 1. regenerate the figures (~30 s)

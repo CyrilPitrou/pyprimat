@@ -90,8 +90,8 @@ def _solve(params_items):
         would (``run.primat_results()``, ``run.abundance_names``,
         ``run[name](t)``, ``run.T_of_t``, ``run.A``/``run.Z``/``run.N``,
         ``run.cfg``, ``run.nucl``) so the result/evolution panels never need
-        to know which backend actually ran (``PRIMAT.md`` S7.3,
-        ``primat.backend``'s module docstring) -- letting this pick the C
+        to know which backend actually ran (see ``primat.backend``'s module
+        docstring) -- letting this pick the C
         backend by default. Together with the wall-clock time (seconds) the
         actual solve took, and a short string naming which backend ran (for
         the caption in ``app.main``). The elapsed time is measured *inside*
@@ -111,7 +111,7 @@ def _solve(params_items):
     ``cache_data``) is used because ``GuiRun`` lazily builds SciPy
     interpolators that are not picklable.
 
-    No disk I/O of any kind happens here any more (``PRIMAT.md`` S7.5): the
+    No disk I/O of any kind happens here any more: the
     download buttons (``panels.render_downloads_panel``) build their TSV text
     lazily, at click time, straight from ``run``'s in-memory data -- nothing
     is written to a server-side tempfile even transiently, which matters for
@@ -143,8 +143,8 @@ def _solve(params_items):
         note += ("  \n*(includes finite-temperature thermal "
                  "corrections — this can take a while)*")
     status.markdown(note)
-    # output_file=None: build the evolution data in memory (PRIMAT.md S7.3)
-    # without writing anything to disk -- see
+    # output_file=None: build the evolution data in memory without writing
+    # anything to disk -- see
     # NuclearNetwork._write_time_evolution's escape hatch.
     full_params = dict(params, output_time_evolution=True, output_file=None)
 

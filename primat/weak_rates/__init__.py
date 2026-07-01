@@ -28,8 +28,8 @@ than from GF/Vud/gA directly (Phys. Rep. Eqs. 89–91), giving better precision.
 
 Module layout
 -------------
-This package mirrors the single-file ``weak_rates.py`` it replaced (see
-FUTURE.md P1.1) and re-exports every public AND private name the rest of the
+This package mirrors the single-file ``weak_rates.py`` it replaced,
+and re-exports every public AND private name the rest of the
 codebase / test suite addresses as ``weak_rates.<name>`` (or ``wr.<name>``),
 so the split is invisible to callers:
 

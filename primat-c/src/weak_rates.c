@@ -1,4 +1,4 @@
-/* weak_rates.c -- see cprimat/weak_rates.h.
+/* weak_rates.c -- see weak_rates.h.
  *
  * Direct port of primat/weak_rates/{integrands,corrections,api}.py.
  * Every correction term below is evaluated scalar-at-a-time (one T value),
@@ -129,8 +129,8 @@ static double FD_nu_e3p2(double E, double phi, double x)
 
 /* ------------------------------------------------------------------------
  * Real dilogarithm Li2(y) for y in [0,1] (scipy.special.spence(x) ==
- * Li2(1-x) for real x in (0,1), verified numerically against mpmath; see
- * the design notes in CPLAN.md's weak_rates section). Series for y<=0.5,
+ * Li2(1-x) for real x in (0,1), verified numerically against mpmath).
+ * Series for y<=0.5,
  * Euler reflection Li2(y) = pi^2/6 - ln(y)ln(1-y) - Li2(1-y) otherwise.
  * ------------------------------------------------------------------------ */
 
@@ -159,7 +159,7 @@ static double spence_real(double x) { return li2(1.0 - x); }
  * clgamma below. We deliberately avoid C99's <complex.h>/_Complex: MSVC's
  * C mode has no usable support for it (cl.exe rejects `double complex` and
  * the I literal outright), which would break the Windows wheel build of
- * this extension (PRIMAT.md S6.1's flagged MSVC risk) -- a handful of
+ * this extension -- a handful of
  * (re,im) struct ops is plenty for the one Lanczos/log-gamma routine that
  * needs complex values at all.
  * ------------------------------------------------------------------------ */
