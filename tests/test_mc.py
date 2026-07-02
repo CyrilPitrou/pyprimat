@@ -14,13 +14,13 @@ _NUM_MC = 8
 
 @pytest.fixture(scope="module")
 def mc_single():
-    return mc_uncertainty(_NUM_MC, "YPBBN", params=_BASE, n_jobs=2, seed=0)
+    return mc_uncertainty(_NUM_MC, "YPBBN", params=_BASE, seed=0)
 
 
 @pytest.fixture(scope="module")
 def mc_multi():
     return mc_uncertainty(_NUM_MC, ["YPBBN", "DoH", "Li7oH"],
-                          params=_BASE, n_jobs=2, seed=0)
+                          params=_BASE, seed=0)
 
 
 # --- MCResult structure ---
@@ -89,14 +89,14 @@ def test_std_positive_multi(mc_multi):
 # --- Reproducibility ---
 
 def test_same_seed_same_result():
-    mc_a = mc_uncertainty(4, "YPBBN", params=_BASE, n_jobs=1, seed=42)
-    mc_b = mc_uncertainty(4, "YPBBN", params=_BASE, n_jobs=1, seed=42)
+    mc_a = mc_uncertainty(4, "YPBBN", params=_BASE, seed=42)
+    mc_b = mc_uncertainty(4, "YPBBN", params=_BASE, seed=42)
     np.testing.assert_array_equal(mc_a["YPBBN"].values, mc_b["YPBBN"].values)
 
 
 def test_different_seed_different_result():
-    mc_a = mc_uncertainty(4, "YPBBN", params=_BASE, n_jobs=1, seed=0)
-    mc_b = mc_uncertainty(4, "YPBBN", params=_BASE, n_jobs=1, seed=99)
+    mc_a = mc_uncertainty(4, "YPBBN", params=_BASE, seed=0)
+    mc_b = mc_uncertainty(4, "YPBBN", params=_BASE, seed=99)
     assert not np.allclose(mc_a["YPBBN"].values, mc_b["YPBBN"].values)
 
 
@@ -106,9 +106,9 @@ def test_extend_matches_full_run():
     """Extending an N-sample result to M>N must give *exactly* the same M
     samples as computing M from scratch -- the whole point of the ``prev``
     reuse is that the first N samples are seed-deterministic and untouched."""
-    full = mc_uncertainty(6, ["YPBBN", "DoH"], params=_BASE, n_jobs=1, seed=0)
-    part = mc_uncertainty(3, ["YPBBN", "DoH"], params=_BASE, n_jobs=1, seed=0)
-    ext  = mc_uncertainty(6, ["YPBBN", "DoH"], params=_BASE, n_jobs=1, seed=0,
+    full = mc_uncertainty(6, ["YPBBN", "DoH"], params=_BASE, seed=0)
+    part = mc_uncertainty(3, ["YPBBN", "DoH"], params=_BASE, seed=0)
+    ext  = mc_uncertainty(6, ["YPBBN", "DoH"], params=_BASE, seed=0,
                           prev=part)
     for q in ("YPBBN", "DoH"):
         np.testing.assert_array_equal(full[q].values, ext[q].values)
@@ -117,31 +117,31 @@ def test_extend_matches_full_run():
 
 def test_extend_truncates_when_fewer_requested():
     """Requesting fewer samples than ``prev`` truncates without solving."""
-    big   = mc_uncertainty(6, "YPBBN", params=_BASE, n_jobs=1, seed=0)
-    small = mc_uncertainty(4, "YPBBN", params=_BASE, n_jobs=1, seed=0, prev=big)
+    big   = mc_uncertainty(6, "YPBBN", params=_BASE, seed=0)
+    small = mc_uncertainty(4, "YPBBN", params=_BASE, seed=0, prev=big)
     np.testing.assert_array_equal(big["YPBBN"].values[:4], small["YPBBN"].values)
 
 
 def test_prev_ignored_when_seed_differs():
     """An incompatible ``prev`` (different seed) is silently ignored, giving a
     full recompute at the requested seed rather than reusing stale samples."""
-    prev = mc_uncertainty(3, "YPBBN", params=_BASE, n_jobs=1, seed=0)
-    ref  = mc_uncertainty(3, "YPBBN", params=_BASE, n_jobs=1, seed=5)
-    got  = mc_uncertainty(3, "YPBBN", params=_BASE, n_jobs=1, seed=5, prev=prev)
+    prev = mc_uncertainty(3, "YPBBN", params=_BASE, seed=0)
+    ref  = mc_uncertainty(3, "YPBBN", params=_BASE, seed=5)
+    got  = mc_uncertainty(3, "YPBBN", params=_BASE, seed=5, prev=prev)
     np.testing.assert_array_equal(ref["YPBBN"].values, got["YPBBN"].values)
 
 
 def test_result_records_seed():
     """MCResult.seed is stored so callers (e.g. the GUI) can decide whether a
     cached result is reusable as ``prev``."""
-    mc = mc_uncertainty(2, "YPBBN", params=_BASE, n_jobs=1, seed=7)
+    mc = mc_uncertainty(2, "YPBBN", params=_BASE, seed=7)
     assert mc.seed == 7
 
 
 # --- nuclide name as quantity ---
 
 def test_nuclide_quantity_works():
-    mc = mc_uncertainty(4, "He4", params=_BASE, n_jobs=2, seed=0)
+    mc = mc_uncertainty(4, "He4", params=_BASE, seed=0)
     assert isinstance(mc, MCResult)
     assert mc["He4"].central > 0
     assert mc["He4"].std > 0
@@ -154,7 +154,7 @@ def test_mc_large_network_varies_heavy_elements():
     # We choose B10, which is only produced in the large network (or at least
     # its variation depends on large-network-only reactions).
     # Using a tiny sample size for speed.
-    mc = mc_uncertainty(4, ["DoH", "B10"], params={"network": "large"}, n_jobs=2, seed=0)
+    mc = mc_uncertainty(4, ["DoH", "B10"], params={"network": "large"}, seed=0)
     assert mc["DoH"].std > 0
     assert mc["B10"].std > 0
 
@@ -207,8 +207,8 @@ def _table_text(T9, rate, err):
 def test_removed_reaction_changes_central_value():
     """Removing a reaction alters the solved network, so DoH's central value
     (computed with custom_network) must differ from the default-network one."""
-    default = mc_uncertainty(2, "DoH", params=_BASE, n_jobs=1, seed=0)
-    removed = mc_uncertainty(2, "DoH", params=_BASE, n_jobs=1, seed=0,
+    default = mc_uncertainty(2, "DoH", params=_BASE, seed=0)
+    removed = mc_uncertainty(2, "DoH", params=_BASE, seed=0,
                               custom_network={"removed": ["d_d__t_p"]})
     assert removed["DoH"].central != pytest.approx(default["DoH"].central)
 
@@ -250,9 +250,9 @@ def test_replaced_table_std_via_public_api():
         os.path.join(_TABLES_DIR, "d_d__He3_n_primat.txt"), unpack=True)
     bigerr_table = _table_text(T9, rate, np.full_like(rate, 5.0))
 
-    default = mc_uncertainty(8, "DoH", params=_BASE, n_jobs=1, seed=0)
+    default = mc_uncertainty(8, "DoH", params=_BASE, seed=0)
     replaced = mc_uncertainty(
-        8, "DoH", params=_BASE, n_jobs=1, seed=0,
+        8, "DoH", params=_BASE, seed=0,
         custom_network={"replaced": {"d_d__He3_n": bigerr_table}})
 
     assert replaced["DoH"].std > default["DoH"].std
@@ -266,9 +266,9 @@ def test_prev_ignored_when_custom_network_differs():
     bigerr_table = _table_text(T9, rate, np.full_like(rate, 5.0))
     cn = {"replaced": {"d_d__He3_n": bigerr_table}}
 
-    prev = mc_uncertainty(3, "DoH", params=_BASE, n_jobs=1, seed=0)
-    ref  = mc_uncertainty(3, "DoH", params=_BASE, n_jobs=1, seed=0, custom_network=cn)
-    got  = mc_uncertainty(3, "DoH", params=_BASE, n_jobs=1, seed=0, custom_network=cn,
+    prev = mc_uncertainty(3, "DoH", params=_BASE, seed=0)
+    ref  = mc_uncertainty(3, "DoH", params=_BASE, seed=0, custom_network=cn)
+    got  = mc_uncertainty(3, "DoH", params=_BASE, seed=0, custom_network=cn,
                           prev=prev)
     np.testing.assert_array_equal(ref["DoH"].values, got["DoH"].values)
 
@@ -276,9 +276,9 @@ def test_prev_ignored_when_custom_network_differs():
 def test_prev_ignored_when_params_differ():
     """A prev computed under different params (here: network) must not be
     silently reused -- closes the pre-existing blind spot in the reuse guard."""
-    prev = mc_uncertainty(3, "DoH", params={"network": "small"}, n_jobs=1, seed=0)
+    prev = mc_uncertainty(3, "DoH", params={"network": "small"}, seed=0)
     large_amax8 = {"network": "large", "amax": 8}
-    ref  = mc_uncertainty(3, "DoH", params=large_amax8, n_jobs=1, seed=0)
-    got  = mc_uncertainty(3, "DoH", params=large_amax8, n_jobs=1, seed=0,
+    ref  = mc_uncertainty(3, "DoH", params=large_amax8, seed=0)
+    got  = mc_uncertainty(3, "DoH", params=large_amax8, seed=0,
                           prev=prev)
     np.testing.assert_array_equal(ref["DoH"].values, got["DoH"].values)
