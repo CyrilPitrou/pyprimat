@@ -61,9 +61,13 @@
  * combined ODE is cheap regardless (2-D, smooth, dense-output already
  * removing the dominant cost) and the BBN-abundance sensitivity to
  * a(T)/t(a) discretization error documented above leaves little room for
- * complacency. */
-#define BG_ODE_RTOL 1.0e-10
-#define BG_ODE_ATOL 1.0e-10
+ * complacency. Tightened from 1e-10 to 1e-11 (still within the tested
+ * 1e-8..1e-12 safe range above) as a small additional safety margin --
+ * 1e-12 was also tried but gave no further improvement in the C-vs-Python
+ * D/H gap (both 1e-11 and 1e-12 plateau at ~4-5e-10 absolute, i.e. noise
+ * level, not a systematic trend with this tolerance). */
+#define BG_ODE_RTOL 1.0e-11
+#define BG_ODE_ATOL 1.0e-11
 
 static double clamp_raw_weak_rate(double rate)
 {
