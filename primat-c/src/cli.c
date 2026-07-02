@@ -87,6 +87,7 @@ static const char * const bool_flags[] = {
     "output_final_result",
     "output_background_evolution",
     "output_mc_samples",
+    "show_progress",
     NULL
 };
 
@@ -107,6 +108,7 @@ static void usage(const char *prog)
            "          [--output_final_result | --no-output_final_result]\n"
            "          [--output_background_evolution | --no-output_background_evolution]\n"
            "          [--output_mc_samples | --no-output_mc_samples]\n"
+           "          [--show_progress | --no-show_progress]\n"
            "          [--mc N] [--mc-seed SEED]\n"
            "          [--json] [--verbose] [--cache-info] [--cache-clear]\n"
            "          [--ini PATH] [--data_dir PATH] [--user_nuclear_dir PATH]\n"
@@ -178,6 +180,11 @@ static void usage(const char *prog)
            "  --output_mc_samples, --no-output_mc_samples\n"
            "                        Write --mc samples to output_mc_file.\n"
            "                        (default: False).\n"
+           "  --show_progress, --no-show_progress\n"
+           "                        Print compact stderr progress indicators\n"
+           "                        ('[primat]  HT.  MT.  LT.  done.' phase markers,\n"
+           "                        '[MC] ...' sample counter) when --verbose is not\n"
+           "                        used. (default: True).\n"
            "  --mc N                Run an N-sample Monte-Carlo nuclear-rate/tau_n\n"
            "                        uncertainty propagation and print each observable\n"
            "                        as 'value +/- sigma'. Uses all available CPU cores.\n"
