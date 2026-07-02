@@ -690,7 +690,7 @@ int cpr_cli_main(int argc, char **argv)
                                data_dir,
                                cp.items, cp.n,
                                mc_seed, -1 /* all cores */, NULL,
-                               NULL, NULL, 0, /*show_progress=*/1,
+                               NULL, NULL, 0, cfg.show_progress,
                                &mc_result, &err)) {
             fprintf(stderr, "MC error: %s\n", err);
             free(err);
