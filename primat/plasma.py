@@ -337,6 +337,40 @@ class Plasma:
             self.d2PQEDdT2 = lambda T: 0.
             return
 
+        # --- Extrapolation domain --------------------------------------
+        # Both the shipped files and the analytic fallback below cover a
+        # fixed T in [1e-3, 1e2] MeV (see qed_pressure.compute_qed_pressure_tables's
+        # docstring: "well above BBN start"). Below 1e-3 MeV, e± are so
+        # Boltzmann-suppressed (T << me/30) that delta_P_QED is negligible
+        # relative to numerical precision, so extrapolating the (already
+        # tiny and smooth) low-T tail is harmless. Above 100 MeV the
+        # interpolants below use *linear* extrapolation
+        # (fill_value="extrapolate", kind='linear'), which is only a good
+        # approximation locally near the boundary: unlike the electron-thermo
+        # cache (_build_electron_tables), this table's upper bound is NOT
+        # rescaled to track cfg.T_start_cosmo_MeV, because delta_P_a/delta_P_e3
+        # grow faster than linearly with T (they scale like the leading
+        # e±/photon pressure, i.e. ~T^4, times a slowly-varying log/alpha
+        # prefactor -- see Phys. Rep. Eq. 47-49), so a straight-line
+        # continuation of the last table segment is not a physically
+        # trustworthy substitute for the real T^4-ish growth. This is fine
+        # for the default/validated configurations (T_start_cosmo_MeV <= 100,
+        # e.g. the 40 MeV default and the 100 MeV reference-run value sit at
+        # or below the table edge), but a user raising T_start_cosmo_MeV
+        # above 100 MeV would silently run the solver's HT era on an
+        # under-estimated (linear, not T^4) QED correction. Warn instead of
+        # failing silently -- the correction is small enough that most such
+        # runs would still complete, just with a systematic bias in Neff.
+        if cfg.T_start_cosmo_MeV > 100.:
+            import warnings
+            warnings.warn(
+                f"[plasma] cfg.T_start_cosmo_MeV={cfg.T_start_cosmo_MeV} MeV exceeds "
+                "the QED plasma-pressure correction table's fixed upper bound "
+                "(100 MeV); delta_P_QED will be linearly extrapolated above 100 MeV, "
+                "which underestimates the true (~T^4) growth of the correction. "
+                "Consider recompute_qed_corrections=True with a wider table, or "
+                "treat Neff/YP results above this temperature with caution.")
+
         plasma_dir    = os.path.join(cfg._resolved_data_dir, "plasma")
         e2_file       = os.path.join(plasma_dir, "QED_pressure_correction_e2.txt")
         e3_file       = os.path.join(plasma_dir, "QED_pressure_correction_e3.txt")
@@ -546,6 +580,22 @@ class Plasma:
         cache_path = os.path.join(cfg._resolved_data_dir, "plasma",
                                   "electron_thermo_cache.txt")
 
+        # --- Extrapolation domain --------------------------------------
+        # Unlike the QED pressure-correction table (_setup_qed_pressure),
+        # this grid's upper edge Tmax is derived from cfg.T_start_cosmo_MeV
+        # itself (with a 1.5x safety margin), so the solver's HT era --
+        # which starts exactly at T_start_cosmo_MeV and only decreases --
+        # can never actually reach the extrapolated (cubic, kind='cubic')
+        # region above Tmax; any evaluation there would need an adaptive
+        # ODE step to overshoot by 50%, which solve_ivp's error control
+        # does not do. The lower edge Tmin = me/30 is where
+        # rho_e/p_e/drho_e_dT/dp_e_dT are hard-set to exactly 0 by
+        # rho_e/p_e/drho_e_dT/dp_e_dT below (the e± number density is
+        # Boltzmann-suppressed by < exp(-30) there, Eq. A8) *before* the
+        # interpolant is ever called, so the interp1d's low-T extrapolation
+        # branch is effectively dead code -- it exists only so that a
+        # direct call to self._rho_e_tab(T) below Tmin (e.g. from a test)
+        # returns a finite, roughly-continuous number rather than NaN.
         Tmin = cfg.me / _ELEC_THERMO_LOWT_RATIO
         Tmax = max(cfg.T_start_cosmo_MeV, 100.) * 1.5
         grid = np.logspace(np.log10(Tmin), np.log10(Tmax), cfg.n_electron_table)

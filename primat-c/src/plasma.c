@@ -78,6 +78,23 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
     }
     pl->qed_active = 1;
 
+    /* Both the shipped files and the analytic fallback (below) cover a
+     * fixed T in [1e-3, 1e2] MeV. Unlike the electron-thermo cache's Tmax
+     * (build_electron_tables, scaled with cfg->T_start_cosmo_MeV), this
+     * upper bound is NOT rescaled: delta_P_a/delta_P_e3 grow ~T^4 (times a
+     * slowly-varying log/alpha prefactor, Phys. Rep. Eq. 47-49), so the
+     * linear extrapolation used below/past 100 MeV is only trustworthy
+     * close to the boundary, not as a stand-in for the true T^4-ish growth.
+     * Mirrors the Python-side warning in plasma.py's _setup_qed_pressure. */
+    if (cfg->T_start_cosmo_MeV > 100.0) {
+        fprintf(stderr,
+                "warning: T_start_cosmo_MeV=%.6g MeV exceeds the QED plasma-pressure "
+                "correction table's fixed upper bound (100 MeV); dP_QED will be "
+                "linearly extrapolated above 100 MeV, underestimating its true "
+                "(~T^4) growth. Neff/YP results above this temperature may be biased.\n",
+                cfg->T_start_cosmo_MeV);
+    }
+
     char plasma_dir[CPR_PATH_BUF_LEN];
     char e2_file[CPR_PATH_BUF_LEN2], e3_file[CPR_PATH_BUF_LEN2], old_file[CPR_PATH_BUF_LEN2];
     /* Legacy 3-file names for backward compat with old cached copies. */
