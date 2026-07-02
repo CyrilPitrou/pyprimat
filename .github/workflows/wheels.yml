@@ -46,7 +46,7 @@ jobs:
   publish:
     needs: [build_wheels, build_sdist]
     runs-on: ubuntu-latest
-    environment: testpypi #pypi
+    environment: pypi #testpypi
     permissions:
       id-token: write       # PyPI Trusted Publishing (OIDC) -- no token to manage/leak
     steps:
@@ -54,5 +54,5 @@ jobs:
         with: { path: dist, merge-multiple: true }
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          repository-url: https://test.pypi.org/legacy/ #https://upload.pypi.org/legacy/ 
+          repository-url: https://upload.pypi.org/legacy/ #https://test.pypi.org/legacy/ 
 
