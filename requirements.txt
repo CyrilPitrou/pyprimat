@@ -6,4 +6,4 @@ vegas
 scipy
 streamlit
 pandas
-./wheels/primat-0.3.1-cp312-cp312-linux_x86_64.whl
+./wheels/primat-0.3.2-cp312-cp312-linux_x86_64.whl
