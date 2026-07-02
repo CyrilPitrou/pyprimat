@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "primat"
-version = "0.3.1"
+version = "0.3.2"
 description = "PRIMAT: precise Big Bang Nucleosynthesis computations, with a fast C backend and a pure-Python fallback"
 readme = "README.md"
 license = { file = "LICENCE" }
