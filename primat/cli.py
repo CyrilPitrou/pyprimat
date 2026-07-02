@@ -177,6 +177,9 @@ def _build_parser():
          "Write the cosmological background time series to disk."),
         ("output_mc_samples", False,
          "Write --mc samples to output_mc_file."),
+        ("show_progress", True,
+         "Print compact stderr progress indicators ('[primat]  HT.  MT.  "
+         "LT.  done.' phase markers, '[MC] ...' sample counter)."),
     ):
         parser.add_argument(
             f"--{flag_name}", action=argparse.BooleanOptionalAction, default=None,
@@ -289,7 +292,7 @@ def main(argv=None):
         "munuOverTnu", "QED_corrections", "nuclear_qed_corrections",
         "radiative_corrections", "finite_mass_corrections", "thermal_corrections",
         "spectral_distortions", "output_time_evolution", "output_final_result",
-        "output_background_evolution", "output_mc_samples",
+        "output_background_evolution", "output_mc_samples", "show_progress",
         "output_file", "output_final_file", "output_background_file",
         "output_mc_file",
     ):

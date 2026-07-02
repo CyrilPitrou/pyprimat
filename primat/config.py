@@ -116,6 +116,11 @@ DEFAULT_PARAMS: dict = {
     # ---- general behaviour and numerical settings ------------------------------------------------
     "verbose":               False, #If you want the messages from the code to be printed, set this to True.  This is separate from the debug, which controls the printing of extra messages for debugging purposes.
     "debug":                 False, #If you want the debug messages to be printed, set this to True.  This is separate from the verbose, which controls the printing of general messages from the code.
+    "show_progress":         True,  # Set to False to hide the compact stderr progress indicators printed
+    # when verbose=False: the "[primat]  HT.  MT.  LT.  done." phase markers from a single solve,
+    # and the "[MC] Running N samples..." banner / "[MC] i/N samples (XX%)" counter from an MC run.
+    # Has no effect when verbose=True (the verbose prints already convey progress). Mirrors
+    # primat-c's CPRConfig.show_progress field (primat-c/include/config.h), already wired there.
     "numerical_precision":        1.e-7, # for finite differences (solve_ivp). 1e-6 should be enough.
     "numba_installed":                 True,  # will be re-checked at runtime. Allows just-in-time compilation for faster execution.
 

@@ -278,7 +278,7 @@ class PRIMAT:
     # solve(): integrate nuclear network ODEs
     # ======================================================================
 
-    def solve(self, progress=True):
+    def solve(self, progress=None):
         """
         Integrate the nuclear network over the three temperature eras and
         return a dict of BBN observables.
@@ -301,7 +301,16 @@ class PRIMAT:
         actually provides that information (``None`` returned from the
         corresponding hook) -- a minimal background with no neutrino-sector
         model simply omits them.
+
+        Args:
+            progress: bool, optional. ``None`` (default) defers to
+                ``cfg.show_progress`` (a ``DEFAULT_PARAMS`` key, default
+                ``True``). Pass an explicit ``True``/``False`` to override
+                the config for this call regardless of ``show_progress``
+                (e.g. ``False`` inside MC workers to avoid per-sample spam).
         """
+        if progress is None:
+            progress = self.cfg.show_progress
         self.nuclear.solve(progress=progress)
 
         # For the large network, NuclearNetwork.solve() discovers nuclides
@@ -801,7 +810,7 @@ def _mc_collect_samples(base_params, rate_keys, quantities, seeds, n_jobs,
 
 
 def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
-                    custom_network=None, progress=True):
+                    custom_network=None, progress=None):
     """Estimate nuclear-rate and neutron-lifetime uncertainties on BBN
     observables via Monte Carlo.
 
@@ -867,11 +876,13 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
         rate's uncertainty is honoured automatically.  ``None`` (default)
         uses the standard, uncustomised network.
     progress : bool, optional
-        When True (default), print a running ``N/total (XX%)`` counter to
-        stderr as samples complete, so the user can track advancement during
-        long MC runs.  One update per parallel worker chunk -- for
-        ``n_jobs=-1`` (all CPUs) this gives roughly ``cpu_count`` updates
-        over the full run.  Set to False to suppress all progress output.
+        When truthy, print a running ``N/total (XX%)`` counter to stderr as
+        samples complete, so the user can track advancement during long MC
+        runs.  One update per parallel worker chunk -- for ``n_jobs=-1``
+        (all CPUs) this gives roughly ``cpu_count`` updates over the full
+        run.  ``None`` (default) defers to ``params['show_progress']``
+        (``DEFAULT_PARAMS`` default ``True``); pass an explicit
+        ``True``/``False`` to override it for this call.
 
     Returns
     -------
@@ -898,6 +909,9 @@ def mc_uncertainty(num_mc, quantity, params=None, n_jobs=-1, seed=0, prev=None,
     base_params = dict(params or {})
     base_params.setdefault('verbose', False)
     base_params.setdefault('debug',   False)
+
+    if progress is None:
+        progress = base_params.get('show_progress', True)
 
     # Rate offsets to vary: all thermonuclear reactions in the selected network.
     # We construct a temporary config just to resolve the working directory

@@ -134,7 +134,7 @@ def _python_solve(params, extra_rho, custom_network, background, progress=True):
 
 def run_bbn(params=None, force_backend=None, extra_rho=None,
             custom_network=None, background=None, log_backend=False,
-            progress=True):
+            progress=None):
     """Run one BBN computation, dispatching to the C or Python backend.
 
     This mirrors ``PRIMAT(params=params, ...).solve()``'s result dict (same
@@ -161,6 +161,11 @@ def run_bbn(params=None, force_backend=None, extra_rho=None,
         log_backend: bool, default False. Print which backend actually ran
             and why (module docstring); also triggered by setting the
             ``PRIMAT_BACKEND_LOG`` environment variable.
+        progress: bool, optional. ``None`` (default) defers to
+            ``params['show_progress']`` (``DEFAULT_PARAMS`` default ``True``);
+            pass an explicit ``True``/``False`` to override it for this call.
+            Controls the compact ``[primat]  HT.  MT.  LT.  done.`` stderr
+            phase markers on both backends (suppressed when ``verbose=True``).
 
     Returns:
         dict: the BBN result dict (``YPBBN``, ``DoH``, ``Neff``, ..., plus a
@@ -184,7 +189,9 @@ def run_bbn(params=None, force_backend=None, extra_rho=None,
     # backend ends up being used; the resulting cfg itself is discarded for
     # the "c" path, which re-derives its own CPRConfig from params instead).
     from .config import PRIMATConfig
-    PRIMATConfig(params)
+    cfg = PRIMATConfig(params)
+    if progress is None:
+        progress = cfg.show_progress
 
     # decay_era has no C-side implementation (module docstring), exactly
     # like extra_rho/background -- lumped into the same gate.
@@ -298,7 +305,7 @@ def _c_prev_reuse(prev, seed, quantities, base_params, custom_network):
 
 def run_mc(num_mc, quantities=None, params=None, force_backend=None, seed=0,
            n_jobs=-1, prev=None, custom_network=None, log_backend=False,
-           progress=True):
+           progress=None):
     """Run an MC nuclear-rate/tau_n uncertainty propagation, dispatching to
     the C or Python backend (the MC counterpart of :func:`run_bbn`).
 
@@ -340,6 +347,11 @@ def run_mc(num_mc, quantities=None, params=None, force_backend=None, seed=0,
         log_backend: bool, default False. Print which backend actually ran
             and why (module docstring); also triggered by setting the
             ``PRIMAT_BACKEND_LOG`` environment variable.
+        progress: bool, optional. ``None`` (default) defers to
+            ``params['show_progress']`` (``DEFAULT_PARAMS`` default ``True``);
+            pass an explicit ``True``/``False`` to override it for this call.
+            Controls the ``[MC] Running N samples...`` banner and the
+            ``N/total (XX%)`` counter on both backends.
 
     Returns:
         primat.main.MCResult
@@ -354,7 +366,9 @@ def run_mc(num_mc, quantities=None, params=None, force_backend=None, seed=0,
 
     params = params or {}
     from .config import PRIMATConfig
-    PRIMATConfig(params)  # validate params the same way regardless of backend
+    cfg = PRIMATConfig(params)  # validate params the same way regardless of backend
+    if progress is None:
+        progress = cfg.show_progress
 
     # Don't resolve quantities=None eagerly with a probe run_bbn -- each
     # backend resolves it from its own central solve (mc_uncertainty for
