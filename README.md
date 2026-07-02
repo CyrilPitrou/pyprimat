@@ -189,7 +189,7 @@ information for various platforms.
 |-----------|---------|-------------|
 | `Omegabh2` | 0.022425 | Baryon density Ω_b h² |
 | `DeltaNeff` | 0.0 | Extra relativistic degrees of freedom |
-| `tau_n` | 879.6 | Neutron lifetime [s] |
+| `tau_n` | 878.4 | Neutron lifetime [s] |
 | `network` | `"small"` | `"small"` (12 reactions) / `"small_parthenope"` (12, Parthenope 3.0 tables) / `"large"` (~429), optionally restricted via `amax`. |
 | `amax` | None | Maximum mass number A for nuclides in reactions (filters any network) |
 | `radiative_corrections` | True | Coulomb + T=0 resummed radiative corrections to n↔p (CCR) |
@@ -355,38 +355,31 @@ result = run_bbn({
 
 **Important**: The `p_<reaction>` mechanism is designed for MC uncertainty propagation (log-normal variations), while `rescale_nuclear_rates` + `delta_<reaction>` is designed for deterministic sensitivity studies (additive variations). They can be used together but interpret the combined effect carefully.
 
-#### 3. Computing the uncertainty: `run_mc()` / `mc_uncertainty()` and `--mc N`
+#### 3. Computing the uncertainty: `run_mc()` and `--mc N`
 
-`run_mc()` (or its pure-Python counterpart `primat.main.mc_uncertainty()`) is
-what actually *computes* the propagated uncertainty: each of the `num_mc`
-samples independently draws every active `p_<reaction>` from `N(0,1)` (plus
-`tau_n ~ N(cfg.tau_n, cfg.std_tau_n)` when `tau_n_flag=True`, the default)
-and runs a full BBN solve, so the spread across samples is the MC estimate of
-the propagated nuclear-rate/τ_n uncertainty on each observable.
+`run_mc()` (or its pure-Python counterpart `primat.main.mc_uncertainty()`)
+computes the propagated nuclear-rate/τ_n uncertainty on any observable: it
+runs many independent BBN solves, each with randomly-sampled reaction rates
+(and neutron lifetime), and reports the spread of results as the
+uncertainty.
 
 ```python
 from primat.backend import run_mc
 
 mc = run_mc(100, ["YPBBN", "DoH"], params={"Omegabh2": 0.022425})
 
-mc["DoH"].central   # nominal (p_*=0) value
-mc["DoH"].mean       # mean over the MC samples
-mc["DoH"].std        # MC uncertainty (1-sigma) -- this is "the error"
-mc["DoH"].values     # full array of per-sample values, length num_mc
+mc["DoH"].central   # nominal (best-estimate) value
+mc["DoH"].mean      # mean over the 100 MC samples
+mc["DoH"].std       # MC uncertainty (1-sigma) -- this is "the error"
+mc["DoH"].values    # full array of per-sample values, length 100
 ```
 
-Regardless of which `quantities` are requested, the returned `MCResult`
-always additionally contains every tracked nuclide's final `Y` and every
-standard observable in `_DEFAULT_MC_OBSERVABLES` (`Neff`, `YPBBN`, `YPCMB`,
-`DoH`, `He3oH`, `He3oHe4`, `Li7oH`, `Li6oLi7`, `YCNO`) that the
-network/`custom_network` actually produces -- at no extra solving cost,
-since each sample already runs a full solve.
+Regardless of which `quantities` you ask for, the result also always
+includes every standard observable (`Neff`, `YPBBN`, `YPCMB`, `DoH`,
+`He3oH`, `He3oHe4`, `Li7oH`, `Li6oLi7`, `YCNO`) and every tracked nuclide's
+final abundance, at no extra cost.
 
-`MCResult.to_flat_dict()` flattens this into a plain
-`{name: value, ...}` dict carrying both each quantity's nominal value and
-its uncertainty as an ordinary key, e.g. both `"DoH"` and `"sigma_DoH"`
-(`sigma_<name> = self[name].std`). This is exactly what the `primat` CLI's
-`--mc N` option uses to build its `results` dict:
+From the command line, just add `--mc N`:
 
 ```bash
 primat --Omegabh2 0.022425 --mc 100
@@ -394,22 +387,11 @@ primat --Omegabh2 0.022425 --mc 100
 # D/H        = 2.4350000e-05 +/- 1.2000000e-07
 ```
 
-so a script driving `run_bbn()`/the CLI's JSON output can recover
-`sigma_YPBBN`, `sigma_DoH`, etc. the same way it reads `YPBBN`/`DoH` -- just
-look up the `sigma_`-prefixed key. `--mc-seed` sets the base RNG seed
-(sample `i` uses `seed + i`) and `--mc-jobs` the parallel worker count
-(Python backend only; the C backend always uses one pthread per sample).
-Pass `--output_mc_samples --output_mc_file FILE` to additionally dump every
-raw per-sample value to a TSV (`primat.backend.dump_mc_samples`), useful for
-inspecting the full distribution rather than just its mean/std.
-
-`prev=<MCResult>` (both `run_mc()` and `mc_uncertainty()`) lets a larger MC
-run *extend* a smaller one instead of recomputing from scratch: since sample
-`i` is fully determined by `seed + i`, going from 30 to 50 samples with the
-same `seed`/`quantities`/`params`/`custom_network` only solves the 20 new
-ones. A `prev` from the C backend is never reused by the Python backend (or
-vice versa) since the two draw from different, non-interchangeable RNG
-streams.
+`--mc-seed` sets the random seed (use the same seed to reproduce a run) and
+`--mc-jobs` the number of parallel workers. Pass `--output_mc_samples
+--output_mc_file FILE` to additionally dump every raw per-sample value to a
+TSV, useful for inspecting the full distribution rather than just its
+mean/std.
 
 ## Output
 
@@ -425,6 +407,11 @@ streams.
 | `Neff` | Effective number of neutrino species |
 | `Omeganurel` | Ω_ν h² × 10⁶ (relativistic) |
 | `OneOverOmeganunr` | 1 / (Ω_ν h² × 10⁻⁶) (non-relativistic) |
+
+When a Monte Carlo run is requested (`--mc N` on the CLI, or
+`run_mc()`/`mc_uncertainty()` via `to_flat_dict()`), every observable above
+also gets a matching `sigma_<key>` entry with its 1-sigma MC uncertainty,
+e.g. `sigma_DoH` alongside `DoH`, `sigma_YPBBN` alongside `YPBBN`.
 
 When `output_time_evolution=True`, the time evolution data is made available. If `output_file` is set to a path, a TSV file is written with columns:
 `a, T, t, H, Tnue, Tnumu, Tnutau, [Nheating], [abundances], n_to_p_weak_rate, p_to_n_weak_rate, [nuclear rates]`.
