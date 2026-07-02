@@ -336,6 +336,28 @@ def _network_label(network):
     return label
 
 
+def _display_default(key):
+    """Return ``DEFAULT_PARAMS[key]`` rounded to the precision a float
+    widget actually displays/returns on an untouched render.
+
+    ``_widget_for`` renders floats with ``st.number_input(..., format="%.6g")``;
+    Streamlit rounds the *returned* value to match that format string (not
+    just the display), so a default with more than 6 significant digits --
+    e.g. ``GN = 6.674299257609439e-11`` -- comes back from the widget as
+    ``6.6743e-11`` even when the user hasn't touched it. Comparing that
+    against the untouched ``DEFAULT_PARAMS[key]`` would then spuriously
+    register as "changed" and forward a value to the backend on every run,
+    even at default (this was the root cause of GN reaching the C backend's
+    ``cpr_config_set_by_name`` unconditionally, see the C-side unit-mismatch
+    fix in ``primat-c/src/config.c``). Round the comparison target the same
+    way to keep "untouched" widgets from being reported as changed.
+    """
+    default = DEFAULT_PARAMS[key]
+    if isinstance(default, float):
+        return float(f"{default:.6g}")
+    return default
+
+
 def _widget_for(key, label, help_text):
     """Render a single widget for ``key``, typed from its default value.
 
@@ -1664,12 +1686,12 @@ def render_sidebar_form():
                             # only -- _known_custom_networks (and so the
                             # ability to switch back to it) is untouched.
                             st.session_state[SessionKeys.active_custom_network] = None
-                        if value != DEFAULT_PARAMS[key]:
+                        if value != _display_default(key):
                             params[key] = value
                     continue
 
                 value = _widget_for(key, label, help_text)
-                if value != DEFAULT_PARAMS[key]:
+                if value != _display_default(key):
                     params[key] = value
 
                 if key == "analytic_distortions" and value and st.session_state.get(
@@ -1693,7 +1715,7 @@ def render_sidebar_form():
     with st.sidebar.expander("Constants", expanded=False):
         for key, (label, help_text) in _CONSTANTS_METADATA.items():
             value = _widget_for(key, label, help_text)
-            if value != DEFAULT_PARAMS[key]:
+            if value != _display_default(key):
                 params[key] = value
 
     # ---- Uncertainty: optional quick MC error bars ---------------------------

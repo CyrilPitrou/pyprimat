@@ -140,7 +140,11 @@ typedef struct {
     char *custom_background; /* NULL = not set */
 
     /* ---- fundamental constants (overridable) ---- */
-    double GN;
+    double GN; /* natural units [MeV^-2]; set/read via cpr_config_set_GN()/
+                * cpr_config_get_GN(), which convert to/from the SI units
+                * [m^3 kg^-1 s^-2] that DEFAULT_PARAMS["GN"] and
+                * cpr_config_set_by_name("GN", ...) use -- never assign this
+                * field directly with an SI-unit value. */
 
     /* ---- background thermodynamics ---- */
     double T_start_cosmo_MeV;
@@ -284,6 +288,14 @@ void cpr_config_resolve_rates_path(const CPRConfig *cfg, const char *relpath,
  * equivalent of the Python Omegabh2 property setter). */
 void cpr_config_set_Omegabh2(CPRConfig *cfg, double value);
 double cpr_config_get_Omegabh2(const CPRConfig *cfg);
+
+/* GN is stored in cfg->GN in natural units [MeV^-2] (as consumed by
+ * cpr_config_Mpl() and the Friedmann-equation Hubble helper), but exposed
+ * to callers in SI units [m^3 kg^-1 s^-2] (matching
+ * primat/config.py's DEFAULT_PARAMS["GN"]) -- always go through these two
+ * functions rather than reading/writing cfg->GN directly. */
+void cpr_config_set_GN(CPRConfig *cfg, double GN_SI);
+double cpr_config_get_GN(const CPRConfig *cfg);
 
 /* Routes one (name, value) pair into the matching typed field, exactly like
  * PyPRConfig.__setattr__: a name with prefix "p_" or "delta_" goes into

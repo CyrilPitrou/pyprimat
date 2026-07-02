@@ -91,6 +91,62 @@ def test_backend_large_amax8_numerical_agreement():
     assert r_c["DoH"] == pytest.approx(r_py["DoH"], rel=1e-3)
 
 
+@requires_c_backend
+def test_backend_GN_and_tau_n_agree_at_default():
+    """GN/tau_n at their DEFAULT_PARAMS values must give the same result as
+    not passing them at all, on the C backend.
+
+    Regression test for a unit-mismatch bug: DEFAULT_PARAMS["GN"] is stored
+    in SI units [m^3 kg^-1 s^-2] (see config.py's ``_GN_MeV2`` property and
+    the GUI's "Constants" panel), but the C backend's ``CPRConfig.GN`` field
+    is consumed directly by ``cpr_config_Mpl``/the Friedmann-equation Hubble
+    helper in natural units [MeV^-2]. Before ``cpr_config_set_by_name``
+    special-cased "GN" (mirroring the existing "Omegabh2" special case) to
+    convert SI -> natural units, any GN value forwarded from Python -- even
+    the SI-unit default -- landed in the C struct unconverted, off by ~34
+    orders of magnitude, and produced a meaningless (garbage/NaN-adjacent)
+    result. See primat-c/src/config.c's cpr_config_set_GN/cpr_config_set_by_name.
+    """
+    params = {"network": "small"}
+    r_base = run_bbn(params, force_backend="c")
+    r_explicit_default = run_bbn(
+        {**params, "GN": 6.674299257609439e-11, "tau_n": 878.4},
+        force_backend="c",
+    )
+    assert r_explicit_default["YPBBN"] == pytest.approx(r_base["YPBBN"], abs=1e-10)
+    assert r_explicit_default["DoH"] == pytest.approx(r_base["DoH"], rel=1e-10)
+
+
+@requires_c_backend
+def test_backend_GN_and_tau_n_perturbation_agrees_with_python():
+    """A +1% GN perturbation (and a +1 sigma tau_n perturbation) must shift
+    YPBBN in the same direction and to comparable magnitude on both
+    backends -- catching both a broken (unconverted) GN and a GN/tau_n that
+    is silently ignored by the C backend (see module docstring for the
+    unit-mismatch bug this guards against)."""
+    params = {"network": "small"}
+    r_c_base = run_bbn(params, force_backend="c")
+    r_py_base = run_bbn(params, force_backend="python")
+
+    r_c_gn = run_bbn({**params, "GN": 6.674299257609439e-11 * 1.01}, force_backend="c")
+    r_py_gn = run_bbn({**params, "GN": 6.674299257609439e-11 * 1.01}, force_backend="python")
+    d_c_gn = r_c_gn["YPBBN"] - r_c_base["YPBBN"]
+    d_py_gn = r_py_gn["YPBBN"] - r_py_base["YPBBN"]
+    # A +1% GN increase should raise YPBBN by O(1e-3) (faster expansion ->
+    # earlier n/p freeze-out -> more He4) on both backends -- not the ~34
+    # order-of-magnitude-wrong (effectively meaningless) shift a raw
+    # SI-into-natural-units assignment produces.
+    assert d_c_gn == pytest.approx(0.00088, abs=3e-4)
+    assert d_c_gn == pytest.approx(d_py_gn, rel=0.3)
+
+    r_c_tau = run_bbn({**params, "tau_n": 878.4 + 0.5}, force_backend="c")
+    r_py_tau = run_bbn({**params, "tau_n": 878.4 + 0.5}, force_backend="python")
+    d_c_tau = r_c_tau["YPBBN"] - r_c_base["YPBBN"]
+    d_py_tau = r_py_tau["YPBBN"] - r_py_base["YPBBN"]
+    assert d_c_tau != pytest.approx(0.0, abs=1e-8)
+    assert d_c_tau == pytest.approx(d_py_tau, rel=0.3)
+
+
 @pytest.mark.parametrize("force_backend", [
     "python",
     pytest.param("c", marks=requires_c_backend),

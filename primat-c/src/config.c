@@ -243,7 +243,6 @@ static const FieldDesc FIELD_TABLE[] = {
     FLD(nevo_file_prefix, F_STRING),
     FLD(external_scale_factor, F_BOOL),
     FLD(custom_background, F_STRING),
-    FLD(GN, F_DOUBLE),
     FLD(T_start_cosmo_MeV, F_DOUBLE),
     FLD(T_end_MeV, F_DOUBLE),
     FLD(sampling_temperature_per_decade, F_INT),
@@ -297,6 +296,9 @@ static const FieldDesc FIELD_TABLE[] = {
     FLD(wnEDE, F_DOUBLE),
     /* Omegabh2 deliberately absent: routed to cpr_config_set_Omegabh2()
      * by cpr_config_set_by_name() below, mirroring the Python @property. */
+    /* GN deliberately absent: routed to cpr_config_set_GN() by
+     * cpr_config_set_by_name() below -- see that function for why a raw
+     * FLD() entry is unsafe. */
 };
 #define FIELD_TABLE_N (sizeof(FIELD_TABLE) / sizeof(FIELD_TABLE[0]))
 
@@ -398,7 +400,10 @@ int cpr_config_init_defaults(CPRConfig *cfg, const char *data_dir, char **errmsg
     cfg->external_scale_factor = 0;
     cfg->custom_background = NULL;
 
-    cfg->GN = 6.70883e-45;
+    /* SI-unit default (m^3 kg^-1 s^-2), matching primat/config.py's
+     * DEFAULT_PARAMS["GN"] exactly; converted to the natural units
+     * (MeV^-2) cfg->GN is stored in by cpr_config_set_GN(). */
+    cpr_config_set_GN(cfg, 6.674299257609439e-11);
 
     cfg->T_start_cosmo_MeV = 40.0;
     cfg->T_end_MeV = 1.e-3;
@@ -537,6 +542,38 @@ void cpr_config_set_Omegabh2(CPRConfig *cfg, double value)
 
 double cpr_config_get_Omegabh2(const CPRConfig *cfg) { return cfg->Omegabh2_; }
 
+/* GN_SI_to_MeV2: conversion factor from Newton's constant in SI units
+ * [m^3 kg^-1 s^-2] to the natural units [MeV^-2] that cfg->GN is stored in
+ * internally (used by cpr_config_Mpl / the Friedmann-equation Hubble
+ * helper). Mirrors primat/constants.py's CONST.GN_SI_to_MeV2 exactly:
+ * G_natural[MeV^-2] = G_SI[m^3 kg^-1 s^-2] / (hbar[erg s] * clight[cm/s]^5
+ * / MeV[erg]^2 * 1e-3), the 1e-3 converting cm^3 g^-1 s^-2 to
+ * m^3 kg^-1 s^-2. */
+static double GN_SI_to_MeV2(void)
+{
+    double GN_MeV2_to_SI = g_const.hbar * pow(g_const.clight, 5)
+                            / (g_const.MeV * g_const.MeV) * 1e-3;
+    return 1. / GN_MeV2_to_SI;
+}
+
+void cpr_config_set_GN(CPRConfig *cfg, double GN_SI)
+{
+    /* cfg->GN (natural units, MeV^-2) is what cpr_config_Mpl() and the
+     * Friedmann-equation Hubble helper actually consume; GN_SI (the
+     * user-facing value, matching DEFAULT_PARAMS["GN"] and the GUI's
+     * "Constants" panel) must be converted before storing, exactly like
+     * the Python-only PRIMATConfig._GN_MeV2 property does. Without this
+     * conversion, an SI-unit GN (~6.674e-11) landing in a field meant for
+     * natural units (~6.709e-45) is off by ~34 orders of magnitude and
+     * produces a meaningless Hubble rate. */
+    cfg->GN = GN_SI * GN_SI_to_MeV2();
+}
+
+double cpr_config_get_GN(const CPRConfig *cfg)
+{
+    return cfg->GN / GN_SI_to_MeV2();
+}
+
 int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
                             char **errmsg)
 {
@@ -562,6 +599,16 @@ int cpr_config_set_by_name(CPRConfig *cfg, const char *name, CPRParam value,
             return 1;
         }
         cpr_config_set_Omegabh2(cfg, d);
+        return 0;
+    }
+    if (strcmp(name, "GN") == 0) {
+        double d = value.type == CPR_DOUBLE ? value.v.d
+                 : value.type == CPR_INT ? (double)value.v.i : NAN;
+        if (isnan(d)) {
+            *errmsg = strdup("GN requires a numeric value");
+            return 1;
+        }
+        cpr_config_set_GN(cfg, d);
         return 0;
     }
 
