@@ -1,14 +1,14 @@
 % =====================================================================
-%  PyPRIMAT — extensive user + physics documentation
+%  primat — extensive user + physics documentation
 %
 %  Figures are produced by the companion notebook in this folder,
-%      doc/PyPRIMAT_doc_figures.ipynb
+%      doc/primat_doc_figures.ipynb
 %  which writes PDF figures into doc/figures/.  Re-run that notebook
 %  (Kernel -> Restart & Run All) before recompiling this document if the
 %  code has changed.
 %
-%  Compile with:   latexmk -pdf PyPRIMAT_documentation.tex
-%             or:  pdflatex PyPRIMAT_documentation.tex  (x3 for refs)
+%  Compile with:   latexmk -pdf primat_documentation_v0.3.1.tex
+%             or:  pdflatex primat_documentation_v0.3.1.tex  (x3 for refs)
 % =====================================================================
 \documentclass[11pt,a4paper]{article}
 
@@ -76,10 +76,11 @@
 \newcommand{\cRR}{c_{RR}}
 \newcommand{\cLR}{c_{LR}}
 
-\title{\textbf{PyPRIMAT}\\[2pt]
-       \large A Python package for precision Big Bang Nucleosynthesis\\[6pt]
+\title{\textbf{primat}\\[2pt]
+       \large A Python package (with a compiled C engine) for precision Big
+       Bang Nucleosynthesis\\[6pt]
        \normalsize User guide and physics reference\\[4pt]
-       \normalsize\textit{Documentation for PyPRIMAT version 0.1.0}}
+       \normalsize\textit{Documentation for primat version 0.3.1}}
 \author{Cyril Pitrou}
 \date{\today}
 
@@ -88,8 +89,12 @@
 
 \begin{abstract}
 \noindent
-PyPRIMAT is a Python re-implementation of the \code{PRIMAT} code for precise
-Big Bang Nucleosynthesis (BBN). It integrates the coupled equations governing
+\code{primat} (formerly \code{PyPRIMAT}) is a re-implementation of the
+\code{PRIMAT} code for precise Big Bang Nucleosynthesis (BBN), distributed as
+a single pip-installable package with two interchangeable backends: a fast
+compiled C engine (the default) and a pure-Python implementation (used as a
+fallback and for development/extensibility, e.g.\ custom reaction networks
+via the GUI). Either backend integrates the coupled equations governing
 (i) the cosmological background -- photon and neutrino temperatures and the
 scale factor -- and (ii) a nuclear reaction network, to predict the primordial
 abundances of $^{1}$H, D, $^{3}$He, $^{4}$He, $^{7}$Li and heavier nuclides.
@@ -108,9 +113,12 @@ Equations follow the review of Pitrou, Coc, Uzan \& Vangioni,
 \emph{Physics Reports} \textbf{754} (2018) 1 \cite{PhysRep2018} (cited as
 ``\PR''), and references therein, which the reader should consult for
 derivations.  Figures are produced by the companion notebook
-\code{PyPRIMAT\_doc\_figures.ipynb}. This document describes \textbf{PyPRIMAT
-version 0.1.0}; a forthcoming v0.2.0 is expected to introduce architectural
-changes, after which this reference will be updated.
+\code{primat\_doc\_figures.ipynb}. This document describes \textbf{primat
+version 0.3.1}: the package was renamed from \code{pyprimat} to \code{primat}
+and gained the compiled C backend, a Streamlit GUI with a custom-network
+builder, Monte-Carlo rate-uncertainty propagation, and a data-directory
+overlay mechanism since the v0.1.0 edition of this document; see
+Sec.~\ref{sec:usage} for all of these.
 \end{abstract}
 
 \tableofcontents
@@ -119,66 +127,179 @@ changes, after which this reference will be updated.
 \section{Quick overview: using the code}\label{sec:usage}
 % =====================================================================
 
-PyPRIMAT can be driven in three equivalent ways, all of which build a parameter
-dictionary and call the top-level driver \code{pyprimat.PyPR}. Run from the
-repository root so that the data files under \code{rates/} resolve.
+\code{primat} can be driven in four equivalent ways -- a command-line tool, a
+Python API, a graphical interface, or (behind all three) the low-level
+backend dispatcher -- all of which build the same parameter dictionary and
+ultimately run the same physics. Run from the repository root so that the
+data files under \code{primat/data/} resolve, or use a \code{pip install}ed
+copy (data ships inside the package, see the ``Rates directory resolution''
+paragraph below). Every code example below uses the shipped \emph{compiled C
+engine}, the default and fastest of the two interchangeable backends
+described in \S\ref{sec:backends}.
 
 \subsection{Command-line interface}
-The \code{pyprimat} console script exposes the most commonly varied options:
+The \code{primat} console script exposes the most commonly varied options:
 \begin{lstlisting}[style=sh]
-pyprimat --Omegabh2 0.02242 --network medium
+primat --Omegabh2 0.022425 --network large --amax 8
 \end{lstlisting}
 which prints a short summary:
 \begin{lstlisting}[style=sh]
-Neff     = 3.04397730
-YP (BBN) = 0.24691155
-YP (CMB) = 0.24558556
-D/H      = 2.4381479e-05
-He3/H    = 1.0387101e-05
-Li7/H    = 5.489582e-10
---- running time: 1.22 seconds ---
+----------------------------------------------------
+          PRIMAT results at T = 0.001 MeV
+----------------------------------------------------
+Neff       = 3.04397730
+YP (BBN)   = 0.24700946
+YP (CMB)   = 0.24568312
+D/H        = 2.4357346e-05
+He3/H      = 1.0396114e-05
+He3/He4    = 1.2675709e-04
+Li7/H      = 5.502968e-10
+Li6/Li7    = 1.418288e-05
+--- running time: 0.69 seconds ---
 \end{lstlisting}
-The main flags are \code{-{}-Omegabh2}, \code{-{}-DeltaNeff}, \code{-{}-network}
-(\code{small}/\code{medium}/\code{large} or any custom network file),
-\code{-{}-amax}, \code{-{}-numerical\_precision}, \code{-{}-json} (dump the full
-result dictionary), and \code{-{}-verbose}.
+The main named flags are \code{-{}-Omegabh2}, \code{-{}-DeltaNeff},
+\code{-{}-network} (\code{small}/\code{small\_parthenope}/\code{large} or any
+custom network file under \code{data/nuclear/networks/}), \code{-{}-amax}
+(restrict any network to nuclides of mass number $\le A$; e.g.\ the example
+above reproduces the old ``medium'' network's 68 reactions, \S\ref{sec:eras}),
+\code{-{}-numerical\_precision}, \code{-{}-backend}
+\{\code{auto},\code{c},\code{python}\} (\S\ref{sec:backends}),
+\code{-{}-mc N} (also run an $N$-sample Monte-Carlo rate/$\tau_n$-uncertainty
+propagation and print each observable as ``value +/- sigma'',
+\S\ref{sec:mc-usage}), \code{-{}-json} (dump the full result dictionary
+instead of the summary), \code{-{}-verbose}, \code{-{}-cache-info}/
+\code{-{}-cache-clear} (inspect/clear the cached weak-rate files), and
+\code{-{}-credits}/\code{-{}-version}. Any other \code{PRIMATConfig} key,
+including a per-reaction \code{p\_<reaction>}/\code{delta\_<reaction>} rate
+variation (\S\ref{sec:nuclear}), can be set with the generic escape hatch
+\code{-{}-set KEY=VALUE} (repeatable), e.g.\
+\code{-{}-set T\_end\_MeV=1e-4 -{}-set decay\_era=True}.
 
 \subsection{Python API}
-For full control, build a parameter dictionary and call \code{PyPR} directly;
-every key of \code{config.DEFAULT\_PARAMS} is accepted.
+For full control, build a parameter dictionary and call \code{PRIMAT}
+directly; every key of \code{config.DEFAULT\_PARAMS} (73 keys) is accepted.
 \begin{lstlisting}[style=py]
-from pyprimat import PyPR
+from primat import PRIMAT
 
-result = PyPR({"Omegabh2": 0.022425, "network": "medium"}).solve()
-print(f"YP  (BBN) = {result['YPBBN']:.8f}")   # 0.24700173
-print(f"D/H       = {result['DoH']:.7e}")      # 2.4356100e-05
+result = PRIMAT({"Omegabh2": 0.022425, "network": "large", "amax": 8}).solve()
+print(f"YP  (BBN) = {result['YPBBN']:.8f}")   # 0.24700624
+print(f"D/H       = {result['DoH']:.7e}")      # 2.4350575e-05
 print(f"Neff      = {result['Neff']:.8f}")     # 3.04397730
 \end{lstlisting}
-The \code{solve()} call returns a dictionary with \code{Neff}, the helium mass
+\code{solve()} (equivalently \code{primat\_results()}, kept for backwards
+compatibility) returns a dictionary with \code{Neff}, the helium mass
 fractions \code{YPBBN}/\code{YPCMB}, the ratios \code{DoH}, \code{He3oH},
-\code{He3oHe4}, \code{Li7oH}, and the neutrino observables
-\code{Omeganurel}/\code{OneOverOmeganunr}. The \code{PyPR} instance also exposes
-the background history and abundance trajectories as attributes used throughout
-the companion notebook: the temperature vectors \code{\_Tg\_vec},
-\code{\_Tnue\_vec}, the weak-rate interpolants \code{\_nTOp\_frwrd},
-\code{\_nTOp\_bkwrd} (functions of $\Tg$ in \emph{kelvin}), the compiled forward
-reaction rates \code{nucl.<reaction>\_frwrd} (function of $T$ in kelvin,
-internally $T_9=T/10^9$), the abundance interpolant \code{\_Y\_of\_t}, and the
-final values \code{\_Y\_final}.
+\code{He3oHe4}, \code{Li7oH} (and, for networks tracking them, \code{Li6oLi7}
+and CNO yields), and the neutrino observables
+\code{Omeganurel}/\code{OneOverOmeganunr}. \code{PRIMAT} is a thin facade over
+the background and nuclear-network classes: with the \emph{Python} backend
+(\code{force\_backend="python"}, or automatically whenever a Python-only
+feature such as \code{extra\_rho}/\code{background=}/\code{decay\_era} is
+used) the instance also exposes the background history and abundance
+trajectories as attributes used throughout the companion notebook: the
+temperature vectors \code{\_Tg\_vec}, \code{\_Tnue\_vec}, the weak-rate
+interpolants \code{\_nTOp\_frwrd}, \code{\_nTOp\_bkwrd} (functions of $\Tg$ in
+\emph{kelvin}), the compiled forward reaction rates
+\code{nucl.<reaction>\_frwrd} (function of $T$ in kelvin, internally
+$T_9=T/10^9$), the abundance interpolant \code{\_Y\_of\_t}, and the final
+values \code{\_Y\_final}. The C backend does not expose these
+intermediate attributes (only the final result dict and, optionally, the
+time-evolution arrays below), which is why the figures in this document are
+generated with the Python backend even though it is no longer the default
+for routine runs.
 
-\paragraph{Output files.}
-\code{output\_time\_evolution=True} writes \code{results/output\_tables.tsv}
-with the full background and per-nuclide history; \code{output\_final\_result=True}
-writes the final mass fractions.
+\paragraph{The \code{primat.backend} dispatcher.}\label{sec:backends}
+\code{PRIMAT(...)}/\code{.solve()} always uses the pure-Python engine;
+day-to-day scripts should instead call the dispatcher directly,
+\begin{lstlisting}[style=py]
+from primat.backend import run_bbn
+result = run_bbn(params={"Omegabh2": 0.022425}, force_backend="auto")
+\end{lstlisting}
+which picks the compiled C extension (\code{primat.\_primat\_c}, wrapping the
+standalone \code{primat-c/} C99 port) when it built successfully
+(\code{primat.backend.HAS\_C\_BACKEND}), falls back silently to Python
+otherwise, and returns the identical result-dict shape either way (the two
+backends are validated to agree to $\lesssim3\times10^{-9}$ on $\DoH$ for the
+same inputs, up to one known $\sim1.7\times10^{-8}$ small-network gap awaiting
+root-causing, see \code{tests/test\_backend\_parity.py}). Pass
+\code{force\_backend="c"} to require the compiled engine (raises if it is
+unavailable or if a Python-only feature is requested) or
+\code{force\_backend="python"} to force the reference implementation. Custom
+reaction networks (\S\ref{sec:custom-networks}) and the full time-evolution
+schema (below) are supported identically on both backends; incremental MC
+sample reuse (\code{prev=}, \S\ref{sec:mc-usage}) and \code{extra\_rho}/
+\code{background=}/\code{decay\_era} remain Python-only.
+
+\paragraph{Monte-Carlo rate-uncertainty propagation.}\label{sec:mc-usage}
+Every tabulated reaction rate and $\tau_n$ carries a $1\sigma$ uncertainty
+(\S\ref{sec:nuclear}); \code{primat.backend.run\_mc} (or the CLI's
+\code{-{}-mc}) draws $N$ independent samples -- each reaction's
+\code{p\_<reaction>}$\sim\mathcal N(0,1)$ and $\tau_n\sim\mathcal
+N(\tau_n,\sigma_{\tau_n})$ -- re-solves BBN for each, and returns an
+\code{MCResult} with the central (unperturbed) value, sample mean/std, and
+every individual sample for each requested observable:
+\begin{lstlisting}[style=py]
+from primat.backend import run_mc
+mc = run_mc(200, params={"network": "large", "amax": 8}, seed=0)
+print(f"D/H = {mc['DoH'].central:.7e} +/- {mc['DoH'].std:.2e}")
+\end{lstlisting}
+The C backend runs one pthread per sample with an independent
+xoshiro256** stream (not bit-for-bit comparable to the Python/NumPy path,
+only statistically); both cap each reaction's sampled rescaling factor to
+\code{mc\_rate\_rescale\_cap} (default 30, \S\ref{sec:nuclear}) to keep a
+handful of poorly-constrained placeholder-uncertainty rates from dominating
+the variance with unphysical outliers.
+
+\paragraph{Custom reaction networks.}\label{sec:custom-networks}
+Both backends accept a \code{custom\_network} override (remove/replace/add
+reactions and swap in an alternate rate table for any reaction), built either
+programmatically (\code{primat.network\_data.UpdateNuclearRates}) or through
+the GUI's ``Import/Create custom network'' popups below, which can export the
+result as a re-importable \code{.zip}.
+
+\paragraph{Output files and the unified time-evolution schema.}
+\code{output\_time\_evolution=True} populates (in memory, on both backends)
+an \code{EvolutionResult} with the unified schema of
+\code{primat.evolution}/\code{PRIMAT.md} \S7 -- \code{t\_s}, \code{a},
+\code{T\_gamma\_MeV}, the three flavour neutrino temperatures, and every
+tracked nuclide's \code{Y\_<nuclide>} column, one row per output time step --
+and additionally writes it to \code{output\_file} (default
+\code{results/output\_tables.tsv}) if that is set (\code{output\_file=None}
+skips the disk write, e.g.\ for the GUI, while still populating the
+in-memory result). \code{output\_final\_result=True} writes the final mass
+fractions to \code{output\_final\_file}; \code{output\_background\_evolution}/
+\code{output\_mc\_samples} similarly control the background-only and
+MC-samples TSV dumps.
+
+\paragraph{Rates directory resolution.}
+Two \code{PRIMATConfig} fields let a run substitute alternate data without
+touching the installed package: \code{data\_dir} (a full replacement of the
+shipped \code{primat/data/} tree -- must contain \code{NEVO/}, \code{weak/},
+\code{plasma/}, \code{nuclear/} and \code{csv/}) and \code{user\_nuclear\_dir}
+(an \emph{additive} overlay for nuclear networks and rate tables only,
+checked before the shipped tree so built-in networks like \code{small}
+remain available). Both are validated as existing directories at
+\code{PRIMATConfig} construction time and are ordinary string parameters on
+the C side too (\code{-{}-data\_dir}/\code{CPRIMAT\_DATA\_DIR} for the
+standalone C CLI).
 
 \subsection{Graphical interface}
-After \code{pip install -e ".[gui]"}, a browser-based Streamlit app is available:
+After \code{pip install ".[gui]"}, a browser-based Streamlit app is available:
 \begin{lstlisting}[style=sh]
-pyprimat-gui                       # console-script launcher
-streamlit run pyprimat/gui/app.py  # from a source checkout
+primat-gui                          # console-script launcher
+primat-gui --backend python         # force the Python backend (testing)
+streamlit run primat/gui/app.py     # from a source checkout
 \end{lstlisting}
-It exposes the parameters as form fields and shows the final abundances and an
-interactive abundance-evolution plot.
+It exposes the parameters as form fields, shows the final abundances and an
+interactive abundance-evolution plot, and additionally offers, in the
+``Nuclear reactions'' sidebar group, two popups -- \textbf{Import custom
+network} and \textbf{Create custom network} -- that let a user start from any
+named network, toggle reactions in/out grouped by mass-number category,
+substitute or upload an alternate rate table per reaction, add brand-new
+reactions, then either save the result as a re-importable \code{.zip} or run
+BBN with it directly (\S\ref{sec:custom-networks}); a results tab exposes the
+same Monte-Carlo uncertainty propagation as \code{-{}-mc}
+(\S\ref{sec:mc-usage}).
 
 \subsection{Reading the numerical output}
 Several physical corrections shift $\Neff$ at the $10^{-2}$--$10^{-3}$ level, so
@@ -233,7 +354,7 @@ electromagnetic-plasma entropy $s\,a^3$ (\PR\ Eqs.~21--24).
 \subsection{Solving the background: the two ODEs $a(\Tg)$ and $t(a)$}
 \label{sec:bckg-ode}
 The code reduces the background to two ordinary differential equations, solved
-once at start-up (\code{PyPR.\_setup\_background\_and\_cosmo}).
+once at start-up (\code{PRIMAT.\_setup\_background\_and\_cosmo}).
 
 \paragraph{Scale factor from entropy conservation.}
 Define the reduced plasma entropy $\mathcal{S}(T)\equiv\bar s_{\rm pl}/\bar
@@ -259,8 +380,9 @@ on). In the code $\bar s_{\rm pl}$ and $\dd\bar s_{\rm pl}/\dd T$ are returned
 together by \code{plasma.spl\_and\_dspl\_dT}; Eq.~\eqref{eq:aofT} is
 \code{\_dlnadlnT\_NEVO}, integrated from $T_{\rm end}$ to $T_{\rm start}$ with
 \code{solve\_ivp(method='LSODA')}, and inverted to $T(a)$. When
-\code{external\_background=True}, $a(T)$ is instead read directly from the NEVO
-table's column $x\propto a$.
+\code{external\_scale\_factor=True}, $a(T)$ is instead read directly from the
+NEVO table's column $x\propto a$ (requires \code{incomplete\_decoupling=True};
+the two modes agree to $\sim10^{-5}$ in $a(T)/t(T)$).
 
 \paragraph{Time from the Friedmann equation.}
 With $a(T)$ -- hence $\rho_{\rm tot}(T(a))$ -- known, the Friedmann
@@ -288,11 +410,12 @@ fluxes $\Gamma=n_b\sigmav$ of Sec.~\ref{sec:nuclear}.
 
 \paragraph{Optional energy-density components.}
 Any extra contribution to $\rho_{\rm tot}$ in Eq.~\eqref{eq:friedmann} enters
-through the \code{extra\_rho} hook of \code{PyPR} (a list of functions
-$\rho(\Tg)\,[\mathrm{MeV}^4]$). Two are built in: a constant extra radiation
-density from $\Delta\Neff$ decoupled species (\code{plasma.rho\_nu\_extra},
+through the \code{extra\_rho} hook of \code{PRIMAT} (a list of functions
+$\rho(\Tg)\,[\mathrm{MeV}^4]$; Python backend only, \S\ref{sec:backends}). Two
+are built in: a constant extra radiation density from $\Delta\Neff$ decoupled
+species (\code{plasma.rho\_nu\_extra},
 $\rho=\tfrac78\,\tfrac{\pi^2}{15}\Tnu^4\,\Delta\Neff$), and Early Dark Energy
-(\code{fEDE}, \code{zcEDE}, \code{wnEDE}; \code{PyPR.\_setup\_EDE}) -- a fluid
+(\code{fEDE}, \code{zcEDE}, \code{wnEDE}; \code{PRIMAT.\_setup\_EDE}) -- a fluid
 peaking at redshift \code{zcEDE} with energy fraction \code{fEDE} and
 equation-of-state index \code{wnEDE}. Both modify only $H(\Tg)$, hence the
 time--temperature relation.
@@ -309,7 +432,7 @@ parameterised by the effective number of neutrinos (\PR\ Eq.~62),
 \end{equation}
 In reality decoupling is \emph{not} instantaneous: the highest-energy neutrinos
 are still coupled during annihilation and absorb a little of the released
-entropy, raising $\Neff$ above 3. PyPRIMAT reads the precomputed
+entropy, raising $\Neff$ above 3. primat reads the precomputed
 non-instantaneous history $\{\Tnu^{(e,\mu,\tau)}(\Tg)\}$ from a NEVO table rather
 than recomputing the momentum-dependent Boltzmann hierarchy. Together with the
 QED plasma corrections (below) this gives the Standard-Model value
@@ -339,9 +462,9 @@ Photon and neutrino thermodynamics are pure functions of temperature
 (\code{rho\_e}, \code{p\_e}) require the Fermi--Dirac integrals of
 Eq.~\eqref{eq:thermo} and are tabulated in an electron-thermo cache. The
 non-instantaneous $\Tnu(\Tg)$ history is read by \code{neutrino\_history.py};
-the QED corrections are loaded from \code{rates/plasma/QED\_*.txt} or computed
+the QED corrections are loaded from \code{data/plasma/QED\_*.txt} or computed
 analytically by \code{qed\_pressure.py}; the Friedmann rate is assembled in
-\code{PyPR.\_Hubble}. Figure~\ref{fig:decoupling} shows the per-flavour
+\code{PRIMAT.\_Hubble}. Figure~\ref{fig:decoupling} shows the per-flavour
 temperature ratios, Fig.~\ref{fig:gstar} the effective relativistic degrees of
 freedom $g_{*\rho},g_{*s}$ through annihilation, and Fig.~\ref{fig:qed} the QED
 pressure correction.
@@ -383,10 +506,12 @@ pressure correction.
 incomplete\_decoupling & True  & Use the NEVO non-instantaneous $\Tnu(\Tg)$ table (else instantaneous). \\
 QED\_corrections       & True  & Include the QED plasma corrections (App.~\ref{app:qed}). \\
 n\_electron\_table     & 2000  & Grid points for the $e^\pm$ thermodynamic tables. \\
-recompute\_qed\_corrections & False & Recompute and overwrite \code{rates/plasma/QED\_*.txt}. \\
-external\_background   & False & Read $a(\Tg)$ directly from the NEVO table instead of solving the ODE. \\
+recompute\_qed\_corrections & False & Recompute and overwrite \code{data/plasma/QED\_*.txt}. \\
+external\_scale\_factor & False & Read $a(\Tg)$ directly from the NEVO table instead of solving the ODE. \\
 DeltaNeff              & 0     & Extra decoupled radiation added to $\rho_{\rm tot}$. \\
 munuOverTnu            & 0     & Neutrino degeneracy $\xi_\nu=\mu_\nu/\Tnu$. \\
+data\_dir              & None  & Full-takeover replacement for the shipped \code{primat/data/} tree. \\
+user\_nuclear\_dir      & None  & Additive overlay for nuclear networks \& rate tables only. \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -494,7 +619,7 @@ Figure~\ref{fig:xn} shows the resulting neutron history.
 \begin{figure}[ht]
   \centering
   \includegraphics[width=0.66\textwidth]{weak_neutron_fraction.pdf}
-  \caption{Neutron mass fraction $X_n$ from PyPRIMAT (solid) versus the
+  \caption{Neutron mass fraction $X_n$ from primat (solid) versus the
     weak-equilibrium prediction $X_n^{\rm eq}=1/(1+e^{Q/T})$ (dashed). $X_n$
     tracks equilibrium until freeze-out near $0.8$~MeV, then declines slowly
     until deuterium formation burns the neutrons into $^4$He.}
@@ -502,8 +627,8 @@ Figure~\ref{fig:xn} shows the resulting neutron history.
 \end{figure}
 
 \subsection{In the code}
-\code{weak\_rates.py} evaluates Eq.~\eqref{eq:born} and all corrections on the
-background grid. Results are cached in \code{rates/weak/} behind a configuration
+\code{weak\_rates/} evaluates Eq.~\eqref{eq:born} and all corrections on the
+background grid. Results are cached in \code{data/weak/} behind a configuration
 \emph{fingerprint}, so a rerun with the same physics reloads them while a changed
 configuration recomputes. The normalisation $1/(\tau_n\lambda_0 m_e^5)$ is stored
 as \code{\_NormWeakRates} and the temperature interpolants are
@@ -516,12 +641,13 @@ as \code{\_NormWeakRates} and the temperature interpolants are
 \normalfont Option & Default & Effect \\
 \midrule
 tau\_n                  & 878.4 & Neutron lifetime [s] used to calibrate $\Kw$. \\
-tau\_n\_flag            & True  & Normalise via $\tau_n$ (else from $G_F$, $V_{ud}$, $g_A$). \\
-nTOp\_Born\_approximation & False & Use only the Born rate (debugging/comparison). \\
-include\_nTOp\_thermal  & True  & Apply the finite-temperature radiative correction. \\
+tau\_n\_normalization   & True  & Normalise via $\tau_n$ (else from $G_F$, $V_{ud}$, $g_A$). \\
+radiative\_corrections  & True  & $T=0$ Coulomb + resummed radiative corrections (CCR); \code{False} = bare Born rate. \\
+finite\_mass\_corrections & True & Fokker--Planck finite-nucleon-mass correction. \\
+thermal\_corrections    & True  & Finite-temperature radiative correction (CCRTh; Brown \& Sawyer 2001). \\
 spectral\_distortions   & True  & Use the actual NEVO neutrino spectrum in the rates. \\
-sampling\_nTOp          & 200   & Points in the $n\leftrightarrow p$ rate grid. \\
-weak\_rate\_cache       & True  & Reuse the fingerprinted \code{rates/weak/} cache when valid. \\
+sampling\_nTOp\_per\_decade & 80 & Points per decade of $T$ in the $n\leftrightarrow p$ rate grid. \\
+weak\_rate\_cache       & True  & Reuse the fingerprinted \code{data/weak/} cache when valid. \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -546,7 +672,7 @@ charged-particle reactions $\sigma$ is dominated by Coulomb-barrier tunnelling,
 so it is written with the astrophysical $S$-factor
 $\sigma(E)=S(E)\,e^{-2\pi\eta}/E$, where $\eta=Z_1Z_2 e^2/(\hbar v)$ is the
 Sommerfeld parameter (\PR\ Eqs.~120--122); $S(E)$ removes most of the energy
-dependence except for resonances. PyPRIMAT does not perform this average at run
+dependence except for resonances. primat does not perform this average at run
 time: it reads the precomputed $\NA\sigmav(T_9)$ tables (from the NACRE-II and
 related evaluations \cite{NACRE2,Coc2012}) and resamples them onto a common $T_9$
 grid (log--log cubic interpolation). Five radiative-capture rates
@@ -621,20 +747,20 @@ mapped to times through $t(T)$:
     $f=\Gamma_{n\to p}$, $b=\Gamma_{p\to n}$, started from weak equilibrium
     $Y_n=b/(b+f)$ and integrated with the non-stiff LSODA solver.
   \item \textbf{MT era} ($T_{\rm weak}\!\to\!T_{\rm nucl}$): the fixed
-    18-reaction subset (even for medium/large -- the full net is too stiff before
+    18-reaction subset (even for \code{large} -- the full net is too stiff before
     the deuterium bottleneck opens), seeded with the HT $\{Y_n,Y_p\}$ and the NSE
     values $Y_i^{\rm NSE}$ (App.~\ref{app:nse}) for all other species, integrated
     with the implicit BDF solver and the analytic Jacobian.
   \item \textbf{LT era} ($T_{\rm nucl}\!\to\!T_{\rm end}$): the full chosen
-    network (12 / 62 / $\sim$433 reactions), seeded from the MT result, BDF +
-    Jacobian.
+    network (12 / 68 (\code{large}, \code{amax=8}) / $\sim$429 reactions),
+    seeded from the MT result, BDF + Jacobian.
 \end{itemize}
 The normalised $n\!\leftrightarrow\!p$ rates feed all three eras as
 $f,b=\text{NormWR}\times\{$\code{\_nTOp\_frwrd},\code{\_nTOp\_bkwrd}$\}$ with
-$\text{NormWR}=1/(\tau_n F_n)$ in the \code{tau\_n\_flag} mode ($F_n$ the decay
-phase-space factor). The reverse nuclear rates of Eq.~\eqref{eq:detbal} are
-clamped at low $T_9$ so that the exothermic factor $e^{\gamma/T_9}$ cannot
-overflow (the ``exothermic blow-up'' guard in \code{nuclear.py}).
+$\text{NormWR}=1/(\tau_n F_n)$ in the \code{tau\_n\_normalization} mode ($F_n$
+the decay phase-space factor). The reverse nuclear rates of Eq.~\eqref{eq:detbal}
+are clamped at low $T_9$ so that the exothermic factor $e^{\gamma/T_9}$ cannot
+overflow (the ``exothermic blow-up'' guard in \code{network\_data.py}).
 
 \paragraph{Solvers and the Jacobian.}
 Two of \code{scipy.integrate.solve\_ivp}'s integrators are used. \textbf{LSODA}
@@ -651,7 +777,7 @@ prohibitively small steps. A BDF step solves a nonlinear system by Newton
 iteration and therefore needs the Jacobian
 $J_{ij}=\partial\dot Y_i/\partial Y_j$ of the right-hand
 side~\eqref{eq:network}. Rather than let the solver estimate $J$ by finite
-differences (costly and noisy for $\sim$60 species), PyPRIMAT supplies it
+differences (costly and noisy for $\sim$60 species), primat supplies it
 analytically: \code{compile\_network} differentiates the polynomial mass-action
 terms symbolically and emits a fast \code{njit} kernel
 (\code{nucl.JacobianMT}/\code{JacobianLT}), passed to \code{solve\_ivp} via its
@@ -678,7 +804,7 @@ bound $^4$He nucleus is lighter than four free nucleons (binding energy) and the
 $^1$H atom mass differs slightly from one atomic mass unit. CMB likelihoods
 instead parametrise helium by its \emph{true mass fraction}
 $Y_P=\rho_{^4{\rm He}}/(\rho_{^4{\rm He}}+\rho_{^1{\rm H}})$, so for consistency
-PyPRIMAT also returns
+primat also returns
 \begin{equation}
   \YP^{\rm CMB}=\frac{\tfrac14\,r_{\rm He}\,\YP^{\rm BBN}}
                     {\tfrac14\,r_{\rm He}\,\YP^{\rm BBN}+r_{\rm H}\,(1-\YP^{\rm BBN})},
@@ -693,16 +819,23 @@ scaled to today through $T_0^{\rm CMB}$.
 
 \subsection{Networks, eras, and rate variation}
 The reaction list is named in
-\code{rates/nuclear/networks/\{small,medium,large\}.txt}; \code{load\_network}
-parses it and \code{compile\_network} turns the stoichiometry of
-Eq.~\eqref{eq:network} into fast right-hand-side and Jacobian kernels (the three
-eras of Sec.~\ref{sec:eras} share these kernels).
-Each reaction \code{<name>} carries a variation knob \code{p\_<name>} sampling
-its rate at $\text{median}\times e^{p\,\sigma}$ for Monte-Carlo error
-propagation; the additive \code{NP\_delta\_<name>} (with
-\code{rescale\_nuclear\_rates=True}) multiplies it by $1+\delta$:
+\code{data/nuclear/networks/\{small,small\_parthenope,large\}.txt} (or any
+other network file of the same form, resolved through the
+\code{user\_nuclear\_dir} overlay of \S\ref{sec:usage} if set);
+\code{load\_network} parses it and \code{compile\_network} turns the
+stoichiometry of Eq.~\eqref{eq:network} into fast right-hand-side and
+Jacobian kernels (the three eras of Sec.~\ref{sec:eras} share these kernels).
+Setting \code{amax} filters \emph{any} network (not just \code{large}) to
+nuclides of mass number $\le$\code{amax}, e.g.\ \code{network="large",
+amax=8} reproduces the former ``medium'' network's 68 reactions exactly
+(App.~\ref{app:reactions}). Each reaction \code{<name>} carries a variation
+knob \code{p\_<name>} sampling its rate at $\text{median}\times e^{p\,\sigma}$
+for Monte-Carlo error propagation (\S\ref{sec:mc-usage}); the additive
+\code{delta\_<name>} multiplies it by $1+\delta$ instead, and the combined
+factor is clamped to \code{mc\_rate\_rescale\_cap} (default 30, both directions):
 \begin{lstlisting}[style=py]
-PyPR({"network": "medium", "p_dpTOHe3g": 1.0}).solve()   # d(p,gamma)He3 at +1 sigma
+PRIMAT({"network": "large", "amax": 8,
+      "p_d_p__He3_g": 1.0}).solve()   # d(p,gamma)He3 at +1 sigma
 \end{lstlisting}
 Figure~\ref{fig:evol} shows the abundance history and Fig.~\ref{fig:schramm} the
 final abundances versus the baryon density with the observational constraints.
@@ -747,9 +880,12 @@ $d(d,p)t$ reactions, with the rule-of-thumb (\PR\ Eq.~145)
   \Delta\YP \approx 0.18\,\frac{\Delta\tau_n}{\tau_n},
 \end{equation}
 while D/H is most sensitive to $d(p,\gamma)^3$He, $d(d,n)^3$He and $d(d,p)t$. In
-PyPRIMAT the full budget is obtained by Monte-Carlo, drawing each \code{p\_<rxn>}
-from $\mathcal N(0,1)$; the helper \code{mc\_uncertainty} parallelises this.
-Section~\ref{sec:sensitivity} quantifies the individual responses.
+primat the full budget is obtained by Monte-Carlo (\S\ref{sec:mc-usage}),
+drawing each \code{p\_<rxn>} from $\mathcal N(0,1)$ (and $\tau_n$ from its own
+$1\sigma$); the Python-backend helper \code{mc\_uncertainty} parallelises this
+with \code{joblib}, while \code{primat.backend.run\_mc}/\code{-{}-mc} dispatch
+to the multi-threaded C implementation by default. Section~\ref{sec:sensitivity}
+quantifies the individual responses.
 
 \subsection{Associated options}
 \begin{center}\small
@@ -757,13 +893,15 @@ Section~\ref{sec:sensitivity} quantifies the individual responses.
 \toprule
 \normalfont Option & Default & Effect \\
 \midrule
-network                 & "small" & Reaction set: \code{small} (12), \code{medium} (62), \code{large} ($\sim$433). \\
-amax                    & None    & With \code{large}, drop nuclides of mass number $> A$. \\
+network                 & "small" & Reaction set: \code{small}/\code{small\_parthenope} (12), \code{large} ($\sim$429), or any custom network file. \\
+amax                    & None    & Drop reactions with any nuclide of mass number $> A$, for \emph{any} network. \\
 nuclear\_qed\_corrections & True  & QED corrections to radiative-capture rates \cite{PitrouPospelov2020}. \\
 numerical\_precision    & 1e-7    & Relative tolerance of the ODE solver. \\
-rate\_grid\_npts        & 500     & Points in the master $T_9$ grid for rate resampling. \\
-p\_<reaction>           & 0       & Log-normal variation of an individual rate (MCMC). \\
-output\_time\_evolution & False   & Write the full time series to \code{results/output\_tables.tsv}. \\
+rate\_grid\_npts        & 1000    & Points in the master $T_9$ grid for rate resampling. \\
+p\_<reaction>           & 0       & Log-normal variation of an individual rate ($\times e^{p\sigma}$, MC). \\
+delta\_<reaction>       & 0       & Additive fractional variation of an individual rate ($\times(1+\delta)$). \\
+mc\_rate\_rescale\_cap  & 30      & Clamp on the combined $p$/$\delta$ rate-rescaling factor during MC. \\
+output\_time\_evolution & False   & Populate (and, if \code{output\_file} is set, write) the full time series. \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -833,9 +971,9 @@ The thermal $e^\pm$/photon interactions shift the masses by (\PR\ Eqs.~40, 42;
 \end{equation}
 with $\bar p=p/T$, $x=\bar m_e=m_e/T$, $\mathcal{E}_{\bar q}=\sqrt{\bar q^2+x^2}$.
 The induced pressure shift is a sum of three terms in increasing order of the
-electromagnetic coupling $e$ (with $\afs=e^2/4\pi$). PyPRIMAT
+electromagnetic coupling $e$ (with $\afs=e^2/4\pi$). primat
 (\code{qed\_pressure.py}) tabulates and \emph{sums the first two}, stored as the
-two columns of \code{rates/plasma/QED\_*.txt}:
+two columns of \code{data/plasma/QED\_*.txt}:
 \begin{align}
   \frac{\delta P_a}{T^4} &= \frac{\afs}{\pi}\!\left[
      -\frac{2}{3}I^{(0,1)}_+(x) - \frac{2}{\pi^2}\left(I^{(0,1)}_+(x)\right)^2\right]
@@ -1006,7 +1144,7 @@ integrals are evaluated with the \code{vegas} Monte-Carlo library (or
 
 \subsection*{Finite nucleon mass and weak magnetism}
 The Born rate drops terms $E_\nu/m_N$, $E_e/m_N$, $\Gap/m_N$, all of order
-$\epsilon\equiv T/m_N\sim10^{-3}$ near freeze-out. PyPRIMAT keeps them to first
+$\epsilon\equiv T/m_N\sim10^{-3}$ near freeze-out. primat keeps them to first
 order in $\epsilon$ (neglecting $O(\epsilon^2)\sim10^{-6}$) through a
 Fokker--Planck expansion of Eq.~\eqref{eq:weakgen} in the energy transferred to
 the leptons, which adds (\PR\ Eq.~94)
@@ -1056,7 +1194,7 @@ first-order term gives the additive correction
 \end{equation}
 i.e.\ the Born kernel with the neutrino Fermi--Dirac replaced by its distortion
 $\delta f_\nu$ evaluated at the same shifted neutrino energy $E_\nu^\mp=E\mp\Gap$
-(and $\chi_+\to\chi_-$ for $p\to n$). PyPRIMAT supports two forms of
+(and $\chi_+\to\chi_-$ for $p\to n$). primat supports two forms of
 $\delta f_\nu$ (\code{neutrino\_history.py}):
 \begin{itemize}\itemsep2pt
   \item \emph{NEVO-table} (default, \code{analytic\_distortions=False}): the
@@ -1116,26 +1254,35 @@ which collapses to the three-constant form of Eq.~\eqref{eq:detbal}: $\alpha$
 gathers the spin/mass/$2\pi$ prefactors, $\beta=\tfrac{3}{2}(\sum N_i-\sum N_j)$
 the power of $T$, and $\gamma\propto$ the reaction $Q$-value $\sum_j m_j-\sum_i
 m_i$. The masses and spins are taken from the AME/NUBASE tables
-\cite{AME2016}. PyPRIMAT computes $(\alpha,\beta,\gamma)$ once per reaction in
+\cite{AME2016}. primat computes $(\alpha,\beta,\gamma)$ once per reaction in
 \code{compute\_detailed\_balance\_coefficients} and stores them in
-\code{rates/nuclear/data/detailed\_balance.csv}.
+\code{data/csv/detailed\_balance.csv}.
 
 % =====================================================================
 \section{Nuclear reaction list and sources}\label{app:reactions}
 % =====================================================================
-PyPRIMAT's networks are plain lists of reaction names under
-\code{rates/nuclear/networks/} (the \code{small}, \code{medium} and
-\code{large} files); each name maps to a rate table under
-\code{rates/nuclear/tables/} whose header line records the
-reaction and a short source code \code{ref=...}.
+primat's networks are plain lists of reaction names under
+\code{data/nuclear/networks/} (the \code{small}, \code{small\_parthenope} and
+\code{large} files, or any user-supplied network of the same form); each name
+maps to a rate table under \code{data/nuclear/tables/} and a source code in
+\code{data/csv/reactions\_large.csv}'s \code{ref} column (also readable from
+each table's own header line as \code{ref=...}).
 Tables~\ref{tab:rxn-small}--\ref{tab:rxn-large} reproduce every reaction,
 expanded as $a+b\leftrightarrow c+d$ (each tabulated forward rate is supplemented
-by its detailed-balance reverse, App.~\ref{app:nse}), with that source code.
+by its detailed-balance reverse, App.~\ref{app:nse}), with that source code,
+split into the three tiers of \S\ref{sec:eras}: the \code{small} network, the
+additional reactions that appear at \code{network="large", amax=8} (the exact
+reaction set of the former ``medium'' network), and the remaining reactions
+of the full \code{large} network. This appendix is regenerated directly from
+that data by \code{doc/generate\_tab\_reactions.py}, so it is guaranteed to
+match what \code{load\_network} actually loads for each of the three tiers.
 Throughout, $a\equiv{}^4$He ($\alpha$), $d\equiv{}^2$H, $t\equiv{}^3$H,
 $g\equiv\gamma$, $n,p$ the nucleons, and $e^\mp$ the leptons of $\beta$-decays
-(one-way, shown with $\to$). A $^\dagger$ marks rates that are analytic fits
-hard-coded in PRIMAT-Main.m; ``(borrowed)'' marks a rate set equal to another
-reaction's.
+(one-way, shown with $\to$). A $^\dagger$ marks rates computed from an
+analytic formula rather than a tabulated grid (hard-coded in PRIMAT-Main.m,
+including every $\beta$-decay); ``(borrowed)'' marks a rate table copied
+verbatim from another reaction's (e.g.\ a mirror/analogue reaction with no
+dedicated evaluation).
 
 The source codes follow the convention ``\textsc{Aaa}\,YY'' = first-author
 prefix + year (e.g. \texttt{And06} = Ando et al.\ 2006). The principal ones are:
@@ -1150,24 +1297,27 @@ prefix + year (e.g. \texttt{And06} = Ando et al.\ 2006). The principal ones are:
 \textbf{NACRE} Angulo et al.\ (1999);
 \textbf{ILCCF10} Iliadis, Longland, Champagne, Coc \& Fitzgerald (2010);
 \textbf{CGXSV12} Coc, Goriely, Xu, Saimpert \& Vangioni (2012) \cite{Coc2012};
-\textbf{TALYS2} the TALYS statistical-model code (Koning et al.);
+\textbf{TALYS2} the TALYS statistical-model code (Koning et al.\ 2023);
 \textbf{CF88} Caughlan \& Fowler (1988);
 \textbf{MF89} Malaney \& Fowler (1989);
 \textbf{Rau94} Rauscher et al.\ (1994);
 \textbf{Wag69} Wagoner (1969);
 \textbf{Aud03} Audi, Wapstra \& Thibault (2003, $\beta$-decay/mass data);
+\textbf{Nubase} NUBASE2020, Kondev et al.\ (2021, $\beta$-decay half-lives not
+in Aud03) \cite{Nubase2020};
 \textbf{Trezzi2017} Trezzi et al.\ (LUNA, 2017);
 \textbf{Bar16} Barbagallo et al.\ (n\_TOF, 2016);
 \textbf{Rij19} Rijal et al.\ (2019).
-The remaining short author--year codes -- almost all carrying the $^\dagger$
+The remaining short author--year codes -- all carrying the $^\dagger$
 analytic-fit marker (\texttt{Bal95}, \texttt{Bar97C}, \texttt{Efr96},
 \texttt{FK90}, \texttt{Has09c}, \texttt{Iga95}, \texttt{Kaw91}, \texttt{Koe91},
 \texttt{Men12}, \texttt{Nag06}, \texttt{Tang03}, \texttt{Wan91},
 \texttt{Wie87/89}, \texttt{TUNL\&Cam08}, \texttt{MF89\&Hei98},
-\texttt{Des99Bea01}) -- decode by the same first-author/year rule, but their
-full bibliographic entries are not reproduced here; they are catalogued in the
-compilations of Coc et al.\ \cite{Coc2012} and the NACRE/NACRE-II evaluations
-\cite{NACRE2} and are not all individually retrievable from the shipped tables.
+\texttt{CF88\&MF89}, \texttt{Des99Bea01}) -- decode by the same
+first-author/year rule, but their full bibliographic entries are not
+reproduced here; they are catalogued in the compilations of Coc et al.\
+\cite{Coc2012} and the NACRE/NACRE-II evaluations \cite{NACRE2} and are not
+all individually retrievable from the shipped tables.
 
 \input{tab_reactions}
 
@@ -1175,7 +1325,7 @@ compilations of Coc et al.\ \cite{Coc2012} and the NACRE/NACRE-II evaluations
 \section{Nuclide data}\label{app:nuclides}
 % =====================================================================
 The nuclides tracked by the networks and their data are loaded from
-\code{nuclides.csv} (under \code{rates/nuclear/data/}): the neutron and proton
+\code{nuclides.csv} (under \code{data/csv/}): the neutron and proton
 numbers $(N,Z)$,
 the mass number $A=N+Z$, the spin $J$ (degeneracy $g_i=2J+1$), and the atomic
 mass excess $\Delta$. The latter give the binding energies
@@ -1189,15 +1339,22 @@ Table~\ref{tab:nuclides} lists all 59 tracked nuclides.
 \section{Reproducing the figures}
 % =====================================================================
 Every figure in this document is generated by the notebook
-\code{doc/PyPRIMAT\_doc\_figures.ipynb}, which writes PDFs into
+\code{doc/primat\_doc\_figures.ipynb}, which writes PDFs into
 \code{doc/figures/}. To refresh them after changing the code, run the notebook
 top to bottom, or non-interactively:
 \begin{lstlisting}[style=sh]
-jupyter nbconvert --to notebook --execute --inplace PyPRIMAT_doc_figures.ipynb
+jupyter nbconvert --to notebook --execute --inplace primat_doc_figures.ipynb
 \end{lstlisting}
-and recompile. The notebook uses only the public PyPRIMAT API and doubles as
-worked examples for extracting the background history, weak rates, reaction
-rates and abundance trajectories from a run.
+Similarly, App.~\ref{app:reactions}'s reaction-list table is regenerated (from
+the current network/rate-table data, not from a run) by
+\begin{lstlisting}[style=sh]
+python doc/generate_tab_reactions.py
+\end{lstlisting}
+Then recompile the document. The notebook uses only the public primat API
+(the Python backend, so that the intermediate background/weak-rate/reaction-rate
+attributes of \S\ref{sec:usage} are available) and doubles as worked examples
+for extracting the background history, weak rates, reaction rates and
+abundance trajectories from a run.
 
 % =====================================================================
 \begin{thebibliography}{9}
@@ -1237,6 +1394,9 @@ rates and abundance trajectories from a run.
 \bibitem{AME2016}
   M.~Wang et al., \emph{The AME2016 atomic mass evaluation},
   Chin. Phys. C \textbf{41} (2017) 030003.
+\bibitem{Nubase2020}
+  F.~G.~Kondev et al., \emph{The NUBASE2020 evaluation of nuclear physics
+  properties}, Chin. Phys. C \textbf{45} (2021) 030001.
 \bibitem{Cooke2018}
   R.~J.~Cooke, M.~Pettini, C.~C.~Steidel,
   \emph{One percent determination of the primordial deuterium abundance},
