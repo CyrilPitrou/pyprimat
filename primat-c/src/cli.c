@@ -50,7 +50,7 @@ static void print_credits(void)
 
 static int list_or_clear_weak_cache(const char *data_dir, int clear)
 {
-    char dir_path[4096];
+    char dir_path[CPR_PATH_BUF_LEN];
     snprintf(dir_path, sizeof(dir_path), "%s/weak", data_dir);
 
     DIR *d = opendir(dir_path);
@@ -65,7 +65,7 @@ static int list_or_clear_weak_cache(const char *data_dir, int clear)
             continue;
         n++;
         if (clear) {
-            char file_path[4352];
+            char file_path[CPR_PATH_BUF_LEN2];
             snprintf(file_path, sizeof(file_path), "%s/%s", dir_path, ent->d_name);
             remove(file_path);
         }
@@ -440,7 +440,7 @@ static void print_plain(const CPRConfig *cfg, const CPRResults *results,
 
 int cpr_cli_main(int argc, char **argv)
 {
-    char data_dir_buf[4096];
+    char data_dir_buf[CPR_PATH_BUF_LEN];
     const char *data_dir = default_data_dir(data_dir_buf, sizeof(data_dir_buf));
     const char *custom_nuclear_dir = NULL;
     const char *ini_path = NULL;

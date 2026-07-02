@@ -43,7 +43,7 @@ static double interp_asc(const double *x_asc, const double *y_asc, size_t n, dou
 
 static int build_nevo_table(CPRNeutrinoHistory *nh, const CPRConfig *cfg, char **errmsg)
 {
-    char path[4224];
+    char path[CPR_PATH_BUF_LEN2];
     const char *prefix = cfg->nevo_file_prefix ? cfg->nevo_file_prefix : "NEVOPRIMAT";
     char default_file[256];
     snprintf(default_file, sizeof(default_file), "%s%s_col_1_7.csv", prefix,
@@ -116,7 +116,7 @@ static int build_nevo_table(CPRNeutrinoHistory *nh, const CPRConfig *cfg, char *
     if (!(cfg->spectral_distortions && !cfg->analytic_distortions))
         return 0;
 
-    char full_path[4224], grid_path[4224];
+    char full_path[CPR_PATH_BUF_LEN2], grid_path[CPR_PATH_BUF_LEN2];
     char default_full[256];
     snprintf(default_full, sizeof(default_full), "%s%s.csv", prefix,
              cfg->QED_corrections ? "" : "_NoQED");
@@ -129,6 +129,14 @@ static int build_nevo_table(CPRNeutrinoHistory *nh, const CPRConfig *cfg, char *
 
     size_t nr = full_tab.n_rows;
     size_t ny = grid_tab.n_rows;
+    if (nr == 0 || ny == 0) {
+        /* Guards the x_table_unsorted[0]/y_nodes[0] reads below: an empty
+         * spectral or grid table (header line but no data rows) would
+         * otherwise read past a malloc(0) allocation. */
+        *errmsg = strdup("cpr_resolve_nevo_path: NEVO spectral/grid table has no data rows");
+        cpr_table_free(&full_tab); cpr_table_free(&grid_tab);
+        return 1;
+    }
     double *x_NEVO_raw = full_tab.cols[0];
     double *z_NEVO_raw = full_tab.cols[1];
 

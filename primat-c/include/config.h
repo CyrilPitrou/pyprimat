@@ -23,6 +23,16 @@
  * this by hand alongside pyproject.toml whenever the package version changes. */
 #define CPRIMAT_VERSION "0.3.1"
 
+/* Buffer sizes for filesystem paths built by joining cfg->data_dir (see
+ * CPRConfig::data_dir below) with one or two relative path components
+ * (e.g. "<data_dir>/plasma/QED_pressure_correction_e2.txt"). Sized with
+ * headroom beyond data_dir's own capacity plus a generous per-component
+ * margin so -Wformat-truncation can prove the snprintf join never
+ * truncates, even though real data-dir paths are always far shorter. */
+#define CPR_DATA_DIR_LEN 4096
+#define CPR_PATH_BUF_LEN  (CPR_DATA_DIR_LEN + 256)  /* data_dir + "/" + one component */
+#define CPR_PATH_BUF_LEN2 (CPR_PATH_BUF_LEN + 256)  /* + a second joined component */
+
 #include <stddef.h>
 
 /* ---- Generic tagged-union value, used only at the parsing/CLI/ini
@@ -230,7 +240,7 @@ typedef struct {
 
     CPRNuclideTable nuclides;
 
-    char data_dir[4096]; /* the data folder itself (NEVO/, weak/, plasma/, nuclear/, csv/) */
+    char data_dir[CPR_DATA_DIR_LEN]; /* the data folder itself (NEVO/, weak/, plasma/, nuclear/, csv/) */
 } CPRConfig;
 
 /* True iff cfg->network == "small" / "large" (mirrors is_small/is_large). */

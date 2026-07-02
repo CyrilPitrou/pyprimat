@@ -189,7 +189,7 @@ typedef struct {
 
     CPRReaction *network;     /* length n_reac, species indices into species[] */
     char (*names)[64];        /* length n_reac, names[0] == "n__p" */
-    char (*sources)[64];      /* length n_reac; ref= label from rate-table header ("" for n__p, decay ref for decays) */
+    char (*sources)[128];     /* length n_reac; ref= label from rate-table header ("" for n__p, decay ref for decays); 128 to match CPRDecayEntry/CPRReactionEntry.ref's width */
     int *weak_flags;          /* length n_reac, 1 iff lepton_dZ != 0 */
     long *lepton_dZ;          /* length n_reac */
     size_t n_reac;

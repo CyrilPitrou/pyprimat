@@ -78,9 +78,10 @@ static int load_qed_tables(CPRPlasma *pl, const CPRConfig *cfg, char **errmsg)
     }
     pl->qed_active = 1;
 
-    char plasma_dir[4096], e2_file[4200], e3_file[4200], old_file[4200];
+    char plasma_dir[CPR_PATH_BUF_LEN];
+    char e2_file[CPR_PATH_BUF_LEN2], e3_file[CPR_PATH_BUF_LEN2], old_file[CPR_PATH_BUF_LEN2];
     /* Legacy 3-file names for backward compat with old cached copies. */
-    char p_file_leg[4200], dp_file_leg[4200], d2p_file_leg[4200];
+    char p_file_leg[CPR_PATH_BUF_LEN2], dp_file_leg[CPR_PATH_BUF_LEN2], d2p_file_leg[CPR_PATH_BUF_LEN2];
     snprintf(plasma_dir,   sizeof(plasma_dir),   "%s/plasma", cfg->data_dir);
     snprintf(e2_file,      sizeof(e2_file),       "%s/QED_pressure_correction_e2.txt", plasma_dir);
     snprintf(e3_file,      sizeof(e3_file),       "%s/QED_pressure_correction_e3.txt", plasma_dir);

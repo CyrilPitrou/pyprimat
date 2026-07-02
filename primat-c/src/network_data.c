@@ -864,8 +864,15 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
         for (size_t i = 0; i < n_bare; i++) {
             if (custom_is_removed(custom, bare_names[i])) continue;
             if (kept != i) {
-                snprintf(bare_names[kept], 64, "%s", bare_names[i]);
-                snprintf(table_files[kept], 128, "%s", table_files[i]);
+                /* memcpy of the exact row width (not snprintf("%s", ...))
+                 * gives the compiler a concrete object size for both
+                 * operands: with a non-constant row index, -Wformat-
+                 * truncation otherwise can't tell a row is NUL-terminated
+                 * well within its own 64/128 bytes and conservatively
+                 * assumes the source could run to the end of the whole
+                 * bare_names/table_files array. */
+                memcpy(bare_names[kept], bare_names[i], sizeof(bare_names[i]));
+                memcpy(table_files[kept], table_files[i], sizeof(table_files[i]));
             }
             kept++;
         }
@@ -962,7 +969,7 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
                 }
     } else {
         for (size_t i = 0; i < n_filtered; i++)
-            snprintf(selected[n_selected++], 64, "%s", filtered[i]);
+            memcpy(selected[n_selected++], filtered[i], sizeof(filtered[i])); /* see kept/i memcpy note above */
     }
 
     /* ---- 5. Parse each selected reaction's stoichiometry; collect active species. ---- */
@@ -978,10 +985,18 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
     char (*sel_table_file)[128] = malloc(n_selected * sizeof(*sel_table_file));
 
     for (size_t i = 0; i < n_selected; i++) {
+        /* A real standalone 64-byte object (rather than `selected[i]`
+         * itself, a row of a 2-D array addressed by a non-constant index)
+         * gives -Wformat-truncation a concrete bound below, instead of it
+         * conservatively assuming the source could run to the end of the
+         * whole `selected` array. */
+        char sel_name[64];
+        memcpy(sel_name, selected[i], sizeof(sel_name));
+
         const CPRReactionEntry *e = find_reaction_entry(&rxn_map, selected[i]);
         if (!e) {
             char buf[160];
-            snprintf(buf, sizeof(buf), "reaction '%s' is not present in reactions_large.csv", selected[i]);
+            snprintf(buf, sizeof(buf), "reaction '%s' is not present in reactions_large.csv", sel_name);
             *errmsg = strdup(buf);
             free(react_sides); free(prod_sides); free(net_lepton_dZ); free(is_weak); free(sel_table_file);
             cpr_reaction_table_free(&rxn_map); cpr_detailed_balance_free(&db);
@@ -999,7 +1014,7 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
         for (size_t b = 0; b < n_bare; b++)
             if (strcmp(bare_names[b], selected[i]) == 0) { deffile = table_files[b]; break; }
         if (deffile && deffile[0]) snprintf(sel_table_file[i], 128, "%s", deffile);
-        else snprintf(sel_table_file[i], 128, "%s_primat.txt", selected[i]);
+        else snprintf(sel_table_file[i], 128, "%s_primat.txt", sel_name);
 
         for (size_t k = 0; k < react_sides[i].n; k++) add_to_set(active, &n_active, react_sides[i].names[k]);
         for (size_t k = 0; k < prod_sides[i].n; k++) add_to_set(active, &n_active, prod_sides[i].names[k]);
@@ -1089,7 +1104,12 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
 
     for (size_t i = 0; i < n_selected && !load_fail; i++) {
         size_t ridx = i + 1;
-        snprintf(out->names[ridx], 64, "%s", selected[i]);
+        /* See the sel_name comment in the loop above: a real standalone
+         * 64-byte object avoids -Wformat-truncation false positives from
+         * `selected[i]`'s non-constant row index. */
+        char sel_name[64];
+        memcpy(sel_name, selected[i], sizeof(sel_name));
+        memcpy(out->names[ridx], sel_name, sizeof(sel_name));
         out->weak_flags[ridx] = is_weak[i];
         out->lepton_dZ[ridx] = net_lepton_dZ[i];
 
@@ -1120,7 +1140,7 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
                 cpr_resample_rate_table(ct->T9, ct->err, ct->n, out->grid, err_row, n_grid, errmsg)) {
                 load_fail = 1; break;
             }
-            snprintf(out->sources[ridx], 64, "custom");
+            snprintf(out->sources[ridx], sizeof(*out->sources), "custom");
         } else if (is_weak[i]) {
             /* Radioactive decay: T9-independent rate from decays.txt,
              * broadcast onto the master grid (no rate table to resample). */
@@ -1133,16 +1153,16 @@ int cpr_load_network(const CPRConfig *cfg, const char *era,
             const CPRDecayEntry *de = find_decay_entry(&decays, selected[i]);
             if (!de) {
                 snprintf(load_errbuf, sizeof(load_errbuf),
-                          "decay reaction '%s' has no entry in decays.txt", selected[i]);
+                          "decay reaction '%s' has no entry in decays.txt", sel_name);
                 load_fail = 1; break;
             }
             for (size_t g = 0; g < n_grid; g++) { fwd_row[g] = de->rate_s_inv; err_row[g] = de->uncertainty; }
-            snprintf(out->sources[ridx], 64, "%s", de->ref[0] ? de->ref : "?");
+            snprintf(out->sources[ridx], sizeof(*out->sources), "%s", de->ref[0] ? de->ref : "?");
         } else {
             char table_path[4500];
             char table_relpath[600];
             snprintf(table_relpath, sizeof(table_relpath), "nuclear/tables/%s/%s",
-                     selected[i], sel_table_file[i]);
+                     sel_name, sel_table_file[i]);
             cpr_config_resolve_rates_path(cfg, table_relpath, table_path, sizeof(table_path));
             CPRTable tab;
             if (cpr_table_read(table_path, 3, &tab, errmsg)) { load_fail = 1; break; }
