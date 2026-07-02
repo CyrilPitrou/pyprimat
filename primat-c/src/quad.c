@@ -3,8 +3,7 @@
 #include "quad.h"
 #include <math.h>
 
-static double simpson(CPRQuadFunc f, void *ctx, double a, double b, double fa,
-                       double fm, double fb)
+static double simpson(double a, double b, double fa, double fm, double fb)
 {
     return (b - a) / 6.0 * (fa + 4.0 * fm + fb);
 }
@@ -18,8 +17,8 @@ static double recurse(CPRQuadFunc f, void *ctx, double a, double b,
     double m = 0.5 * (a + b);
     double lm = 0.5 * (a + m), rm = 0.5 * (m + b);
     double flm = f(lm, ctx), frm = f(rm, ctx);
-    double left = simpson(f, ctx, a, m, fa, flm, fm);
-    double right = simpson(f, ctx, m, b, fm, frm, fb);
+    double left = simpson(a, m, fa, flm, fm);
+    double right = simpson(m, b, fm, frm, fb);
     double refined = left + right;
 
     /* Richardson extrapolation: for Simpson's rule the error of the
@@ -41,7 +40,7 @@ double cpr_quad_adaptive(CPRQuadFunc f, void *ctx, double a, double b,
 {
     double m = 0.5 * (a + b);
     double fa = f(a, ctx), fm = f(m, ctx), fb = f(b, ctx);
-    double whole = simpson(f, ctx, a, b, fa, fm, fb);
+    double whole = simpson(a, b, fa, fm, fb);
     double err_accum = 0.0;
     double result = recurse(f, ctx, a, b, fa, fm, fb, whole, tol, max_depth, &err_accum);
     if (err_estimate) *err_estimate = fabsd(err_accum);
